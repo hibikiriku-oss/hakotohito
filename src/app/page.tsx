@@ -156,13 +156,19 @@ export default function Home() {
 
         <div className="space-y-3">
 
-          <button className="w-full bg-black text-white rounded-xl p-4">
-            🎸 演奏したい
-          </button>
+	<button
+  	  onClick={() => selectUserType("performer")}
+  	  className="w-full bg-black text-white rounded-xl p-4"
+	>
+ 	  🎸 演奏したい
+	</button>
 
-          <button className="w-full bg-white border rounded-xl p-4">
-            🏢 演奏を依頼したい
-          </button>
+	<button
+	  onClick={() => selectUserType("facility")}
+	  className="w-full bg-white border rounded-xl p-4"
+	>
+	  🏢 演奏を依頼したい
+	</button>
 
         </div>
 
@@ -170,3 +176,41 @@ export default function Home() {
     </main>
   );
 }
+
+const selectUserType = async (
+  userType: "performer" | "facility"
+) => {
+  if (!profile) return;
+
+  try {
+    const response = await fetch("/api/users", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        lineUserId: profile.userId,
+        displayName: profile.displayName,
+        pictureUrl: profile.pictureUrl,
+        userType,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error || "登録に失敗しました");
+      return;
+    }
+
+    if (userType === "performer") {
+      window.location.href = "/performer";
+    } else {
+      window.location.href = "/facility";
+    }
+
+  } catch (error) {
+    console.error(error);
+    alert("通信エラーが発生しました");
+  }
+};
