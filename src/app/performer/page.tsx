@@ -13,6 +13,48 @@ export default function PerformerPage() {
 
   const [loading, setLoading] = useState(false);
 
+  // =========================
+  // LINE / LIFF 初期化
+  // =========================
+  useEffect(() => {
+    async function initLiff() {
+      try {
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+
+        if (!liffId) {
+          throw new Error(
+            "NEXT_PUBLIC_LIFF_IDが設定されていません"
+          );
+        }
+
+        await liff.init({
+          liffId,
+          withLoginOnExternalBrowser: true,
+        });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile = await liff.getProfile();
+
+        console.log("LINEプロフィール:", profile);
+
+        setLineUserId(profile.userId);
+
+      } catch (error) {
+        console.error("LIFF ERROR:", error);
+        alert("LINE情報の取得に失敗しました");
+      }
+    }
+
+    initLiff();
+  }, []);
+
+  // =========================
+  // プロフィール登録
+  // =========================
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -20,65 +62,42 @@ export default function PerformerPage() {
 
     if (!name || !area || !instruments || !genres) {
       alert("必須項目を入力してください");
-	useEffect(() => {
-	  async function initLiff() {
-	    try {
-	      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+      return;
+    }
 
-	      if (!liffId) {
-	        throw new Error(
-	          "NEXT_PUBLIC_LIFF_IDが設定されていません"
-	        );
-	      }
-
-		      await liff.init({
-	        liffId,
-        	withLoginOnExternalBrowser: true,
-	      });
-
-	      if (!liff.isLoggedIn()) {
-	        liff.login();
-	        return;
-	      }
-
-	      const profile = await liff.getProfile();
-
-	      setLineUserId(profile.userId);
-
-	    } catch (error) {
-	      console.error("LIFF ERROR:", error);
-	      alert("LINE情報の取得に失敗しました");
-	    }
-	  }
-
-	  initLiff();
-	}, []);
+    if (!lineUserId) {
+      alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
       return;
     }
 
     try {
       setLoading(true);
 
-	const response = await fetch("/api/performers", {
-	  method: "POST",
-	  headers: {
-	    "Content-Type": "application/json",
-	    "x-line-user-id": lineUserId,
-	  },
-	  body: JSON.stringify({
-	    name,
-	    area,
-	    instruments: instruments
-	      .split(",")
-	      .map((item) => item.trim())
-	      .filter(Boolean),
-	    genres: genres
-	      .split(",")
-	      .map((item) => item.trim())
-	      .filter(Boolean),
-	    bio,
-	  }),
-	});
+      console.log("プロフィール登録開始");
+
+      const response = await fetch("/api/performers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-line-user-id": lineUserId,
+        },
+        body: JSON.stringify({
+          name,
+          area,
+          instruments: instruments
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+          genres: genres
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+          bio,
+        }),
+      });
+
+      console.log("APIステータス:", response.status);
+
       const data = await response.json();
 
       console.log("API結果:", data);
@@ -93,7 +112,7 @@ export default function PerformerPage() {
       window.location.href = "/performer/home";
 
     } catch (error) {
-      console.error(error);
+      console.error("登録エラー:", error);
       alert("通信エラーが発生しました");
 
     } finally {
@@ -101,6 +120,9 @@ export default function PerformerPage() {
     }
   };
 
+  // =========================
+  // 画面
+  // =========================
   return (
     <main className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-md mx-auto">
