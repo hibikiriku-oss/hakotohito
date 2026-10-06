@@ -1,4 +1,10 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+
 export default function FacilityHomePage() {
+  const router = useRouter();
+
   return (
     <main className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-md mx-auto">
@@ -13,16 +19,24 @@ export default function FacilityHomePage() {
 
         <div className="mt-8 space-y-3">
 
-          <button className="w-full bg-black text-white rounded-xl p-4">
+          <button
+            onClick={() =>
+              router.push(
+                "/facility/request"
+              )
+            }
+            className="w-full bg-black text-white rounded-xl p-4"
+          >
             🎵 演奏依頼を作成する
           </button>
 
-          <button className="w-full bg-white border rounded-xl p-4">
+          <button
+            className="w-full bg-white border rounded-xl p-4"
+          >
             📋 自分の依頼を見る
           </button>
 
         </div>
-
       </div>
     </main>
   );
