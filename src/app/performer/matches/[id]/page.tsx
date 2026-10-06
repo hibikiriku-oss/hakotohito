@@ -1,0 +1,407 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import liff from "@line/liff";
+
+type Facility = {
+  id: string;
+  name: string | null;
+  facility_type: string | null;
+  address: string | null;
+  description: string | null;
+};
+
+type PerformanceRequest = {
+  id: string;
+  title: string;
+  description: string | null;
+  performance_date: string;
+  start_time: string;
+  end_time: string;
+  area: string | null;
+  instruments: string[];
+  genres: string[];
+  reward: number | null;
+  status: string;
+  facilities: Facility | null;
+};
+
+type Match = {
+  id: string;
+  request_id: string;
+  performer_id: string;
+  matched_at: string;
+  status: string;
+  performance_requests: PerformanceRequest | null;
+};
+
+export default function PerformerMatchDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+
+  const matchId = params.id as string;
+
+  const [match, setMatch] =
+    useState<Match | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+  useEffect(() => {
+    async function initialize() {
+      try {
+        const liffId =
+          process.env.NEXT_PUBLIC_LIFF_ID;
+
+        if (!liffId) {
+          throw new Error(
+            "NEXT_PUBLIC_LIFF_IDが設定されていません"
+          );
+        }
+
+        await liff.init({
+          liffId,
+          withLoginOnExternalBrowser: true,
+        });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile =
+          await liff.getProfile();
+
+        const response = await fetch(
+          `/api/performer/matches/${matchId}`,
+          {
+            headers: {
+              "x-line-user-id":
+                profile.userId,
+            },
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              "マッチング情報の取得に失敗しました"
+          );
+        }
+
+        setMatch(data.match);
+
+      } catch (error) {
+        console.error(
+          "マッチング詳細取得エラー:",
+          error
+        );
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : "マッチング情報の取得に失敗しました"
+        );
+
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    initialize();
+  }, [matchId]);
+
+  function formatDate(date: string) {
+    const [year, month, day] =
+      date.split("-");
+
+    return `${year}年${month}月${day}日`;
+  }
+
+  function formatTime(time: string) {
+    return time.slice(0, 5);
+  }
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-md mx-auto">
+          <h1 className="text-2xl font-bold">
+            🎉 マッチング詳細
+          </h1>
+
+          <p className="mt-8 text-center text-gray-500">
+            読み込み中...
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  if (error || !match) {
+    return (
+      <main className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-md mx-auto">
+          <h1 className="text-2xl font-bold">
+            🎉 マッチング詳細
+          </h1>
+
+          <div className="mt-6 p-4 bg-red-50 rounded-xl">
+            <p className="text-red-600">
+              {error ||
+                "マッチング情報が見つかりません"}
+            </p>
+          </div>
+
+          <button
+            onClick={() =>
+              router.push(
+                "/performer/matches"
+              )
+            }
+            className="w-full mt-6 bg-white border rounded-xl p-4"
+          >
+            ← マッチング一覧へ戻る
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  const performanceRequest =
+    match.performance_requests;
+
+  const facility =
+    performanceRequest?.facilities;
+
+  if (!performanceRequest) {
+    return (
+      <main className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-md mx-auto">
+          <p className="text-red-600">
+            演奏案件の情報が見つかりません。
+          </p>
+
+          <button
+            onClick={() =>
+              router.push(
+                "/performer/matches"
+              )
+            }
+            className="w-full mt-6 bg-white border rounded-xl p-4"
+          >
+            ← マッチング一覧へ戻る
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-md mx-auto">
+
+        <button
+          onClick={() =>
+            router.push(
+              "/performer/matches"
+            )
+          }
+          className="text-sm text-gray-500 mb-4"
+        >
+          ← マッチング一覧へ戻る
+        </button>
+
+        {/* タイトル */}
+        <h1 className="text-2xl font-bold">
+          🎉 マッチング詳細
+        </h1>
+
+        {/* マッチング状態 */}
+        <div className="mt-5 bg-green-50 border border-green-200 rounded-2xl p-5">
+          <p className="text-green-700 font-bold">
+            🎉 マッチング成立
+          </p>
+
+          <p className="mt-2 text-sm text-green-700">
+            この演奏案件への出演が決定しています。
+          </p>
+        </div>
+
+        {/* 演奏案件 */}
+        <section className="mt-5 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="text-xl font-bold">
+            {performanceRequest.title}
+          </h2>
+
+          {performanceRequest.description && (
+            <p className="mt-4 text-gray-700 whitespace-pre-wrap">
+              {performanceRequest.description}
+            </p>
+          )}
+
+        </section>
+
+        {/* 演奏日時 */}
+        <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="font-bold">
+            📅 演奏日時
+          </h2>
+
+          <p className="mt-3 text-lg font-bold">
+            {formatDate(
+              performanceRequest.performance_date
+            )}
+          </p>
+
+          <p className="mt-1 text-gray-600">
+            {formatTime(
+              performanceRequest.start_time
+            )}
+            {" ～ "}
+            {formatTime(
+              performanceRequest.end_time
+            )}
+          </p>
+
+        </section>
+
+        {/* 場所 */}
+        <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="font-bold">
+            📍 場所
+          </h2>
+
+          {performanceRequest.area && (
+            <p className="mt-3 font-bold">
+              {performanceRequest.area}
+            </p>
+          )}
+
+          {facility?.address && (
+            <p className="mt-1 text-gray-600">
+              {facility.address}
+            </p>
+          )}
+
+        </section>
+
+        {/* 報酬 */}
+        <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="font-bold">
+            💰 報酬
+          </h2>
+
+          <p className="mt-3 text-2xl font-bold">
+            {performanceRequest.reward !== null
+              ? `${performanceRequest.reward.toLocaleString()}円`
+              : "要相談"}
+          </p>
+
+        </section>
+
+        {/* 楽器 */}
+        {performanceRequest.instruments?.length >
+          0 && (
+          <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+            <h2 className="font-bold">
+              🎼 希望楽器
+            </h2>
+
+            <div className="flex flex-wrap gap-2 mt-3">
+              {performanceRequest.instruments.map(
+                (instrument) => (
+                  <span
+                    key={instrument}
+                    className="bg-gray-100 rounded-full px-3 py-1 text-sm"
+                  >
+                    {instrument}
+                  </span>
+                )
+              )}
+            </div>
+
+          </section>
+        )}
+
+        {/* ジャンル */}
+        {performanceRequest.genres?.length >
+          0 && (
+          <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+            <h2 className="font-bold">
+              🎶 希望ジャンル
+            </h2>
+
+            <div className="flex flex-wrap gap-2 mt-3">
+              {performanceRequest.genres.map(
+                (genre) => (
+                  <span
+                    key={genre}
+                    className="bg-gray-100 rounded-full px-3 py-1 text-sm"
+                  >
+                    {genre}
+                  </span>
+                )
+              )}
+            </div>
+
+          </section>
+        )}
+
+        {/* 施設情報 */}
+        {facility && (
+          <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+            <h2 className="font-bold">
+              🏢 施設について
+            </h2>
+
+            <p className="mt-4 text-xl font-bold">
+              {facility.name ||
+                "施設名未登録"}
+            </p>
+
+            {facility.facility_type && (
+              <p className="mt-1 text-sm text-gray-500">
+                {facility.facility_type}
+              </p>
+            )}
+
+            {facility.description && (
+              <p className="mt-4 text-gray-700 whitespace-pre-wrap">
+                {facility.description}
+              </p>
+            )}
+
+          </section>
+        )}
+
+        {/* 戻るボタン */}
+        <button
+          onClick={() =>
+            router.push(
+              "/performer/matches"
+            )
+          }
+          className="w-full mt-6 bg-black text-white rounded-xl p-4"
+        >
+          マッチング一覧に戻る
+        </button>
+
+      </div>
+    </main>
+  );
+}

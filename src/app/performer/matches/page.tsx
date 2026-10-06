@@ -39,20 +39,14 @@ type Match = {
 export default function PerformerMatchesPage() {
   const router = useRouter();
 
-  const [matches, setMatches] =
-    useState<Match[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function initialize() {
       try {
-        const liffId =
-          process.env.NEXT_PUBLIC_LIFF_ID;
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
           throw new Error(
@@ -70,21 +64,18 @@ export default function PerformerMatchesPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const profile = await liff.getProfile();
 
         const response = await fetch(
           "/api/performer/matches",
           {
             headers: {
-              "x-line-user-id":
-                profile.userId,
+              "x-line-user-id": profile.userId,
             },
           }
         );
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
         if (!response.ok) {
           throw new Error(
@@ -93,10 +84,7 @@ export default function PerformerMatchesPage() {
           );
         }
 
-        setMatches(
-          data.matches || []
-        );
-
+        setMatches(data.matches || []);
       } catch (error) {
         console.error(
           "マッチング取得エラー:",
@@ -108,7 +96,6 @@ export default function PerformerMatchesPage() {
             ? error.message
             : "マッチング情報の取得に失敗しました"
         );
-
       } finally {
         setLoading(false);
       }
@@ -117,18 +104,13 @@ export default function PerformerMatchesPage() {
     initialize();
   }, []);
 
-  function formatDate(
-    date: string
-  ) {
-    const [year, month, day] =
-      date.split("-");
+  function formatDate(date: string) {
+    const [year, month, day] = date.split("-");
 
-    return `${year}/${month}/${day}`;
+    return year + "/" + month + "/" + day;
   }
 
-  function formatTime(
-    time: string
-  ) {
+  function formatTime(time: string) {
     return time.slice(0, 5);
   }
 
@@ -136,15 +118,13 @@ export default function PerformerMatchesPage() {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-md mx-auto">
-
           <h1 className="text-2xl font-bold">
             🎉 マッチング一覧
           </h1>
 
           <p className="mt-8 text-center text-gray-500">
-            マッチング情報を読み込んでいます…
+            マッチング情報を読み込んでいます...
           </p>
-
         </div>
       </main>
     );
@@ -154,7 +134,6 @@ export default function PerformerMatchesPage() {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-md mx-auto">
-
           <h1 className="text-2xl font-bold">
             🎉 マッチング一覧
           </h1>
@@ -167,15 +146,12 @@ export default function PerformerMatchesPage() {
 
           <button
             onClick={() =>
-              router.push(
-                "/performer/home"
-              )
+              router.push("/performer/home")
             }
             className="w-full mt-6 bg-white border rounded-xl p-4"
           >
             ← ホームへ戻る
           </button>
-
         </div>
       </main>
     );
@@ -184,12 +160,9 @@ export default function PerformerMatchesPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-md mx-auto">
-
         <button
           onClick={() =>
-            router.push(
-              "/performer/home"
-            )
+            router.push("/performer/home")
           }
           className="text-sm text-gray-500 mb-4"
         >
@@ -202,26 +175,21 @@ export default function PerformerMatchesPage() {
 
         {matches.length === 0 ? (
           <div className="mt-6 bg-white rounded-2xl p-6 text-center">
-
             <p className="text-gray-500">
               まだマッチングはありません。
             </p>
 
             <button
               onClick={() =>
-                router.push(
-                  "/performer/requests"
-                )
+                router.push("/performer/requests")
               }
               className="w-full mt-5 bg-black text-white rounded-xl p-4"
             >
               🔍 演奏案件を探す
             </button>
-
           </div>
         ) : (
           <div className="mt-6 space-y-4">
-
             {matches.map((match) => {
               const performanceRequest =
                 match.performance_requests;
@@ -234,25 +202,26 @@ export default function PerformerMatchesPage() {
                 performanceRequest.facilities;
 
               return (
-                <div
+                <button
                   key={match.id}
-                  className="bg-white rounded-2xl p-5 shadow-sm border"
+		onClick={() =>
+		  router.push(
+		    "/performer/matches/" + match.id
+		  )
+		}
+                  className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border hover:bg-gray-50 active:bg-gray-100 transition"
                 >
-
                   {/* ステータス */}
                   <div className="flex items-center justify-between">
-
                     <span className="text-sm font-bold">
                       🎉 マッチング成立
                     </span>
 
                     <span className="text-xs bg-green-100 text-green-700 rounded-full px-3 py-1">
-                      {match.status ===
-                      "active"
+                      {match.status === "active"
                         ? "進行中"
                         : "キャンセル"}
                     </span>
-
                   </div>
 
                   {/* 案件タイトル */}
@@ -263,13 +232,13 @@ export default function PerformerMatchesPage() {
                   {/* 施設 */}
                   {facility && (
                     <div className="mt-4">
-
                       <p className="text-sm text-gray-500">
                         施設
                       </p>
 
                       <p className="mt-1 font-bold">
-                        🏢 {facility.name ||
+                        🏢{" "}
+                        {facility.name ||
                           "施設名未登録"}
                       </p>
 
@@ -278,13 +247,11 @@ export default function PerformerMatchesPage() {
                           {facility.facility_type}
                         </p>
                       )}
-
                     </div>
                   )}
 
-                  {/* 日時 */}
+                  {/* 演奏日時 */}
                   <div className="mt-4">
-
                     <p className="text-sm text-gray-500">
                       演奏日時
                     </p>
@@ -306,14 +273,12 @@ export default function PerformerMatchesPage() {
                         performanceRequest.end_time
                       )}
                     </p>
-
                   </div>
 
                   {/* 場所 */}
                   {(performanceRequest.area ||
                     facility?.address) && (
                     <div className="mt-4">
-
                       <p className="text-sm text-gray-500">
                         場所
                       </p>
@@ -330,34 +295,29 @@ export default function PerformerMatchesPage() {
                           {facility.address}
                         </p>
                       )}
-
                     </div>
                   )}
 
-                  {/* 楽器 */}
+                  {/* 募集楽器 */}
                   {performanceRequest.instruments?.length >
                     0 && (
                     <div className="mt-4">
-
                       <p className="text-sm text-gray-500">
                         募集楽器
                       </p>
 
                       <div className="flex flex-wrap gap-2 mt-2">
-
                         {performanceRequest.instruments.map(
                           (instrument) => (
                             <span
                               key={instrument}
                               className="text-sm bg-gray-100 rounded-full px-3 py-1"
                             >
-                              🎵 {instrument}
+                              🎸 {instrument}
                             </span>
                           )
                         )}
-
                       </div>
-
                     </div>
                   )}
 
@@ -365,26 +325,22 @@ export default function PerformerMatchesPage() {
                   {performanceRequest.genres?.length >
                     0 && (
                     <div className="mt-4">
-
                       <p className="text-sm text-gray-500">
                         ジャンル
                       </p>
 
                       <div className="flex flex-wrap gap-2 mt-2">
-
                         {performanceRequest.genres.map(
                           (genre) => (
                             <span
                               key={genre}
                               className="text-sm bg-gray-100 rounded-full px-3 py-1"
                             >
-                              🎼 {genre}
+                              🎵 {genre}
                             </span>
                           )
                         )}
-
                       </div>
-
                     </div>
                   )}
 
@@ -392,7 +348,6 @@ export default function PerformerMatchesPage() {
                   {performanceRequest.reward !==
                     null && (
                     <div className="mt-4">
-
                       <p className="text-sm text-gray-500">
                         報酬
                       </p>
@@ -402,14 +357,12 @@ export default function PerformerMatchesPage() {
                         {performanceRequest.reward.toLocaleString()}
                         円
                       </p>
-
                     </div>
                   )}
 
-                  {/* 施設住所 */}
+                  {/* 施設について */}
                   {facility?.description && (
                     <div className="mt-4">
-
                       <p className="text-sm text-gray-500">
                         施設について
                       </p>
@@ -417,28 +370,29 @@ export default function PerformerMatchesPage() {
                       <p className="mt-1 text-sm whitespace-pre-wrap">
                         {facility.description}
                       </p>
-
                     </div>
                   )}
 
-                </div>
+                  {/* 詳細画面への案内 */}
+                  <div className="mt-5 pt-4 border-t text-center">
+                    <span className="text-sm font-bold text-gray-600">
+                      マッチング詳細を見る →
+                    </span>
+                  </div>
+                </button>
               );
             })}
-
           </div>
         )}
 
         <button
           onClick={() =>
-            router.push(
-              "/performer/home"
-            )
+            router.push("/performer/home")
           }
           className="w-full mt-6 bg-white border rounded-xl p-4"
         >
           ← ホームへ戻る
         </button>
-
       </div>
     </main>
   );
