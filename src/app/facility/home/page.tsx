@@ -37,6 +37,15 @@ export default function FacilityHomePage() {
             📋 自分の依頼を見る
           </button>
 
+          <button
+            onClick={() =>
+              router.push("/facility/matches")
+            }
+            className="w-full bg-white border rounded-xl p-4"
+          >
+            🎉 マッチングを見る
+          </button>
+
         </div>
       </div>
     </main>
