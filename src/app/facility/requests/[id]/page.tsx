@@ -50,8 +50,36 @@ export default function FacilityApplicationsPage() {
   const [loading, setLoading] =
     useState(true);
 
+  const [acceptingApplicationId, setAcceptingApplicationId] =
+    useState<string | null>(null);
+
   const [error, setError] =
     useState("");
+
+  async function loadApplications(
+    userId: string
+  ) {
+    const response = await fetch(
+      `/api/facility/requests/${requestId}/applications`,
+      {
+        headers: {
+          "x-line-user-id": userId,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error ||
+          "応募者の取得に失敗しました"
+      );
+    }
+
+    setPerformanceRequest(data.request);
+    setApplications(data.applications || []);
+  }
 
   useEffect(() => {
     async function initialize() {
@@ -80,32 +108,8 @@ export default function FacilityApplicationsPage() {
 
         setLineUserId(profile.userId);
 
-        const response = await fetch(
-          `/api/facility/requests/${requestId}/applications`,
-          {
-            headers: {
-              "x-line-user-id":
-                profile.userId,
-            },
-          }
-        );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.error ||
-              "応募者の取得に失敗しました"
-          );
-        }
-
-        setPerformanceRequest(
-          data.request
-        );
-
-        setApplications(
-          data.applications || []
+        await loadApplications(
+          profile.userId
         );
 
       } catch (error) {
@@ -127,6 +131,78 @@ export default function FacilityApplicationsPage() {
 
     initialize();
   }, [requestId]);
+
+  async function handleAccept(
+    application: Application
+  ) {
+    const performer =
+      application.performers;
+
+    if (!performer) {
+      return;
+    }
+
+    const performerName =
+      performer.name ||
+      performer.users?.display_name ||
+      "この演奏者";
+
+    const confirmed = window.confirm(
+      `${performerName}さんに演奏を依頼しますか？\n\n採用すると、この案件の他の応募者は見送りになります。`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setAcceptingApplicationId(
+        application.id
+      );
+
+      const response = await fetch(
+        `/api/facility/requests/${requestId}/applications/${application.id}/accept`,
+        {
+          method: "POST",
+          headers: {
+            "x-line-user-id": lineUserId,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "採用処理に失敗しました"
+        );
+      }
+
+      alert(
+        "マッチングが成立しました！"
+      );
+
+      await loadApplications(
+        lineUserId
+      );
+
+    } catch (error) {
+      console.error(
+        "採用処理エラー:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "採用処理に失敗しました"
+      );
+
+    } finally {
+      setAcceptingApplicationId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -221,6 +297,11 @@ export default function FacilityApplicationsPage() {
                 return null;
               }
 
+              const performerName =
+                performer.name ||
+                performer.users?.display_name ||
+                "名前未登録";
+
               return (
                 <div
                   key={application.id}
@@ -246,9 +327,7 @@ export default function FacilityApplicationsPage() {
                     <div className="flex-1">
 
                       <h2 className="text-lg font-bold">
-                        {performer.name ||
-                          performer.users?.display_name ||
-                          "名前未登録"}
+                        {performerName}
                       </h2>
 
                       {performer.area && (
@@ -359,6 +438,28 @@ export default function FacilityApplicationsPage() {
                       </p>
 
                     </div>
+                  )}
+
+                  {/* 採用ボタン */}
+                  {application.status ===
+                    "pending" && (
+                    <button
+                      onClick={() =>
+                        handleAccept(
+                          application
+                        )
+                      }
+                      disabled={
+                        acceptingApplicationId ===
+                        application.id
+                      }
+                      className="w-full mt-5 bg-black text-white rounded-xl p-4 font-bold disabled:opacity-50"
+                    >
+                      {acceptingApplicationId ===
+                      application.id
+                        ? "採用処理中..."
+                        : "🎵 この演奏者に依頼する"}
+                    </button>
                   )}
 
                 </div>
