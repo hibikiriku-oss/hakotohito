@@ -21,9 +21,7 @@ export default function FacilityHomePage() {
 
           <button
             onClick={() =>
-              router.push(
-                "/facility/request"
-              )
+              router.push("/facility/request")
             }
             className="w-full bg-black text-white rounded-xl p-4"
           >
@@ -31,6 +29,9 @@ export default function FacilityHomePage() {
           </button>
 
           <button
+            onClick={() =>
+              router.push("/facility/requests")
+            }
             className="w-full bg-white border rounded-xl p-4"
           >
             📋 自分の依頼を見る
