@@ -344,25 +344,86 @@ export async function POST(
               performerUser.display_name ||
               "演奏者";
 
-            const message =
-              "🎉 マッチングが成立しました！\n\n" +
-              "演奏案件「" +
-              performanceRequest.title +
-              "」について、施設から演奏依頼が承認されました。\n\n" +
-              "演奏日時：" +
-              performanceRequest.performance_date +
-              "\n" +
-              "時間：" +
-              performanceRequest.start_time +
-              " ～ " +
-              performanceRequest.end_time +
-              "\n" +
-              "場所：" +
-              (performanceRequest.area ||
-                "未設定") +
-              "\n\n" +
-              performerName +
-              "さん、マッチング詳細を確認してください。";
+            // LINE MINI Appのマッチング詳細ページURL
+            const detailUrl =
+              "https://miniapp.line.me/2011785379-l5XCTbIf/performer/matches/" +
+              match.id;
+
+            // LINE Flex Message
+            const messages = [
+              {
+                type: "flex",
+                altText:
+                  "🎉 マッチングが成立しました！",
+                contents: {
+                  type: "bubble",
+                  body: {
+                    type: "box",
+                    layout: "vertical",
+                    contents: [
+                      {
+                        type: "text",
+                        text:
+                          "🎉 マッチング成立！",
+                        weight: "bold",
+                        size: "xl",
+                        wrap: true,
+                      },
+                      {
+                        type: "text",
+                        text:
+                          "演奏案件「" +
+                          performanceRequest.title +
+                          "」について、施設から演奏依頼が承認されました。",
+                        margin: "md",
+                        wrap: true,
+                      },
+                      {
+                        type: "text",
+                        text:
+                          "演奏日時：" +
+                          performanceRequest.performance_date +
+                          "\n" +
+                          "時間：" +
+                          performanceRequest.start_time +
+                          " ～ " +
+                          performanceRequest.end_time +
+                          "\n" +
+                          "場所：" +
+                          (performanceRequest.area ||
+                            "未設定"),
+                        margin: "md",
+                        wrap: true,
+                      },
+                      {
+                        type: "text",
+                        text:
+                          performerName +
+                          "さん、マッチング詳細を確認してください。",
+                        margin: "md",
+                        wrap: true,
+                      },
+                    ],
+                  },
+                  footer: {
+                    type: "box",
+                    layout: "vertical",
+                    contents: [
+                      {
+                        type: "button",
+                        style: "primary",
+                        action: {
+                          type: "uri",
+                          label:
+                            "マッチング詳細を見る",
+                          uri: detailUrl,
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ];
 
             const lineResponse =
               await fetch(
@@ -378,12 +439,7 @@ export async function POST(
                   },
                   body: JSON.stringify({
                     to: performerUser.line_user_id,
-                    messages: [
-                      {
-                        type: "text",
-                        text: message,
-                      },
-                    ],
+                    messages,
                   }),
                 }
               );
