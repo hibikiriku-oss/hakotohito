@@ -31,6 +31,17 @@ export default function PerformerHomePage() {
           </button>
 
           <button
+            onClick={() =>
+              router.push(
+                "/performer/matches"
+              )
+            }
+            className="w-full bg-white border rounded-xl p-4"
+          >
+            🎉 マッチングを見る
+          </button>
+
+          <button
             className="w-full bg-white border rounded-xl p-4"
           >
             👤 プロフィールを見る
