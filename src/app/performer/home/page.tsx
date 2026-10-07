@@ -42,9 +42,14 @@ export default function PerformerHomePage() {
           </button>
 
           <button
+            onClick={() =>
+              router.push(
+                "/performer/profile/edit"
+              )
+            }
             className="w-full bg-white border rounded-xl p-4"
           >
-            👤 プロフィールを見る
+            👤 プロフィールを編集
           </button>
 
         </div>
