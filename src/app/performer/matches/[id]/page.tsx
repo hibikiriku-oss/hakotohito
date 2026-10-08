@@ -45,6 +45,9 @@ export default function PerformerMatchDetailPage() {
   const [match, setMatch] =
     useState<Match | null>(null);
 
+  const [reviewed, setReviewed] =
+    useState(false);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -59,7 +62,7 @@ export default function PerformerMatchDetailPage() {
 
         if (!liffId) {
           throw new Error(
-            "NEXT_PUBLIC_LIFF_IDが設定されていません"
+            "LINE MINI Appの設定がありません"
           );
         }
 
@@ -98,6 +101,24 @@ export default function PerformerMatchDetailPage() {
 
         setMatch(data.match);
 
+        const reviewResponse = await fetch(
+          `/api/reviews?match_id=${matchId}`,
+          {
+            headers: {
+              "x-line-user-id":
+                profile.userId,
+            },
+          }
+        );
+
+        if (reviewResponse.ok) {
+          const reviewData =
+            await reviewResponse.json();
+
+          setReviewed(
+            reviewData.reviewed === true
+          );
+        }
       } catch (error) {
         console.error(
           "マッチング詳細取得エラー:",
@@ -109,7 +130,6 @@ export default function PerformerMatchDetailPage() {
             ? error.message
             : "マッチング情報の取得に失敗しました"
         );
-
       } finally {
         setLoading(false);
       }
@@ -134,7 +154,7 @@ export default function PerformerMatchDetailPage() {
       <main className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-md mx-auto">
           <h1 className="text-2xl font-bold">
-            🎉 マッチング詳細
+            🎵 マッチング詳細
           </h1>
 
           <p className="mt-8 text-center text-gray-500">
@@ -150,7 +170,7 @@ export default function PerformerMatchDetailPage() {
       <main className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-md mx-auto">
           <h1 className="text-2xl font-bold">
-            🎉 マッチング詳細
+            🎵 マッチング詳細
           </h1>
 
           <div className="mt-6 p-4 bg-red-50 rounded-xl">
@@ -186,7 +206,7 @@ export default function PerformerMatchDetailPage() {
       <main className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-md mx-auto">
           <p className="text-red-600">
-            演奏案件の情報が見つかりません。
+            案件の情報が見つかりません。
           </p>
 
           <button
@@ -219,23 +239,20 @@ export default function PerformerMatchDetailPage() {
           ← マッチング一覧へ戻る
         </button>
 
-        {/* タイトル */}
         <h1 className="text-2xl font-bold">
-          🎉 マッチング詳細
+          🎵 マッチング詳細
         </h1>
 
-        {/* マッチング状態 */}
         <div className="mt-5 bg-green-50 border border-green-200 rounded-2xl p-5">
           <p className="text-green-700 font-bold">
             🎉 マッチング成立
           </p>
 
           <p className="mt-2 text-sm text-green-700">
-            この演奏案件への出演が決定しています。
+            この施設への出演が決定しています。
           </p>
         </div>
 
-        {/* 演奏案件 */}
         <section className="mt-5 bg-white rounded-2xl p-5 shadow-sm border">
 
           <h2 className="text-xl font-bold">
@@ -250,7 +267,6 @@ export default function PerformerMatchDetailPage() {
 
         </section>
 
-        {/* 演奏日時 */}
         <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
           <h2 className="font-bold">
@@ -275,7 +291,6 @@ export default function PerformerMatchDetailPage() {
 
         </section>
 
-        {/* 場所 */}
         <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
           <h2 className="font-bold">
@@ -296,7 +311,6 @@ export default function PerformerMatchDetailPage() {
 
         </section>
 
-        {/* 報酬 */}
         <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
           <h2 className="font-bold">
@@ -311,13 +325,12 @@ export default function PerformerMatchDetailPage() {
 
         </section>
 
-        {/* 楽器 */}
         {performanceRequest.instruments?.length >
           0 && (
           <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
             <h2 className="font-bold">
-              🎼 希望楽器
+              🎸 募集楽器
             </h2>
 
             <div className="flex flex-wrap gap-2 mt-3">
@@ -336,13 +349,12 @@ export default function PerformerMatchDetailPage() {
           </section>
         )}
 
-        {/* ジャンル */}
         {performanceRequest.genres?.length >
           0 && (
           <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
             <h2 className="font-bold">
-              🎶 希望ジャンル
+              🎵 募集ジャンル
             </h2>
 
             <div className="flex flex-wrap gap-2 mt-3">
@@ -361,7 +373,6 @@ export default function PerformerMatchDetailPage() {
           </section>
         )}
 
-        {/* 施設情報 */}
         {facility && (
           <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
@@ -389,7 +400,38 @@ export default function PerformerMatchDetailPage() {
           </section>
         )}
 
-        {/* 戻るボタン */}
+        {/* 評価 */}
+        <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="font-bold">
+            ⭐ 施設を評価
+          </h2>
+
+          {reviewed ? (
+            <div className="mt-4 bg-gray-50 rounded-xl p-4">
+              <p className="text-gray-700 font-bold">
+                評価済みです
+              </p>
+
+              <p className="mt-1 text-sm text-gray-500">
+                このマッチングはすでに評価しています。
+              </p>
+            </div>
+          ) : (
+            <button
+              onClick={() =>
+                router.push(
+                  `/performer/matches/${matchId}/review`
+                )
+              }
+              className="w-full mt-4 bg-yellow-500 text-white rounded-xl p-4 font-bold"
+            >
+              ⭐ この施設を評価する
+            </button>
+          )}
+
+        </section>
+
         <button
           onClick={() =>
             router.push(
