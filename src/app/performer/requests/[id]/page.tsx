@@ -50,10 +50,12 @@ export default function PerformerRequestDetailPage() {
   const [error, setError] =
     useState("");
 
+  const [showFacilityProfile, setShowFacilityProfile] =
+    useState(false);
+
   useEffect(() => {
     async function initialize() {
       try {
-        // LINE情報取得
         const liffId =
           process.env.NEXT_PUBLIC_LIFF_ID;
 
@@ -78,7 +80,6 @@ export default function PerformerRequestDetailPage() {
 
         setLineUserId(profile.userId);
 
-        // 案件取得
         const response = await fetch(
           `/api/performance-requests/${requestId}`
         );
@@ -124,7 +125,7 @@ export default function PerformerRequestDetailPage() {
 
     if (request.status !== "open") {
       alert(
-        "この案件は現在応募できません"
+        "この案件には現在応募できません"
       );
       return;
     }
@@ -199,7 +200,7 @@ export default function PerformerRequestDetailPage() {
           </h1>
 
           <p className="mt-8 text-center text-gray-500">
-            案件を読み込んでいます…
+            案件を読み込んでいます...
           </p>
         </div>
       </main>
@@ -216,7 +217,8 @@ export default function PerformerRequestDetailPage() {
 
           <div className="mt-6 p-4 bg-red-50 rounded-xl">
             <p className="text-red-600">
-              {error || "案件が見つかりません"}
+              {error ||
+                "案件が見つかりません"}
             </p>
           </div>
 
@@ -257,22 +259,33 @@ export default function PerformerRequestDetailPage() {
           </h1>
 
           {request.facilities && (
-            <div className="mt-5">
+            <div className="mt-5 bg-gray-50 rounded-xl p-4">
+
               <p className="text-sm text-gray-500">
                 施設
               </p>
 
-              <p className="font-bold mt-1">
-                🏢 {request.facilities.name}
+              <p className="font-bold mt-1 text-lg">
+                {request.facilities.name}
               </p>
 
               <p className="text-sm text-gray-600 mt-1">
                 {request.facilities.facility_type}
               </p>
 
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 mt-1">
                 {request.facilities.address}
               </p>
+
+              <button
+                onClick={() =>
+                  setShowFacilityProfile(true)
+                }
+                className="w-full mt-4 bg-white border border-gray-300 rounded-xl p-3 font-bold"
+              >
+                施設プロフィールを見る
+              </button>
+
             </div>
           )}
 
@@ -297,7 +310,7 @@ export default function PerformerRequestDetailPage() {
 
             {request.reward !== null && (
               <p className="font-bold">
-                💰 謝礼{" "}
+                💰 報酬{" "}
                 {request.reward.toLocaleString()}
                 円
               </p>
@@ -308,7 +321,7 @@ export default function PerformerRequestDetailPage() {
           {request.instruments?.length > 0 && (
             <div className="mt-5">
               <p className="text-sm text-gray-500 mb-2">
-                希望する楽器
+                演奏してほしい楽器
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -329,7 +342,7 @@ export default function PerformerRequestDetailPage() {
           {request.genres?.length > 0 && (
             <div className="mt-5">
               <p className="text-sm text-gray-500 mb-2">
-                希望するジャンル
+                演奏してほしいジャンル
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -350,23 +363,11 @@ export default function PerformerRequestDetailPage() {
           {request.description && (
             <div className="mt-5">
               <p className="text-sm text-gray-500">
-                依頼内容
+                案件内容
               </p>
 
               <p className="mt-2 whitespace-pre-wrap">
                 {request.description}
-              </p>
-            </div>
-          )}
-
-          {request.facilities?.description && (
-            <div className="mt-5">
-              <p className="text-sm text-gray-500">
-                施設紹介
-              </p>
-
-              <p className="mt-2 whitespace-pre-wrap">
-                {request.facilities.description}
               </p>
             </div>
           )}
@@ -389,7 +390,7 @@ export default function PerformerRequestDetailPage() {
               onChange={(e) =>
                 setMessage(e.target.value)
               }
-              placeholder="例：ギターでの演奏経験があります。ぜひ演奏させてください！"
+              placeholder="過去の演奏経験などを入力してください"
               rows={5}
               className="w-full border rounded-xl p-3 bg-white mt-4"
             />
@@ -414,6 +415,96 @@ export default function PerformerRequestDetailPage() {
         )}
 
       </div>
+
+      {showFacilityProfile &&
+        request.facilities && (
+          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-6">
+
+            <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto">
+
+              <div className="p-5">
+
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold">
+                    施設プロフィール
+                  </h2>
+
+                  <button
+                    onClick={() =>
+                      setShowFacilityProfile(false)
+                    }
+                    className="text-gray-500 text-2xl"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="mt-6">
+
+                  <p className="text-sm text-gray-500">
+                    施設名
+                  </p>
+
+                  <p className="text-xl font-bold mt-1">
+                    {request.facilities.name}
+                  </p>
+
+                </div>
+
+                <div className="mt-5">
+
+                  <p className="text-sm text-gray-500">
+                    施設種別
+                  </p>
+
+                  <p className="mt-1">
+                    {request.facilities.facility_type}
+                  </p>
+
+                </div>
+
+                <div className="mt-5">
+
+                  <p className="text-sm text-gray-500">
+                    住所
+                  </p>
+
+                  <p className="mt-1">
+                    {request.facilities.address}
+                  </p>
+
+                </div>
+
+                {request.facilities.description && (
+                  <div className="mt-5">
+
+                    <p className="text-sm text-gray-500">
+                      施設紹介
+                    </p>
+
+                    <p className="mt-2 whitespace-pre-wrap leading-relaxed">
+                      {request.facilities.description}
+                    </p>
+
+                  </div>
+                )}
+
+                <button
+                  onClick={() =>
+                    setShowFacilityProfile(false)
+                  }
+                  className="w-full mt-8 bg-black text-white rounded-xl p-4 font-bold"
+                >
+                  閉じる
+                </button>
+
+              </div>
+
+            </div>
+
+          </div>
+        )}
+
     </main>
   );
 }
