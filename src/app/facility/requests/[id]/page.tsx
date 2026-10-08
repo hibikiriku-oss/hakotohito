@@ -4,100 +4,134 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
-type User = {
-  display_name: string | null;
-  picture_url: string | null;
-};
-
-type Performer = {
-  id: string;
-  name: string | null;
-  area: string | null;
-  instruments: string[];
-  genres: string[];
-  bio: string | null;
-  users: User | null;
-};
-
-type Application = {
-  id: string;
-  message: string | null;
-  status: string;
-  created_at: string;
-  performers: Performer | null;
-};
-
 type PerformanceRequest = {
   id: string;
   title: string;
+  description: string | null;
+  performance_date: string;
+  start_time: string;
+  end_time: string;
+  area: string | null;
+  instruments: string[];
+  genres: string[];
+  reward: number | null;
+  status: "open" | "matched" | "closed";
+  facilities?: {
+    name: string | null;
+    facility_type: string | null;
+    address: string | null;
+    description: string | null;
+  } | null;
 };
 
-export default function FacilityRequestApplicationsPage() {
+function formatDate(dateString: string) {
+  const date = new Date(`${dateString}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
+  return date.toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
+}
+
+function formatTime(timeString: string) {
+  if (!timeString) {
+    return "";
+  }
+
+  return timeString.slice(0, 5);
+}
+
+function getStatusLabel(status: PerformanceRequest["status"]) {
+  switch (status) {
+    case "open":
+      return "募集中";
+    case "matched":
+      return "マッチング済み";
+    case "closed":
+      return "募集終了";
+    default:
+      return status;
+  }
+}
+
+export default function FacilityRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
 
   const requestId = params.id as string;
 
-  const [lineUserId, setLineUserId] = useState("");
-  const [performanceRequest, setPerformanceRequest] =
-    useState<PerformanceRequest | null>(null);
-  const [applications, setApplications] =
-    useState<Application[]>([]);
+  const [request, setRequest] = useState<PerformanceRequest | null>(null);
   const [loading, setLoading] = useState(true);
-  const [acceptingApplicationId, setAcceptingApplicationId] =
-    useState<string | null>(null);
-  const [selectedPerformer, setSelectedPerformer] =
-    useState<Performer | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
 
-  const loadApplications = async (userId: string) => {
+  useEffect(() => {
+    if (!requestId) {
+      return;
+    }
+
+    loadRequest();
+  }, [requestId]);
+
+  async function loadRequest() {
     try {
       setLoading(true);
       setError("");
 
       const response = await fetch(
-        "/api/facility/requests/" + requestId + "/applications",
-        {
-          headers: {
-            "x-line-user-id": userId,
-          },
-        }
+        `/api/performance-requests/${requestId}`
       );
 
-      const result = await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.error || "応募者一覧の取得に失敗しました"
+          data.error || "案件情報を取得できませんでした"
         );
       }
 
-      setPerformanceRequest(result.performanceRequest);
-      setApplications(result.applications || []);
-    } catch (err) {
-      console.error(err);
+      setRequest(data.request);
+    } catch (error) {
+      console.error(error);
 
-      if (err instanceof Error) {
-        setError(err.message);
+      if (error instanceof Error) {
+        setError(error.message);
       } else {
-        setError("応募者一覧の取得に失敗しました");
+        setError("案件情報を取得できませんでした");
       }
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => {
-    const init = async () => {
+  async function handleDelete() {
+    if (!request) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この案件を削除しますか？\n\n応募者がいる場合、その応募情報も削除されます。\nこの操作は元に戻せません。"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeleting(true);
+      setError("");
+
+      let lineUserId = "";
+
       try {
-        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-
-        if (!liffId) {
-          throw new Error("NEXT_PUBLIC_LIFF_ID が設定されていません");
-        }
-
         await liff.init({
-          liffId,
+          liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
         });
 
         if (!liff.isLoggedIn()) {
@@ -106,442 +140,306 @@ export default function FacilityRequestApplicationsPage() {
         }
 
         const profile = await liff.getProfile();
+        lineUserId = profile.userId;
+      } catch (error) {
+        console.error("LINE認証エラー:", error);
 
-        setLineUserId(profile.userId);
+        setError(
+          "LINEユーザー情報を取得できませんでした"
+        );
 
-        await loadApplications(profile.userId);
-      } catch (err) {
-        console.error(err);
-
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError("LINEログインの初期化に失敗しました");
-        }
-
-        setLoading(false);
+        setDeleting(false);
+        return;
       }
-    };
-
-    init();
-  }, [requestId]);
-
-  const handleAccept = async (application: Application) => {
-    if (!application.performers) {
-      return;
-    }
-
-    const performerName =
-      application.performers.name ||
-      application.performers.users?.display_name ||
-      "この演奏者";
-
-    const confirmed = window.confirm(
-      performerName +
-        " さんをこの案件の演奏者として採用しますか？"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setAcceptingApplicationId(application.id);
-      setError("");
 
       const response = await fetch(
-        "/api/facility/requests/" +
-          requestId +
-          "/applications/" +
-          application.id +
-          "/accept",
+        `/api/performance-requests/${requestId}`,
         {
-          method: "POST",
+          method: "DELETE",
           headers: {
-            "Content-Type": "application/json",
             "x-line-user-id": lineUserId,
           },
         }
       );
 
-      const result = await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.error || "演奏者の採用に失敗しました"
+          data.error || "案件の削除に失敗しました"
         );
       }
 
-      alert(
-        "採用しました。\n演奏者にLINE通知を送信しました。"
-      );
+      alert("案件を削除しました");
 
-      await loadApplications(lineUserId);
-    } catch (err) {
-      console.error(err);
+      router.push("/facility/requests");
+    } catch (error) {
+      console.error(error);
 
-      if (err instanceof Error) {
-        setError(err.message);
+      if (error instanceof Error) {
+        setError(error.message);
       } else {
-        setError("演奏者の採用に失敗しました");
+        setError("案件の削除に失敗しました");
       }
     } finally {
-      setAcceptingApplicationId(null);
+      setDeleting(false);
     }
-  };
+  }
 
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
+        <div className="mx-auto max-w-2xl">
           <p className="text-center text-gray-600">
-            読み込み中...
+            案件情報を読み込んでいます...
           </p>
         </div>
       </main>
     );
   }
 
-  if (error) {
+  if (!request) {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h1 className="text-xl font-bold mb-4">
-              エラー
+        <div className="mx-auto max-w-2xl">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="mb-6 text-sm text-blue-600"
+          >
+            ← 戻る
+          </button>
+
+          <div className="rounded-xl bg-white p-6 shadow-sm">
+            <h1 className="text-xl font-bold text-gray-900">
+              案件を表示できません
             </h1>
 
-            <p className="text-red-600 whitespace-pre-wrap">
-              {error}
+            <p className="mt-3 text-sm text-red-600">
+              {error || "案件が見つかりませんでした"}
             </p>
-
-            <button
-              onClick={() => router.back()}
-              className="w-full mt-6 bg-black text-white rounded-xl p-4 font-bold"
-            >
-              戻る
-            </button>
           </div>
         </div>
       </main>
     );
   }
+
+  const canEdit = request.status === "open";
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+      <div className="mx-auto max-w-2xl">
         <button
-          onClick={() => router.back()}
-          className="text-gray-600 mb-4"
+          type="button"
+          onClick={() => router.push("/facility/requests")}
+          className="mb-6 text-sm text-blue-600"
         >
-          ← 戻る
+          ← 案件一覧に戻る
         </button>
 
-        <h1 className="text-2xl font-bold mb-2">
-          👥 応募者一覧
-        </h1>
-
-        {performanceRequest && (
-          <p className="text-gray-600 mb-6">
-            {performanceRequest.title}
-          </p>
-        )}
-
-        {applications.length === 0 ? (
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <p className="text-center text-gray-600">
-              まだ応募者はいません。
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {applications.map((application) => {
-              const performer = application.performers;
-
-              if (!performer) {
-                return null;
-              }
-
-              const performerName =
-                performer.name ||
-                performer.users?.display_name ||
-                "名前未登録";
-
-              const isPending =
-                application.status === "pending";
-
-              const isAccepted =
-                application.status === "accepted";
-
-              const isRejected =
-                application.status === "rejected";
-
-              return (
-                <div
-                  key={application.id}
-                  className="bg-white rounded-2xl p-5 shadow-sm"
-                >
-                  <div className="flex items-center gap-4">
-                    {performer.users?.picture_url ? (
-                      <img
-                        src={performer.users.picture_url}
-                        alt=""
-                        className="w-16 h-16 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-3xl">
-                        🎸
-                      </div>
-                    )}
-
-                    <div className="flex-1">
-                      <h2 className="text-lg font-bold">
-                        {performerName}
-                      </h2>
-
-                      {performer.area && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          📍 {performer.area}
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      {isPending && (
-                        <span className="inline-block bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-full">
-                          応募中
-                        </span>
-                      )}
-
-                      {isAccepted && (
-                        <span className="inline-block bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full">
-                          採用
-                        </span>
-                      )}
-
-                      {isRejected && (
-                        <span className="inline-block bg-gray-100 text-gray-600 text-xs font-bold px-3 py-1 rounded-full">
-                          見送り
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {performer.instruments &&
-                    performer.instruments.length > 0 && (
-                      <div className="mt-5">
-                        <h3 className="font-bold text-sm mb-2">
-                          🎸 楽器
-                        </h3>
-
-                        <div className="flex flex-wrap gap-2">
-                          {performer.instruments.map(
-                            (instrument) => (
-                              <span
-                                key={instrument}
-                                className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
-                              >
-                                {instrument}
-                              </span>
-                            )
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                  {performer.genres &&
-                    performer.genres.length > 0 && (
-                      <div className="mt-5">
-                        <h3 className="font-bold text-sm mb-2">
-                          🎵 ジャンル
-                        </h3>
-
-                        <div className="flex flex-wrap gap-2">
-                          {performer.genres.map((genre) => (
-                            <span
-                              key={genre}
-                              className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
-                            >
-                              {genre}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                  {performer.bio && (
-                    <div className="mt-5">
-                      <h3 className="font-bold text-sm mb-2">
-                        📝 自己紹介
-                      </h3>
-
-                      <p className="text-gray-700 whitespace-pre-wrap">
-                        {performer.bio}
-                      </p>
-                    </div>
-                  )}
-
-                  {application.message && (
-                    <div className="mt-5">
-                      <h3 className="font-bold text-sm mb-2">
-                        💬 応募メッセージ
-                      </h3>
-
-                      <p className="text-gray-700 whitespace-pre-wrap">
-                        {application.message}
-                      </p>
-                    </div>
-                  )}
-
-                  <button
-                    onClick={() =>
-                      setSelectedPerformer(performer)
-                    }
-                    className="w-full mt-5 bg-white border border-gray-300 text-gray-800 rounded-xl p-4 font-bold"
-                  >
-                    👤 プロフィールを見る
-                  </button>
-
-                  {isPending && (
-                    <button
-                      onClick={() =>
-                        handleAccept(application)
-                      }
-                      disabled={
-                        acceptingApplicationId ===
-                        application.id
-                      }
-                      className="w-full mt-3 bg-black text-white rounded-xl p-4 font-bold disabled:opacity-50"
-                    >
-                      {acceptingApplicationId ===
-                      application.id
-                        ? "採用処理中..."
-                        : "🎵 この演奏者に依頼する"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+        {error && (
+          <div className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            {error}
           </div>
         )}
-      </div>
 
-      {selectedPerformer && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-5"
-          onClick={() => setSelectedPerformer(null)}
-        >
-          <div
-            className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-white rounded-2xl p-6"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">
-                👤 演奏者プロフィール
+        <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
+          <div className="border-b border-gray-100 p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-blue-600">
+                  演奏案件
+                </p>
+
+                <h1 className="mt-2 text-2xl font-bold text-gray-900">
+                  {request.title}
+                </h1>
+              </div>
+
+              <span
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
+                  request.status === "open"
+                    ? "bg-green-100 text-green-700"
+                    : request.status === "matched"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {getStatusLabel(request.status)}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-6 p-6">
+            <section>
+              <h2 className="text-sm font-bold text-gray-500">
+                案件内容
               </h2>
 
-              <button
-                onClick={() => setSelectedPerformer(null)}
-                className="text-gray-500 text-2xl"
-              >
-                ×
-              </button>
-            </div>
+              <p className="mt-2 whitespace-pre-wrap text-gray-800">
+                {request.description || "説明はありません"}
+              </p>
+            </section>
 
-            <div className="mt-6 flex flex-col items-center">
-              {selectedPerformer.users?.picture_url ? (
-                <img
-                  src={
-                    selectedPerformer.users.picture_url
-                  }
-                  alt=""
-                  className="w-24 h-24 rounded-full object-cover"
-                />
+            <section className="rounded-xl bg-gray-50 p-4">
+              <h2 className="text-sm font-bold text-gray-500">
+                演奏日時
+              </h2>
+
+              <p className="mt-2 font-medium text-gray-900">
+                {formatDate(request.performance_date)}
+              </p>
+
+              <p className="mt-1 text-gray-800">
+                {formatTime(request.start_time)}
+                {" ～ "}
+                {formatTime(request.end_time)}
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-sm font-bold text-gray-500">
+                エリア
+              </h2>
+
+              <p className="mt-2 text-gray-900">
+                {request.area || "指定なし"}
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-sm font-bold text-gray-500">
+                希望する楽器
+              </h2>
+
+              {request.instruments &&
+              request.instruments.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {request.instruments.map((instrument) => (
+                    <span
+                      key={instrument}
+                      className="rounded-full bg-blue-50 px-3 py-1 text-sm text-blue-700"
+                    >
+                      {instrument}
+                    </span>
+                  ))}
+                </div>
               ) : (
-                <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-4xl">
-                  🎸
-                </div>
-              )}
-
-              <h3 className="mt-4 text-xl font-bold text-center">
-                {selectedPerformer.name ||
-                  selectedPerformer.users
-                    ?.display_name ||
-                  "名前未登録"}
-              </h3>
-
-              {selectedPerformer.area && (
-                <p className="mt-2 text-gray-600">
-                  📍 {selectedPerformer.area}
+                <p className="mt-2 text-gray-900">
+                  指定なし
                 </p>
               )}
-            </div>
+            </section>
 
-            {selectedPerformer.instruments &&
-              selectedPerformer.instruments.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="font-bold text-sm mb-2">
-                    🎸 楽器
-                  </h3>
+            <section>
+              <h2 className="text-sm font-bold text-gray-500">
+                希望するジャンル
+              </h2>
 
-                  <div className="flex flex-wrap gap-2">
-                    {selectedPerformer.instruments.map(
-                      (instrument) => (
-                        <span
-                          key={instrument}
-                          className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
-                        >
-                          {instrument}
-                        </span>
-                      )
-                    )}
-                  </div>
+              {request.genres &&
+              request.genres.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {request.genres.map((genre) => (
+                    <span
+                      key={genre}
+                      className="rounded-full bg-purple-50 px-3 py-1 text-sm text-purple-700"
+                    >
+                      {genre}
+                    </span>
+                  ))}
                 </div>
-              )}
-
-            {selectedPerformer.genres &&
-              selectedPerformer.genres.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="font-bold text-sm mb-2">
-                    🎵 ジャンル
-                  </h3>
-
-                  <div className="flex flex-wrap gap-2">
-                    {selectedPerformer.genres.map(
-                      (genre) => (
-                        <span
-                          key={genre}
-                          className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
-                        >
-                          {genre}
-                        </span>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-
-            {selectedPerformer.bio && (
-              <div className="mt-6">
-                <h3 className="font-bold text-sm mb-2">
-                  📝 自己紹介
-                </h3>
-
-                <p className="text-gray-700 whitespace-pre-wrap">
-                  {selectedPerformer.bio}
+              ) : (
+                <p className="mt-2 text-gray-900">
+                  指定なし
                 </p>
+              )}
+            </section>
+
+            <section>
+              <h2 className="text-sm font-bold text-gray-500">
+                報酬
+              </h2>
+
+              <p className="mt-2 text-xl font-bold text-gray-900">
+                {request.reward !== null
+                  ? `${request.reward.toLocaleString()}円`
+                  : "応相談"}
+              </p>
+            </section>
+
+            {request.facilities && (
+              <section className="border-t border-gray-100 pt-6">
+                <h2 className="text-sm font-bold text-gray-500">
+                  施設情報
+                </h2>
+
+                <div className="mt-3 space-y-2">
+                  <p className="font-medium text-gray-900">
+                    {request.facilities.name || "施設名未設定"}
+                  </p>
+
+                  {request.facilities.facility_type && (
+                    <p className="text-sm text-gray-600">
+                      種別：{request.facilities.facility_type}
+                    </p>
+                  )}
+
+                  {request.facilities.address && (
+                    <p className="text-sm text-gray-600">
+                      住所：{request.facilities.address}
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
+          </div>
+
+          <div className="border-t border-gray-100 p-6">
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/facility/requests/${requestId}/applications`
+                )
+              }
+              className="w-full rounded-xl bg-blue-600 px-4 py-3 font-medium text-white"
+            >
+              👥 応募者を見る
+            </button>
+
+            {canEdit && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      `/facility/requests/${requestId}/edit`
+                    )
+                  }
+                  className="rounded-xl border border-gray-300 bg-white px-4 py-3 font-medium text-gray-800"
+                >
+                  ✏️ 編集
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-xl border border-red-200 bg-white px-4 py-3 font-medium text-red-600 disabled:opacity-50"
+                >
+                  {deleting ? "削除中..." : "🗑️ 削除"}
+                </button>
               </div>
             )}
 
-            <button
-              onClick={() => setSelectedPerformer(null)}
-              className="w-full mt-6 bg-black text-white rounded-xl p-4 font-bold"
-            >
-              閉じる
-            </button>
+            {!canEdit && (
+              <p className="mt-4 text-center text-sm text-gray-500">
+                マッチング済みまたは募集終了のため、編集・削除できません。
+              </p>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </main>
   );
 }
