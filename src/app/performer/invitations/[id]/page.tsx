@@ -42,10 +42,12 @@ export default function PerformerInvitationDetailPage() {
 
   const invitationId = params.id as string;
 
-  const [invitation, setInvitation] = useState<Invitation | null>(null);
+  const [invitation, setInvitation] =
+    useState<Invitation | null>(null);
   const [lineUserId, setLineUserId] = useState("");
   const [loading, setLoading] = useState(true);
   const [accepting, setAccepting] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -68,11 +70,13 @@ export default function PerformerInvitationDetailPage() {
       }
 
       const profile = await liff.getProfile();
+
       setLineUserId(profile.userId);
 
       await fetchInvitation(profile.userId);
     } catch (error) {
       console.error("LIFF初期化エラー:", error);
+
       setError("LINEの初期化に失敗しました");
       setLoading(false);
     }
@@ -147,10 +151,10 @@ export default function PerformerInvitationDetailPage() {
         );
       }
 
-      setSuccess("依頼を承諾しました。マッチングが成立しました！");
+      setSuccess(
+        "依頼を承諾しました。マッチングが成立しました！"
+      );
 
-      // 少しだけ成功メッセージを表示してから
-      // マッチング詳細画面へ移動
       setTimeout(() => {
         router.push(`/performer/matches/${data.match.id}`);
       }, 1000);
@@ -167,10 +171,58 @@ export default function PerformerInvitationDetailPage() {
     }
   }
 
-  function handleReject() {
-    window.alert(
-      "辞退処理は次のステップで追加します。"
+  async function handleReject() {
+    if (!invitation || !lineUserId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この依頼を辞退しますか？"
     );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setRejecting(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `/api/performer/invitations/${invitation.id}/reject`,
+        {
+          method: "POST",
+          headers: {
+            "x-line-user-id": lineUserId,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "依頼の辞退に失敗しました"
+        );
+      }
+
+      setSuccess("依頼を辞退しました。");
+
+      setTimeout(() => {
+        router.push("/performer/invitations");
+      }, 1000);
+    } catch (error) {
+      console.error("依頼辞退エラー:", error);
+
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError("依頼の辞退に失敗しました");
+      }
+    } finally {
+      setRejecting(false);
+    }
   }
 
   if (loading) {
@@ -202,7 +254,9 @@ export default function PerformerInvitationDetailPage() {
 
             <button
               type="button"
-              onClick={() => router.push("/performer/invitations")}
+              onClick={() =>
+                router.push("/performer/invitations")
+              }
               className="w-full bg-gray-200 text-gray-800 rounded-xl p-4 font-bold"
             >
               依頼一覧に戻る
@@ -227,11 +281,13 @@ export default function PerformerInvitationDetailPage() {
     );
   }
 
-  const request = invitation.performance_requests;
-  const facility = request.facilities;
+  const performanceRequest =
+    invitation.performance_requests;
+
+  const facility = performanceRequest.facilities;
 
   const formattedDate = new Date(
-    `${request.performance_date}T00:00:00`
+    `${performanceRequest.performance_date}T00:00:00`
   ).toLocaleDateString("ja-JP", {
     year: "numeric",
     month: "long",
@@ -248,12 +304,16 @@ export default function PerformerInvitationDetailPage() {
       ? "辞退"
       : invitation.status;
 
+  const processing = accepting || rejecting;
+
   return (
     <main className="min-h-screen bg-gray-50 p-4 pb-10">
       <div className="max-w-lg mx-auto">
         <button
           type="button"
-          onClick={() => router.push("/performer/invitations")}
+          onClick={() =>
+            router.push("/performer/invitations")
+          }
           className="text-gray-600 mb-4"
         >
           ← 依頼一覧に戻る
@@ -266,7 +326,7 @@ export default function PerformerInvitationDetailPage() {
             </p>
 
             <h1 className="text-2xl font-bold">
-              {request.title}
+              {performanceRequest.title}
             </h1>
           </div>
 
@@ -334,26 +394,26 @@ export default function PerformerInvitationDetailPage() {
                 </p>
 
                 <p className="text-gray-700 mt-2">
-                  {request.start_time.slice(0, 5)}
+                  {performanceRequest.start_time.slice(0, 5)}
                   {" ～ "}
-                  {request.end_time.slice(0, 5)}
+                  {performanceRequest.end_time.slice(0, 5)}
                 </p>
               </div>
             </section>
 
-            {request.area && (
+            {performanceRequest.area && (
               <section>
                 <h2 className="text-sm font-bold text-gray-500 mb-2">
                   エリア
                 </h2>
 
                 <div className="border rounded-xl p-4">
-                  📍 {request.area}
+                  📍 {performanceRequest.area}
                 </div>
               </section>
             )}
 
-            {request.reward !== null && (
+            {performanceRequest.reward !== null && (
               <section>
                 <h2 className="text-sm font-bold text-gray-500 mb-2">
                   報酬
@@ -361,60 +421,65 @@ export default function PerformerInvitationDetailPage() {
 
                 <div className="border rounded-xl p-4">
                   <p className="text-xl font-bold">
-                    ¥{request.reward.toLocaleString()}
+                    ¥
+                    {performanceRequest.reward.toLocaleString()}
                   </p>
                 </div>
               </section>
             )}
 
-            {request.instruments &&
-              request.instruments.length > 0 && (
+            {performanceRequest.instruments &&
+              performanceRequest.instruments.length > 0 && (
                 <section>
                   <h2 className="text-sm font-bold text-gray-500 mb-2">
                     希望楽器
                   </h2>
 
                   <div className="flex flex-wrap gap-2">
-                    {request.instruments.map((instrument) => (
-                      <span
-                        key={instrument}
-                        className="bg-gray-100 rounded-full px-3 py-2 text-sm"
-                      >
-                        {instrument}
-                      </span>
-                    ))}
+                    {performanceRequest.instruments.map(
+                      (instrument) => (
+                        <span
+                          key={instrument}
+                          className="bg-gray-100 rounded-full px-3 py-2 text-sm"
+                        >
+                          {instrument}
+                        </span>
+                      )
+                    )}
                   </div>
                 </section>
               )}
 
-            {request.genres &&
-              request.genres.length > 0 && (
+            {performanceRequest.genres &&
+              performanceRequest.genres.length > 0 && (
                 <section>
                   <h2 className="text-sm font-bold text-gray-500 mb-2">
                     希望ジャンル
                   </h2>
 
                   <div className="flex flex-wrap gap-2">
-                    {request.genres.map((genre) => (
-                      <span
-                        key={genre}
-                        className="bg-gray-100 rounded-full px-3 py-2 text-sm"
-                      >
-                        {genre}
-                      </span>
-                    ))}
+                    {performanceRequest.genres.map(
+                      (genre) => (
+                        <span
+                          key={genre}
+                          className="bg-gray-100 rounded-full px-3 py-2 text-sm"
+                        >
+                          {genre}
+                        </span>
+                      )
+                    )}
                   </div>
                 </section>
               )}
 
-            {request.description && (
+            {performanceRequest.description && (
               <section>
                 <h2 className="text-sm font-bold text-gray-500 mb-2">
                   案件詳細
                 </h2>
 
                 <div className="border rounded-xl p-4 whitespace-pre-wrap text-gray-700">
-                  {request.description}
+                  {performanceRequest.description}
                 </div>
               </section>
             )}
@@ -436,7 +501,7 @@ export default function PerformerInvitationDetailPage() {
                 <button
                   type="button"
                   onClick={handleAccept}
-                  disabled={accepting}
+                  disabled={processing}
                   className="w-full bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
                 >
                   {accepting
@@ -447,10 +512,12 @@ export default function PerformerInvitationDetailPage() {
                 <button
                   type="button"
                   onClick={handleReject}
-                  disabled={accepting}
+                  disabled={processing}
                   className="w-full bg-gray-200 text-gray-800 rounded-xl p-4 font-bold disabled:opacity-50"
                 >
-                  今回は見送る
+                  {rejecting
+                    ? "辞退処理中..."
+                    : "今回は見送る"}
                 </button>
               </div>
             )}
@@ -469,10 +536,31 @@ export default function PerformerInvitationDetailPage() {
               </div>
             )}
 
+            {invitation.status === "rejected" && (
+              <div className="pt-2">
+                <div className="bg-gray-100 text-gray-600 rounded-xl p-4 text-center mb-3">
+                  この依頼は辞退しました。
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push("/performer/invitations")
+                  }
+                  className="w-full bg-blue-600 text-white rounded-xl p-4 font-bold"
+                >
+                  依頼一覧に戻る
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
-              onClick={() => router.push("/performer/home")}
-              className="w-full text-gray-600 p-3"
+              onClick={() =>
+                router.push("/performer/home")
+              }
+              disabled={processing}
+              className="w-full text-gray-600 p-3 disabled:opacity-50"
             >
               演奏者ホームへ戻る
             </button>
