@@ -212,12 +212,14 @@ export default function FacilityPerformersPage() {
     const roundedRating =
       Math.round(rating);
 
-    return "★".repeat(
-      roundedRating
-    ) +
+    return (
+      "★".repeat(
+        roundedRating
+      ) +
       "☆".repeat(
         5 - roundedRating
-      );
+      )
+    );
   };
 
   const getUser = (
@@ -422,19 +424,19 @@ export default function FacilityPerformersPage() {
                 </option>
 
                 <option value="4">
-                  ⭐ 4.0以上
+                  ★ 4.0以上
                 </option>
 
                 <option value="3">
-                  ⭐ 3.0以上
+                  ★ 3.0以上
                 </option>
 
                 <option value="2">
-                  ⭐ 2.0以上
+                  ★ 2.0以上
                 </option>
 
                 <option value="1">
-                  ⭐ 1.0以上
+                  ★ 1.0以上
                 </option>
               </select>
             </div>
@@ -703,10 +705,22 @@ export default function FacilityPerformersPage() {
 
               <button
                 type="button"
+                onClick={() => {
+                  router.push(
+                    `/facility/performers/${selectedPerformer.id}/invite`
+                  );
+                }}
+                className="w-full mt-6 bg-blue-600 text-white rounded-xl p-4 font-bold"
+              >
+                この演奏者に依頼する
+              </button>
+
+              <button
+                type="button"
                 onClick={() =>
                   setSelectedPerformer(null)
                 }
-                className="w-full mt-6 bg-black text-white rounded-xl p-4"
+                className="w-full mt-3 bg-gray-100 text-gray-700 rounded-xl p-4"
               >
                 閉じる
               </button>
