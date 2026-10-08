@@ -21,8 +21,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const requestId = body.requestId;
-    const performerId = body.performerId;
+    // フロント側から送信されるキー名に合わせる
+    const requestId = body.request_id;
+    const performerId = body.performer_id;
     const message = body.message || "";
 
     if (!requestId || !performerId) {
@@ -60,12 +61,14 @@ export async function POST(request: NextRequest) {
     // 施設プロフィールを取得
     // --------------------------------
 
-    const { data: facility, error: facilityError } =
-      await supabase
-        .from("facilities")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .single();
+    const {
+      data: facility,
+      error: facilityError,
+    } = await supabase
+      .from("facilities")
+      .select("id, name")
+      .eq("user_id", user.id)
+      .single();
 
     if (facilityError || !facility) {
       console.error("施設取得エラー:", facilityError);
@@ -211,7 +214,8 @@ export async function POST(request: NextRequest) {
     if (existingApplication) {
       return NextResponse.json(
         {
-          error: "この演奏者にはすでに応募または依頼済みです",
+          error:
+            "この演奏者にはすでに応募または依頼済みです",
         },
         { status: 400 }
       );
