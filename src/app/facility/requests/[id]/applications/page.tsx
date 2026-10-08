@@ -32,6 +32,20 @@ type PerformanceRequest = {
   title: string;
 };
 
+type Review = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  reviewer_name: string;
+};
+
+type ReviewData = {
+  average_rating: number;
+  review_count: number;
+  reviews: Review[];
+};
+
 export default function FacilityRequestApplicationsPage() {
   const params = useParams();
   const router = useRouter();
@@ -48,6 +62,10 @@ export default function FacilityRequestApplicationsPage() {
     useState<string | null>(null);
   const [selectedPerformer, setSelectedPerformer] =
     useState<Performer | null>(null);
+  const [reviewData, setReviewData] =
+    useState<ReviewData | null>(null);
+  const [reviewLoading, setReviewLoading] =
+    useState(false);
   const [error, setError] = useState("");
 
   const loadApplications = async (userId: string) => {
@@ -56,7 +74,9 @@ export default function FacilityRequestApplicationsPage() {
       setError("");
 
       const response = await fetch(
-        "/api/facility/requests/" + requestId + "/applications",
+        "/api/facility/requests/" +
+          requestId +
+          "/applications",
         {
           headers: {
             "x-line-user-id": userId,
@@ -68,11 +88,14 @@ export default function FacilityRequestApplicationsPage() {
 
       if (!response.ok) {
         throw new Error(
-          result.error || "応募者一覧の取得に失敗しました"
+          result.error ||
+            "応募者一覧の取得に失敗しました"
         );
       }
 
-      setPerformanceRequest(result.performanceRequest);
+      setPerformanceRequest(
+        result.performanceRequest
+      );
       setApplications(result.applications || []);
     } catch (err) {
       console.error(err);
@@ -80,7 +103,9 @@ export default function FacilityRequestApplicationsPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("応募者一覧の取得に失敗しました");
+        setError(
+          "応募者一覧の取得に失敗しました"
+        );
       }
     } finally {
       setLoading(false);
@@ -90,10 +115,13 @@ export default function FacilityRequestApplicationsPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+        const liffId =
+          process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
-          throw new Error("NEXT_PUBLIC_LIFF_ID が設定されていません");
+          throw new Error(
+            "NEXT_PUBLIC_LIFF_ID が設定されていません"
+          );
         }
 
         await liff.init({
@@ -116,7 +144,9 @@ export default function FacilityRequestApplicationsPage() {
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError("LINEログインの初期化に失敗しました");
+          setError(
+            "LINEログインの初期化に失敗しました"
+          );
         }
 
         setLoading(false);
@@ -126,7 +156,58 @@ export default function FacilityRequestApplicationsPage() {
     init();
   }, [requestId]);
 
-  const handleAccept = async (application: Application) => {
+  const loadReviews = async (
+    performerId: string
+  ) => {
+    try {
+      setReviewLoading(true);
+      setReviewData(null);
+
+      const response = await fetch(
+        "/api/performers/" +
+          performerId +
+          "/reviews"
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            "評価情報の取得に失敗しました"
+        );
+      }
+
+      setReviewData({
+        average_rating:
+          result.average_rating || 0,
+        review_count:
+          result.review_count || 0,
+        reviews: result.reviews || [],
+      });
+    } catch (err) {
+      console.error(err);
+
+      setReviewData({
+        average_rating: 0,
+        review_count: 0,
+        reviews: [],
+      });
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const handleSelectPerformer = (
+    performer: Performer
+  ) => {
+    setSelectedPerformer(performer);
+    loadReviews(performer.id);
+  };
+
+  const handleAccept = async (
+    application: Application
+  ) => {
     if (!application.performers) {
       return;
     }
@@ -168,7 +249,8 @@ export default function FacilityRequestApplicationsPage() {
 
       if (!response.ok) {
         throw new Error(
-          result.error || "演奏者の採用に失敗しました"
+          result.error ||
+            "演奏者の採用に失敗しました"
         );
       }
 
@@ -183,11 +265,37 @@ export default function FacilityRequestApplicationsPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("演奏者の採用に失敗しました");
+        setError(
+          "演奏者の採用に失敗しました"
+        );
       }
     } finally {
       setAcceptingApplicationId(null);
     }
+  };
+
+  const formatReviewDate = (
+    dateString: string
+  ) => {
+    const date = new Date(dateString);
+
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    return date.toLocaleDateString(
+      "ja-JP",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }
+    );
+  };
+
+  const renderStars = (rating: number) => {
+    return "★".repeat(rating) +
+      "☆".repeat(5 - rating);
   };
 
   if (loading) {
@@ -256,7 +364,8 @@ export default function FacilityRequestApplicationsPage() {
         ) : (
           <div className="space-y-4">
             {applications.map((application) => {
-              const performer = application.performers;
+              const performer =
+                application.performers;
 
               if (!performer) {
                 return null;
@@ -284,7 +393,9 @@ export default function FacilityRequestApplicationsPage() {
                   <div className="flex items-center gap-4">
                     {performer.users?.picture_url ? (
                       <img
-                        src={performer.users.picture_url}
+                        src={
+                          performer.users.picture_url
+                        }
                         alt=""
                         className="w-16 h-16 rounded-full object-cover"
                       />
@@ -357,14 +468,16 @@ export default function FacilityRequestApplicationsPage() {
                         </h3>
 
                         <div className="flex flex-wrap gap-2">
-                          {performer.genres.map((genre) => (
-                            <span
-                              key={genre}
-                              className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
-                            >
-                              {genre}
-                            </span>
-                          ))}
+                          {performer.genres.map(
+                            (genre) => (
+                              <span
+                                key={genre}
+                                className="bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full"
+                              >
+                                {genre}
+                              </span>
+                            )
+                          )}
                         </div>
                       </div>
                     )}
@@ -395,7 +508,9 @@ export default function FacilityRequestApplicationsPage() {
 
                   <button
                     onClick={() =>
-                      setSelectedPerformer(performer)
+                      handleSelectPerformer(
+                        performer
+                      )
                     }
                     className="w-full mt-5 bg-white border border-gray-300 text-gray-800 rounded-xl p-4 font-bold"
                   >
@@ -429,11 +544,16 @@ export default function FacilityRequestApplicationsPage() {
       {selectedPerformer && (
         <div
           className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-5"
-          onClick={() => setSelectedPerformer(null)}
+          onClick={() => {
+            setSelectedPerformer(null);
+            setReviewData(null);
+          }}
         >
           <div
             className="w-full max-w-md max-h-[85vh] overflow-y-auto bg-white rounded-2xl p-6"
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) =>
+              event.stopPropagation()
+            }
           >
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold">
@@ -441,7 +561,10 @@ export default function FacilityRequestApplicationsPage() {
               </h2>
 
               <button
-                onClick={() => setSelectedPerformer(null)}
+                onClick={() => {
+                  setSelectedPerformer(null);
+                  setReviewData(null);
+                }}
                 className="text-gray-500 text-2xl"
               >
                 ×
@@ -449,10 +572,12 @@ export default function FacilityRequestApplicationsPage() {
             </div>
 
             <div className="mt-6 flex flex-col items-center">
-              {selectedPerformer.users?.picture_url ? (
+              {selectedPerformer.users
+                ?.picture_url ? (
                 <img
                   src={
-                    selectedPerformer.users.picture_url
+                    selectedPerformer.users
+                      .picture_url
                   }
                   alt=""
                   className="w-24 h-24 rounded-full object-cover"
@@ -474,6 +599,51 @@ export default function FacilityRequestApplicationsPage() {
                 <p className="mt-2 text-gray-600">
                   📍 {selectedPerformer.area}
                 </p>
+              )}
+            </div>
+
+            {/* 評価 */}
+            <div className="mt-6 bg-yellow-50 rounded-2xl p-5">
+              <h3 className="font-bold text-lg">
+                ⭐ 評価
+              </h3>
+
+              {reviewLoading ? (
+                <p className="mt-4 text-sm text-gray-500">
+                  評価を読み込み中...
+                </p>
+              ) : reviewData &&
+                reviewData.review_count > 0 ? (
+                <>
+                  <div className="mt-4 flex items-center gap-3">
+                    <span className="text-3xl font-bold">
+                      {reviewData.average_rating.toFixed(
+                        1
+                      )}
+                    </span>
+
+                    <div>
+                      <p className="text-yellow-500 text-xl tracking-wide">
+                        {renderStars(
+                          Math.round(
+                            reviewData.average_rating
+                          )
+                        )}
+                      </p>
+
+                      <p className="text-sm text-gray-600 mt-1">
+                        {reviewData.review_count}
+                        件の評価
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 bg-white rounded-xl p-4">
+                  <p className="text-gray-600">
+                    まだ評価はありません。
+                  </p>
+                </div>
               )}
             </div>
 
@@ -533,8 +703,56 @@ export default function FacilityRequestApplicationsPage() {
               </div>
             )}
 
+            {/* 評価コメント */}
+            {reviewData &&
+              reviewData.reviews.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="font-bold text-lg mb-3">
+                    💬 評価コメント
+                  </h3>
+
+                  <div className="space-y-3">
+                    {reviewData.reviews.map(
+                      (review) => (
+                        <div
+                          key={review.id}
+                          className="bg-gray-50 rounded-xl p-4"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-yellow-500 font-bold">
+                              {renderStars(
+                                review.rating
+                              )}
+                            </p>
+
+                            <p className="text-xs text-gray-400">
+                              {formatReviewDate(
+                                review.created_at
+                              )}
+                            </p>
+                          </div>
+
+                          <p className="mt-2 text-sm text-gray-500">
+                            {review.reviewer_name}
+                          </p>
+
+                          {review.comment && (
+                            <p className="mt-2 text-gray-700 whitespace-pre-wrap">
+                              {review.comment}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+
             <button
-              onClick={() => setSelectedPerformer(null)}
+              onClick={() => {
+                setSelectedPerformer(null);
+                setReviewData(null);
+              }}
               className="w-full mt-6 bg-black text-white rounded-xl p-4 font-bold"
             >
               閉じる
