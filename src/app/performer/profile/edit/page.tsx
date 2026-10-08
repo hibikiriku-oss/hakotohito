@@ -4,6 +4,20 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 
+type Review = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  reviewer_name: string;
+};
+
+type ReviewData = {
+  average_rating: number;
+  review_count: number;
+  reviews: Review[];
+};
+
 export default function PerformerProfileEditPage() {
   const router = useRouter();
 
@@ -14,6 +28,13 @@ export default function PerformerProfileEditPage() {
   const [instruments, setInstruments] = useState("");
   const [genres, setGenres] = useState("");
   const [bio, setBio] = useState("");
+
+  const [performerId, setPerformerId] = useState("");
+
+  const [reviewData, setReviewData] =
+    useState<ReviewData | null>(null);
+  const [reviewLoading, setReviewLoading] =
+    useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -45,6 +66,8 @@ export default function PerformerProfileEditPage() {
 
       const performer = data.performer;
 
+      setPerformerId(performer.id || "");
+
       setName(performer.name || "");
       setArea(performer.area || "");
 
@@ -61,6 +84,10 @@ export default function PerformerProfileEditPage() {
       );
 
       setBio(performer.bio || "");
+
+      if (performer.id) {
+        await loadReviews(performer.id);
+      }
     } catch (error) {
       console.error(
         "プロフィール取得エラー:",
@@ -77,6 +104,73 @@ export default function PerformerProfileEditPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // =========================
+  // 評価取得
+  // =========================
+  const loadReviews = async (
+    performerId: string
+  ) => {
+    try {
+      setReviewLoading(true);
+
+      const response = await fetch(
+        "/api/performers/" +
+          performerId +
+          "/reviews"
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "評価情報の取得に失敗しました"
+        );
+      }
+
+      setReviewData(data);
+    } catch (error) {
+      console.error(
+        "評価取得エラー:",
+        error
+      );
+
+      setReviewData(null);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  // =========================
+  // 星表示
+  // =========================
+  const renderStars = (rating: number) => {
+    return "★".repeat(rating) +
+      "☆".repeat(5 - rating);
+  };
+
+  // =========================
+  // 評価日付
+  // =========================
+  const formatReviewDate = (
+    dateString: string
+  ) => {
+    const date = new Date(dateString);
+
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    return date.toLocaleDateString(
+      "ja-JP",
+      {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    );
   };
 
   // =========================
@@ -139,8 +233,15 @@ export default function PerformerProfileEditPage() {
   ) => {
     event.preventDefault();
 
-    if (!name || !area || !instruments || !genres) {
-      alert("必須項目を入力してください");
+    if (
+      !name ||
+      !area ||
+      !instruments ||
+      !genres
+    ) {
+      alert(
+        "必須項目を入力してください"
+      );
       return;
     }
 
@@ -188,7 +289,9 @@ export default function PerformerProfileEditPage() {
         );
       }
 
-      alert("プロフィールを更新しました！");
+      alert(
+        "プロフィールを更新しました"
+      );
 
       router.push("/performer/home");
     } catch (error) {
@@ -204,6 +307,7 @@ export default function PerformerProfileEditPage() {
         setError(
           "プロフィールの更新に失敗しました"
         );
+
         alert(
           "プロフィールの更新に失敗しました"
         );
@@ -247,7 +351,9 @@ export default function PerformerProfileEditPage() {
             <button
               type="button"
               onClick={() =>
-                router.push("/performer/home")
+                router.push(
+                  "/performer/home"
+                )
               }
               className="w-full mt-6 bg-black text-white rounded-xl p-4 font-bold"
             >
@@ -265,10 +371,13 @@ export default function PerformerProfileEditPage() {
   return (
     <main className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-md mx-auto">
+
         <button
           type="button"
           onClick={() =>
-            router.push("/performer/home")
+            router.push(
+              "/performer/home"
+            )
           }
           className="text-gray-600 mb-4"
         >
@@ -276,17 +385,103 @@ export default function PerformerProfileEditPage() {
         </button>
 
         <h1 className="text-2xl font-bold mb-2">
-          🎸 プロフィール編集
+          🎵 プロフィール編集
         </h1>
 
         <p className="text-gray-600 mb-6">
           施設に表示されるプロフィールを編集できます。
         </p>
 
+        {/* ========================= */}
+        {/* 評価 */}
+        {/* ========================= */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm mb-6">
+
+          <h2 className="text-xl font-bold mb-4">
+            ⭐ 評価
+          </h2>
+
+          {reviewLoading ? (
+            <p className="text-gray-500">
+              評価を読み込み中...
+            </p>
+          ) : !reviewData ||
+            reviewData.review_count === 0 ? (
+            <p className="text-gray-500">
+              まだ評価はありません。
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-3xl font-bold">
+                  {reviewData.average_rating.toFixed(
+                    1
+                  )}
+                </div>
+
+                <div>
+                  <div className="text-yellow-500 text-xl">
+                    {renderStars(
+                      Math.round(
+                        reviewData.average_rating
+                      )
+                    )}
+                  </div>
+
+                  <div className="text-sm text-gray-500">
+                    {reviewData.review_count}
+                    件の評価
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {reviewData.reviews.map(
+                  (review) => (
+                    <div
+                      key={review.id}
+                      className="border-t pt-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold">
+                          {review.reviewer_name}
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          {formatReviewDate(
+                            review.created_at
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-yellow-500 mt-1">
+                        {renderStars(
+                          review.rating
+                        )}
+                      </div>
+
+                      {review.comment && (
+                        <p className="text-gray-700 mt-2 whitespace-pre-wrap">
+                          {review.comment}
+                        </p>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ========================= */}
+        {/* プロフィール編集 */}
+        {/* ========================= */}
+
         <form
           onSubmit={handleSubmit}
           className="space-y-4"
         >
+
           {/* 名前 */}
           <div>
             <label className="block font-bold mb-1">
@@ -331,14 +526,16 @@ export default function PerformerProfileEditPage() {
               type="text"
               value={instruments}
               onChange={(event) =>
-                setInstruments(event.target.value)
+                setInstruments(
+                  event.target.value
+                )
               }
               placeholder="例：ギター, ピアノ"
               className="w-full border rounded-xl p-3 bg-white"
             />
 
             <p className="text-xs text-gray-500 mt-1">
-              複数ある場合は「,」で区切ってください
+              複数ある場合は「,」で区切ってください。
             </p>
           </div>
 
@@ -359,7 +556,7 @@ export default function PerformerProfileEditPage() {
             />
 
             <p className="text-xs text-gray-500 mt-1">
-              複数ある場合は「,」で区切ってください
+              複数ある場合は「,」で区切ってください。
             </p>
           </div>
 
@@ -397,6 +594,7 @@ export default function PerformerProfileEditPage() {
               ? "更新中..."
               : "プロフィールを更新する"}
           </button>
+
         </form>
       </div>
     </main>
