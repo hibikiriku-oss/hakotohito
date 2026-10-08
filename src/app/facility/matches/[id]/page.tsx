@@ -88,9 +88,7 @@ type Application = {
 };
 
 function getRequest(
-  request:
-    | Match["performance_requests"]
-    | undefined
+  request: Match["performance_requests"] | undefined
 ) {
   if (Array.isArray(request)) {
     return request[0];
@@ -149,17 +147,14 @@ export default function FacilityMatchDetailPage() {
 
   const matchId = params.id as string;
 
-  const [match, setMatch] =
-    useState<Match | null>(null);
-
+  const [match, setMatch] = useState<Match | null>(null);
   const [application, setApplication] =
     useState<Application | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [reviewed, setReviewed] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     async function loadMatch() {
@@ -173,21 +168,18 @@ export default function FacilityMatchDetailPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const profile = await liff.getProfile();
 
         const response = await fetch(
           "/api/facility/matches/" + matchId,
           {
             headers: {
-              "x-line-user-id":
-                profile.userId,
+              "x-line-user-id": profile.userId,
             },
           }
         );
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
         if (!response.ok) {
           throw new Error(
@@ -197,9 +189,21 @@ export default function FacilityMatchDetailPage() {
         }
 
         setMatch(data.match);
-        setApplication(
-          data.application || null
+        setApplication(data.application || null);
+
+        const reviewResponse = await fetch(
+          "/api/reviews?match_id=" + matchId,
+          {
+            headers: {
+              "x-line-user-id": profile.userId,
+            },
+          }
         );
+
+        if (reviewResponse.ok) {
+          const reviewData = await reviewResponse.json();
+          setReviewed(reviewData.reviewed);
+        }
       } catch (err) {
         console.error(err);
 
@@ -266,9 +270,7 @@ export default function FacilityMatchDetailPage() {
   }
 
   const performanceRequest =
-    getRequest(
-      match.performance_requests
-    );
+    getRequest(match.performance_requests);
 
   const performer =
     getPerformer(match.performers);
@@ -392,9 +394,7 @@ export default function FacilityMatchDetailPage() {
 
                   {lineUser?.picture_url ? (
                     <img
-                      src={
-                        lineUser.picture_url
-                      }
+                      src={lineUser.picture_url}
                       alt="プロフィール画像"
                       className="w-16 h-16 rounded-full object-cover"
                     />
@@ -495,6 +495,35 @@ export default function FacilityMatchDetailPage() {
               )}
 
             </div>
+          </section>
+
+          <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
+            <h2 className="text-lg font-bold">
+              ⭐ 演奏者を評価
+            </h2>
+
+            {reviewed ? (
+              <div className="mt-4 bg-white rounded-xl p-4">
+                <p className="text-gray-700 font-bold">
+                  評価済みです
+                </p>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  このマッチングはすでに評価しています。
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={() =>
+                  router.push(
+                    `/facility/matches/${matchId}/review`
+                  )
+                }
+                className="w-full mt-4 bg-yellow-500 text-white rounded-xl p-4 font-bold"
+              >
+                ⭐ この演奏者を評価する
+              </button>
+            )}
           </section>
 
         </div>
