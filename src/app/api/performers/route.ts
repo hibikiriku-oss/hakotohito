@@ -6,6 +6,115 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+export async function GET() {
+  try {
+    const { data: performers, error: performersError } =
+      await supabase
+        .from("performers")
+        .select(`
+          id,
+          user_id,
+          name,
+          instruments,
+          genres,
+          area,
+          bio,
+          created_at,
+          users (
+            id,
+            display_name,
+            picture_url
+          )
+        `)
+        .order("created_at", {
+          ascending: false,
+        });
+
+    if (performersError) {
+      console.error(
+        "演奏者一覧取得エラー:",
+        performersError
+      );
+
+      return NextResponse.json(
+        {
+          error: "演奏者一覧の取得に失敗しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    const userIds = (performers || [])
+      .map((performer) => performer.user_id)
+      .filter(Boolean);
+
+    let reviews: {
+      reviewee_id: string;
+      rating: number;
+    }[] = [];
+
+    if (userIds.length > 0) {
+      const { data: reviewData, error: reviewError } =
+        await supabase
+          .from("reviews")
+          .select("reviewee_id, rating")
+          .in("reviewee_id", userIds);
+
+      if (reviewError) {
+        console.error(
+          "評価取得エラー:",
+          reviewError
+        );
+      } else {
+        reviews = reviewData || [];
+      }
+    }
+
+    const performersWithReviews = (performers || []).map(
+      (performer) => {
+        const performerReviews = reviews.filter(
+          (review) =>
+            review.reviewee_id === performer.user_id
+        );
+
+        const reviewCount =
+          performerReviews.length;
+
+        const averageRating =
+          reviewCount > 0
+            ? performerReviews.reduce(
+                (sum, review) =>
+                  sum + review.rating,
+                0
+              ) / reviewCount
+            : null;
+
+        return {
+          ...performer,
+          review_count: reviewCount,
+          average_rating: averageRating,
+        };
+      }
+    );
+
+    return NextResponse.json({
+      performers: performersWithReviews,
+    });
+  } catch (error) {
+    console.error(
+      "演奏者一覧取得エラー:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error: "サーバーエラーが発生しました",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -21,13 +130,13 @@ export async function POST(request: NextRequest) {
     if (!name || !area || !instruments || !genres) {
       return NextResponse.json(
         {
-          error: "必須項目が入力されていません",
+          error:
+            "必要な情報が入力されていません",
         },
         { status: 400 }
       );
     }
 
-    // 現在のユーザー情報を取得
     const lineUserId = request.headers.get(
       "x-line-user-id"
     );
@@ -35,13 +144,13 @@ export async function POST(request: NextRequest) {
     if (!lineUserId) {
       return NextResponse.json(
         {
-          error: "LINEユーザー情報がありません",
+          error:
+            "LINEユーザー情報がありません",
         },
         { status: 400 }
       );
     }
 
-    // usersからLINEユーザーを検索
     const { data: user, error: userError } =
       await supabase
         .from("users")
@@ -50,17 +159,20 @@ export async function POST(request: NextRequest) {
         .single();
 
     if (userError || !user) {
-      console.error("ユーザー取得エラー:", userError);
+      console.error(
+        "ユーザー取得エラー:",
+        userError
+      );
 
       return NextResponse.json(
         {
-          error: "ユーザー情報が見つかりません",
+          error:
+            "ユーザー情報が見つかりません",
         },
         { status: 404 }
       );
     }
 
-    // performersに登録
     const { data, error } = await supabase
       .from("performers")
       .upsert(
@@ -97,13 +209,13 @@ export async function POST(request: NextRequest) {
       success: true,
       performer: data,
     });
-
   } catch (error) {
     console.error(error);
 
     return NextResponse.json(
       {
-        error: "サーバーエラーが発生しました",
+        error:
+          "サーバーエラーが発生しました",
       },
       { status: 500 }
     );

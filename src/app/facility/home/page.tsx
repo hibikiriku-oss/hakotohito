@@ -21,9 +21,18 @@ export default function FacilityHomePage() {
 
           <button
             onClick={() =>
-              router.push("/facility/request")
+              router.push("/facility/performers")
             }
             className="w-full bg-black text-white rounded-xl p-4"
+          >
+            🎹 演奏者を探す
+          </button>
+
+          <button
+            onClick={() =>
+              router.push("/facility/request")
+            }
+            className="w-full bg-white border rounded-xl p-4"
           >
             🎵 演奏依頼を作成する
           </button>
