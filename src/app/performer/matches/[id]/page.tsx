@@ -33,6 +33,8 @@ type Match = {
   performer_id: string;
   matched_at: string;
   status: string;
+  performance_status: "scheduled" | "completed" | "cancelled";
+  completed_at: string | null;
   performance_requests: PerformanceRequest | null;
 };
 
@@ -50,6 +52,9 @@ export default function PerformerMatchDetailPage() {
 
   const [loading, setLoading] =
     useState(true);
+
+  const [completing, setCompleting] =
+    useState(false);
 
   const [error, setError] =
     useState("");
@@ -137,6 +142,91 @@ export default function PerformerMatchDetailPage() {
 
     initialize();
   }, [matchId]);
+
+  async function handleComplete() {
+    if (!match) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この演奏を完了済みにしますか？"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCompleting(true);
+      setError("");
+
+      const liffId =
+        process.env.NEXT_PUBLIC_LIFF_ID;
+
+      if (!liffId) {
+        throw new Error(
+          "LINE MINI Appの設定がありません"
+        );
+      }
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile =
+        await liff.getProfile();
+
+      const response = await fetch(
+        `/api/performer/matches/${matchId}/complete`,
+        {
+          method: "POST",
+          headers: {
+            "x-line-user-id":
+              profile.userId,
+          },
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "演奏完了の更新に失敗しました"
+        );
+      }
+
+      setMatch((currentMatch) => {
+        if (!currentMatch) {
+          return currentMatch;
+        }
+
+        return {
+          ...currentMatch,
+          performance_status:
+            "completed",
+          completed_at:
+            data.match?.completed_at ??
+            new Date().toISOString(),
+        };
+      });
+    } catch (error) {
+      console.error(
+        "演奏完了処理エラー:",
+        error
+      );
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "演奏完了の更新に失敗しました"
+      );
+    } finally {
+      setCompleting(false);
+    }
+  }
 
   function formatDate(date: string) {
     const [year, month, day] =
@@ -252,6 +342,70 @@ export default function PerformerMatchDetailPage() {
             この施設への出演が決定しています。
           </p>
         </div>
+
+        {/* 演奏ステータス */}
+        <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="font-bold">
+            🎵 演奏状況
+          </h2>
+
+          {match.performance_status ===
+          "completed" ? (
+            <div className="mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
+              <p className="text-green-700 font-bold">
+                ✅ 演奏完了
+              </p>
+
+              {match.completed_at && (
+                <p className="mt-1 text-sm text-green-600">
+                  完了日時：
+                  {new Date(
+                    match.completed_at
+                  ).toLocaleString("ja-JP")}
+                </p>
+              )}
+            </div>
+          ) : match.performance_status ===
+            "cancelled" ? (
+            <div className="mt-4 bg-gray-100 rounded-xl p-4">
+              <p className="text-gray-600 font-bold">
+                キャンセル済み
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-blue-700 font-bold">
+                  📅 演奏予定
+                </p>
+
+                <p className="mt-1 text-sm text-blue-600">
+                  演奏が終わったら、下のボタンから完了にしてください。
+                </p>
+              </div>
+
+              <button
+                onClick={handleComplete}
+                disabled={completing}
+                className="w-full mt-4 bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
+              >
+                {completing
+                  ? "更新中..."
+                  : "🎵 演奏完了"}
+              </button>
+            </>
+          )}
+
+        </section>
+
+        {error && (
+          <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
+            <p className="text-red-600">
+              {error}
+            </p>
+          </div>
+        )}
 
         <section className="mt-5 bg-white rounded-2xl p-5 shadow-sm border">
 
