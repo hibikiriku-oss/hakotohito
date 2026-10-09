@@ -65,15 +65,26 @@ export async function GET(
     }
 
     // 演奏者に対するレビューを取得
-    // reviews.reviewee_id は users.id を参照しているため、
-    // performers.user_id を使ってレビューを検索する
-    const { data: reviews, error: reviewsError } = await supabase
-      .from("reviews")
-      .select("rating")
-      .eq("reviewee_id", performer.user_id);
+    const { data: reviews, error: reviewsError } =
+      await supabase
+        .from("reviews")
+        .select(
+          `
+          rating,
+          comment,
+          created_at
+          `
+        )
+        .eq("reviewee_id", performer.user_id)
+        .order("created_at", {
+          ascending: false,
+        });
 
     if (reviewsError) {
-      console.error("レビュー取得エラー:", reviewsError);
+      console.error(
+        "レビュー取得エラー:",
+        reviewsError
+      );
 
       return NextResponse.json(
         {
@@ -91,8 +102,11 @@ export async function GET(
       reviewCount > 0
         ? Number(
             (
-              reviews!.reduce((sum, review) => sum + review.rating, 0) /
-              reviewCount
+              reviews!.reduce(
+                (sum, review) =>
+                  sum + review.rating,
+                0
+              ) / reviewCount
             ).toFixed(1)
           )
         : null;
@@ -101,13 +115,18 @@ export async function GET(
       performer,
       rating,
       review_count: reviewCount,
+      reviews: reviews ?? [],
     });
   } catch (error) {
-    console.error("演奏者APIエラー:", error);
+    console.error(
+      "演奏者APIエラー:",
+      error
+    );
 
     return NextResponse.json(
       {
-        error: "演奏者情報の取得中にエラーが発生しました",
+        error:
+          "演奏者情報の取得中にエラーが発生しました",
       },
       { status: 500 }
     );

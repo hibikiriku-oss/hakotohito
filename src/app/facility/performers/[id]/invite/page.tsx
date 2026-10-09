@@ -21,6 +21,12 @@ type Performer = {
   users: User | User[] | null;
 };
 
+type Review = {
+  rating: number;
+  comment: string | null;
+  created_at: string;
+};
+
 type PerformanceRequest = {
   id: string;
   title: string;
@@ -51,6 +57,9 @@ export default function FacilityPerformerInvitePage() {
 
   const [reviewCount, setReviewCount] =
     useState(0);
+
+  const [reviews, setReviews] =
+    useState<Review[]>([]);
 
   const [requests, setRequests] =
     useState<PerformanceRequest[]>([]);
@@ -139,6 +148,10 @@ export default function FacilityPerformerInvitePage() {
 
         setReviewCount(
           performerData.review_count ?? 0
+        );
+
+        setReviews(
+          performerData.reviews ?? []
         );
 
         const openRequests =
@@ -260,10 +273,33 @@ export default function FacilityPerformerInvitePage() {
     );
   };
 
+  const formatReviewDate = (
+    date: string
+  ) => {
+    const parsedDate =
+      new Date(date);
+
+    return parsedDate.toLocaleDateString(
+      "ja-JP",
+      {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }
+    );
+  };
+
   const formatTime = (
     time: string
   ) => {
     return time.slice(0, 5);
+  };
+
+  const renderStars = (
+    reviewRating: number
+  ) => {
+    return "★".repeat(reviewRating) +
+      "☆".repeat(5 - reviewRating);
   };
 
   if (loading) {
@@ -387,6 +423,70 @@ export default function FacilityPerformerInvitePage() {
             )}
           </div>
         )}
+
+        {reviews.length > 0 && (
+          <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold">
+                💬 レビュー
+              </h2>
+
+              <span className="text-sm text-gray-500">
+                {reviewCount}件
+              </span>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {reviews.map(
+                (review, index) => (
+                  <div
+                    key={`${review.created_at}-${index}`}
+                    className="border-b last:border-b-0 pb-4 last:pb-0"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-yellow-500 text-sm tracking-wide">
+                        {renderStars(
+                          review.rating
+                        )}
+                      </span>
+
+                      <span className="text-xs text-gray-400">
+                        {formatReviewDate(
+                          review.created_at
+                        )}
+                      </span>
+                    </div>
+
+                    {review.comment && (
+                      <p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">
+                        {review.comment}
+                      </p>
+                    )}
+
+                    {!review.comment && (
+                      <p className="mt-2 text-sm text-gray-400">
+                        コメントはありません。
+                      </p>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
+
+        {performer &&
+          reviews.length === 0 && (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6">
+              <h2 className="text-lg font-bold">
+                💬 レビュー
+              </h2>
+
+              <p className="mt-3 text-sm text-gray-500">
+                まだレビューがありません。
+              </p>
+            </div>
+          )}
 
         <div className="bg-white rounded-2xl p-5 shadow-sm border">
           <h2 className="text-lg font-bold">
