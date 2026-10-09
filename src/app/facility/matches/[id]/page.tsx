@@ -10,6 +10,8 @@ type Match = {
   performer_id: string;
   matched_at: string;
   status: string;
+  performance_status: "scheduled" | "completed" | "cancelled";
+  completed_at: string | null;
   performance_requests:
     | {
         id: string;
@@ -138,6 +140,22 @@ function formatDate(date: string) {
     "月" +
     value.getDate() +
     "日"
+  );
+}
+
+function formatDateTime(date: string) {
+  const value = new Date(date);
+
+  return (
+    value.getFullYear() +
+    "年" +
+    (value.getMonth() + 1) +
+    "月" +
+    value.getDate() +
+    "日 " +
+    value.getHours() +
+    ":" +
+    String(value.getMinutes()).padStart(2, "0")
   );
 }
 
@@ -278,6 +296,12 @@ export default function FacilityMatchDetailPage() {
   const lineUser =
     getUser(performer?.users);
 
+  const isCompleted =
+    match.performance_status === "completed";
+
+  const isCancelled =
+    match.performance_status === "cancelled";
+
   return (
     <main className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-md mx-auto">
@@ -306,6 +330,48 @@ export default function FacilityMatchDetailPage() {
               演奏者とのマッチングが成立しています
             </p>
           </div>
+
+          <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
+            <h2 className="text-lg font-bold">
+              🎵 演奏状況
+            </h2>
+
+            {isCompleted ? (
+              <div className="mt-4 bg-white rounded-xl p-4">
+                <p className="text-green-600 font-bold">
+                  ✅ 演奏完了
+                </p>
+
+                {match.completed_at && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    完了日時：
+                    {formatDateTime(match.completed_at)}
+                  </p>
+                )}
+
+                <p className="mt-3 text-sm text-gray-600">
+                  演奏者から演奏完了の報告がありました。
+                </p>
+              </div>
+            ) : isCancelled ? (
+              <div className="mt-4 bg-white rounded-xl p-4">
+                <p className="text-gray-600 font-bold">
+                  キャンセル済み
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 bg-white rounded-xl p-4">
+                <p className="text-blue-600 font-bold">
+                  📅 演奏予定
+                </p>
+
+                <p className="mt-2 text-sm text-gray-600">
+                  現在、演奏予定の状態です。
+                  演奏終了後、演奏者が完了報告を行います。
+                </p>
+              </div>
+            )}
+          </section>
 
           {performanceRequest && (
             <section className="mt-8">
@@ -512,17 +578,35 @@ export default function FacilityMatchDetailPage() {
                   このマッチングはすでに評価しています。
                 </p>
               </div>
+            ) : isCompleted ? (
+              <div>
+                <p className="mt-3 text-sm text-gray-600">
+                  演奏が完了しました。
+                  演奏者への評価をお願いします。
+                </p>
+
+                <button
+                  onClick={() =>
+                    router.push(
+                      `/facility/matches/${matchId}/review`
+                    )
+                  }
+                  className="w-full mt-4 bg-yellow-500 text-white rounded-xl p-4 font-bold"
+                >
+                  ⭐ この演奏者を評価する
+                </button>
+              </div>
             ) : (
-              <button
-                onClick={() =>
-                  router.push(
-                    `/facility/matches/${matchId}/review`
-                  )
-                }
-                className="w-full mt-4 bg-yellow-500 text-white rounded-xl p-4 font-bold"
-              >
-                ⭐ この演奏者を評価する
-              </button>
+              <div className="mt-4 bg-white rounded-xl p-4">
+                <p className="text-gray-700 font-bold">
+                  演奏完了後に評価できます
+                </p>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  演奏者の演奏が完了すると、
+                  ここから評価できるようになります。
+                </p>
+              </div>
             )}
           </section>
 
