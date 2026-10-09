@@ -79,6 +79,8 @@ export async function GET(
           performer_id,
           matched_at,
           status,
+          performance_status,
+          completed_at,
           performance_requests (
             id,
             facility_id,
