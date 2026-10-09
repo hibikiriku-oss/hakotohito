@@ -41,11 +41,16 @@ export default function FacilityPerformerInvitePage() {
 
   const performerId = params.id as string;
 
-  const [lineUserId, setLineUserId] =
-    useState("");
+  const [lineUserId, setLineUserId] = useState("");
 
   const [performer, setPerformer] =
     useState<Performer | null>(null);
+
+  const [rating, setRating] =
+    useState<number | null>(null);
+
+  const [reviewCount, setReviewCount] =
+    useState(0);
 
   const [requests, setRequests] =
     useState<PerformanceRequest[]>([]);
@@ -126,6 +131,14 @@ export default function FacilityPerformerInvitePage() {
 
         setPerformer(
           performerData.performer || null
+        );
+
+        setRating(
+          performerData.rating ?? null
+        );
+
+        setReviewCount(
+          performerData.review_count ?? 0
         );
 
         const openRequests =
@@ -338,6 +351,24 @@ export default function FacilityPerformerInvitePage() {
             <p className="text-sm text-gray-500 mt-1">
               📍 {performer.area}
             </p>
+
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="text-yellow-500">
+                  ⭐
+                </span>
+
+                <span className="font-bold">
+                  {rating !== null
+                    ? rating.toFixed(1)
+                    : "評価なし"}
+                </span>
+              </div>
+
+              <span className="text-sm text-gray-500">
+                📝 {reviewCount}件のレビュー
+              </span>
+            </div>
 
             {performer.instruments?.length >
               0 && (

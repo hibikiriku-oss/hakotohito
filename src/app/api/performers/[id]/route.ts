@@ -22,6 +22,7 @@ export async function GET(
       );
     }
 
+    // 演奏者情報を取得
     const { data: performer, error } = await supabase
       .from("performers")
       .select(
@@ -63,8 +64,43 @@ export async function GET(
       );
     }
 
+    // 演奏者に対するレビューを取得
+    // reviews.reviewee_id は users.id を参照しているため、
+    // performers.user_id を使ってレビューを検索する
+    const { data: reviews, error: reviewsError } = await supabase
+      .from("reviews")
+      .select("rating")
+      .eq("reviewee_id", performer.user_id);
+
+    if (reviewsError) {
+      console.error("レビュー取得エラー:", reviewsError);
+
+      return NextResponse.json(
+        {
+          error: "レビュー情報の取得に失敗しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    // レビュー件数
+    const reviewCount = reviews?.length ?? 0;
+
+    // 平均評価
+    const rating =
+      reviewCount > 0
+        ? Number(
+            (
+              reviews!.reduce((sum, review) => sum + review.rating, 0) /
+              reviewCount
+            ).toFixed(1)
+          )
+        : null;
+
     return NextResponse.json({
       performer,
+      rating,
+      review_count: reviewCount,
     });
   } catch (error) {
     console.error("演奏者APIエラー:", error);
