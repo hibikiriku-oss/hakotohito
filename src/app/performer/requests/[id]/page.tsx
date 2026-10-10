@@ -5,10 +5,17 @@ import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
 type Facility = {
+  id: string;
   name: string;
   facility_type: string;
   address: string;
   description: string | null;
+};
+
+type FacilityReview = {
+  rating: number;
+  comment: string | null;
+  created_at: string;
 };
 
 type PerformanceRequest = {
@@ -53,6 +60,18 @@ export default function PerformerRequestDetailPage() {
   const [showFacilityProfile, setShowFacilityProfile] =
     useState(false);
 
+  const [facilityRating, setFacilityRating] =
+    useState<number | null>(null);
+
+  const [facilityReviewCount, setFacilityReviewCount] =
+    useState(0);
+
+  const [facilityReviews, setFacilityReviews] =
+    useState<FacilityReview[]>([]);
+
+  const [facilityReviewsLoading, setFacilityReviewsLoading] =
+    useState(false);
+
   useEffect(() => {
     async function initialize() {
       try {
@@ -95,6 +114,40 @@ export default function PerformerRequestDetailPage() {
         }
 
         setRequest(data.request);
+
+        if (data.request.facilities?.id) {
+          setFacilityReviewsLoading(true);
+
+          try {
+            const facilityResponse = await fetch(
+              `/api/facilities/${data.request.facilities.id}`
+            );
+
+            const facilityData =
+              await facilityResponse.json();
+
+            if (facilityResponse.ok) {
+              setFacilityRating(
+                facilityData.rating ?? null
+              );
+
+              setFacilityReviewCount(
+                facilityData.review_count ?? 0
+              );
+
+              setFacilityReviews(
+                facilityData.reviews ?? []
+              );
+            }
+          } catch (facilityError) {
+            console.error(
+              "施設レビュー取得エラー:",
+              facilityError
+            );
+          } finally {
+            setFacilityReviewsLoading(false);
+          }
+        }
       } catch (error) {
         console.error(error);
 
@@ -488,6 +541,68 @@ export default function PerformerRequestDetailPage() {
 
                   </div>
                 )}
+
+                <div className="mt-6 border-t pt-5">
+
+                  <p className="text-sm text-gray-500">
+                    施設のレビュー
+                  </p>
+
+                  {facilityReviewsLoading ? (
+                    <p className="mt-3 text-sm text-gray-500">
+                      レビューを読み込んでいます...
+                    </p>
+                  ) : facilityReviewCount > 0 ? (
+                    <>
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="text-2xl font-bold">
+                          ⭐ {facilityRating?.toFixed(1)}
+                        </span>
+
+                        <span className="text-sm text-gray-500">
+                          （{facilityReviewCount}件）
+                        </span>
+                      </div>
+
+                      <div className="mt-4 space-y-4">
+                        {facilityReviews.map(
+                          (review, index) => (
+                            <div
+                              key={`${review.created_at}-${index}`}
+                              className="bg-gray-50 rounded-xl p-4"
+                            >
+                              <div className="flex items-center justify-between">
+                                <p className="font-bold">
+                                  {"★".repeat(review.rating)}
+                                  {"☆".repeat(5 - review.rating)}
+                                </p>
+
+                                <p className="text-xs text-gray-400">
+                                  {new Date(
+                                    review.created_at
+                                  ).toLocaleDateString(
+                                    "ja-JP"
+                                  )}
+                                </p>
+                              </div>
+
+                              {review.comment && (
+                                <p className="mt-2 text-sm whitespace-pre-wrap leading-relaxed">
+                                  {review.comment}
+                                </p>
+                              )}
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-500">
+                      まだレビューはありません。
+                    </p>
+                  )}
+
+                </div>
 
                 <button
                   onClick={() =>

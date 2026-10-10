@@ -60,6 +60,7 @@ export async function GET(
         reward,
         status,
         facilities (
+	  id,
           name,
           facility_type,
           address,
