@@ -51,9 +51,6 @@ async function getAuthorizedMatch(
     };
   }
 
-  /*
-   * まずマッチング本体を取得
-   */
   const {
     data: match,
     error: matchError,
@@ -87,9 +84,6 @@ async function getAuthorizedMatch(
     };
   }
 
-  /*
-   * マッチング状態を確認
-   */
   if (match.status !== "active") {
     return {
       error: NextResponse.json(
@@ -117,9 +111,6 @@ async function getAuthorizedMatch(
     };
   }
 
-  /*
-   * 演奏者のuser_idを取得
-   */
   const {
     data: performer,
     error: performerError,
@@ -145,17 +136,15 @@ async function getAuthorizedMatch(
     };
   }
 
-  /*
-   * 演奏依頼から施設IDを取得
-   */
   const {
     data: performanceRequest,
     error: requestError,
-  } = await supabase
-    .from("performance_requests")
-    .select("facility_id")
-    .eq("id", match.request_id)
-    .single();
+  } =
+    await supabase
+      .from("performance_requests")
+      .select("facility_id")
+      .eq("id", match.request_id)
+      .single();
 
   if (
     requestError ||
@@ -176,20 +165,18 @@ async function getAuthorizedMatch(
     };
   }
 
-  /*
-   * 施設のuser_idを取得
-   */
   const {
     data: facility,
     error: facilityError,
-  } = await supabase
-    .from("facilities")
-    .select("user_id")
-    .eq(
-      "id",
-      performanceRequest.facility_id
-    )
-    .single();
+  } =
+    await supabase
+      .from("facilities")
+      .select("user_id")
+      .eq(
+        "id",
+        performanceRequest.facility_id
+      )
+      .single();
 
   if (facilityError || !facility) {
     console.error(
@@ -207,9 +194,6 @@ async function getAuthorizedMatch(
     };
   }
 
-  /*
-   * マッチング当事者か確認
-   */
   const isPerformer =
     currentUser.id === performer.user_id;
 
@@ -240,13 +224,14 @@ async function getOrCreateConversation(
   const {
     data: existingConversation,
     error: existingError,
-  } = await supabase
-    .from("conversations")
-    .select(
-      "id, match_id, created_at"
-    )
-    .eq("match_id", matchId)
-    .maybeSingle();
+  } =
+    await supabase
+      .from("conversations")
+      .select(
+        "id, match_id, created_at"
+      )
+      .eq("match_id", matchId)
+      .maybeSingle();
 
   if (existingError) {
     throw existingError;
@@ -259,32 +244,29 @@ async function getOrCreateConversation(
   const {
     data: newConversation,
     error: createError,
-  } = await supabase
-    .from("conversations")
-    .insert({
-      match_id: matchId,
-    })
-    .select(
-      "id, match_id, created_at"
-    )
-    .single();
-
-  if (createError) {
-    /*
-     * 同時アクセスで別のリクエストが
-     * conversationを先に作成した場合に備えて、
-     * もう一度取得する。
-     */
-    const {
-      data: retryConversation,
-      error: retryError,
-    } = await supabase
+  } =
+    await supabase
       .from("conversations")
+      .insert({
+        match_id: matchId,
+      })
       .select(
         "id, match_id, created_at"
       )
-      .eq("match_id", matchId)
       .single();
+
+  if (createError) {
+    const {
+      data: retryConversation,
+      error: retryError,
+    } =
+      await supabase
+        .from("conversations")
+        .select(
+          "id, match_id, created_at"
+        )
+        .eq("match_id", matchId)
+        .single();
 
     if (
       retryError ||
@@ -326,7 +308,61 @@ export async function GET(
       );
 
     /*
-     * 自分以外のメッセージを既読にする
+     * summary=true の場合は、
+     * チャットを開かずに未読件数だけ取得する。
+     *
+     * マッチング一覧などから未読件数を表示するときに使用する。
+     */
+    const isSummary =
+      request.nextUrl.searchParams.get(
+        "summary"
+      ) === "true";
+
+    if (isSummary) {
+      const {
+        count: unreadCount,
+        error: unreadError,
+      } = await supabase
+        .from("messages")
+        .select("id", {
+          count: "exact",
+          head: true,
+        })
+        .eq(
+          "conversation_id",
+          conversation.id
+        )
+        .neq(
+          "sender_id",
+          currentUser.id
+        )
+        .is("read_at", null);
+
+      if (unreadError) {
+        console.error(
+          "未読件数取得エラー:",
+          unreadError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "未読件数の取得に失敗しました",
+          },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        conversation,
+        currentUserId: currentUser.id,
+        unreadCount: unreadCount ?? 0,
+      });
+    }
+
+    /*
+     * 通常のチャット画面では、
+     * 相手から届いた未読メッセージを既読にする。
      */
     const { error: readError } =
       await supabase

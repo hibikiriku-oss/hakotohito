@@ -36,10 +36,17 @@ type Match = {
   performance_requests: PerformanceRequest | null;
 };
 
+type ChatSummaryResponse = {
+  unreadCount: number;
+};
+
 export default function PerformerMatchesPage() {
   const router = useRouter();
 
   const [matches, setMatches] = useState<Match[]>([]);
+  const [unreadCounts, setUnreadCounts] = useState<
+    Record<string, number>
+  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -84,7 +91,76 @@ export default function PerformerMatchesPage() {
           );
         }
 
-        setMatches(data.matches || []);
+        const loadedMatches: Match[] =
+          data.matches || [];
+
+        setMatches(loadedMatches);
+
+        // 各マッチングの未読メッセージ数を取得
+        const unreadResults = await Promise.all(
+          loadedMatches.map(async (match) => {
+            try {
+              const chatResponse = await fetch(
+                `/api/matches/${match.id}/chat?summary=true`,
+                {
+                  headers: {
+                    "x-line-user-id":
+                      profile.userId,
+                  },
+                  cache: "no-store",
+                }
+              );
+
+              const chatData =
+                (await chatResponse.json()) as
+                  | ChatSummaryResponse
+                  | { error: string };
+
+              if (!chatResponse.ok) {
+                console.error(
+                  "未読件数取得エラー:",
+                  "error" in chatData
+                    ? chatData.error
+                    : "未読件数の取得に失敗しました"
+                );
+
+                return {
+                  matchId: match.id,
+                  unreadCount: 0,
+                };
+              }
+
+              return {
+                matchId: match.id,
+                unreadCount:
+                  (chatData as ChatSummaryResponse)
+                    .unreadCount ?? 0,
+              };
+            } catch (error) {
+              console.error(
+                "未読件数取得エラー:",
+                error
+              );
+
+              return {
+                matchId: match.id,
+                unreadCount: 0,
+              };
+            }
+          })
+        );
+
+        const nextUnreadCounts: Record<
+          string,
+          number
+        > = {};
+
+        unreadResults.forEach((result) => {
+          nextUnreadCounts[result.matchId] =
+            result.unreadCount;
+        });
+
+        setUnreadCounts(nextUnreadCounts);
       } catch (error) {
         console.error(
           "マッチング取得エラー:",
@@ -201,14 +277,17 @@ export default function PerformerMatchesPage() {
               const facility =
                 performanceRequest.facilities;
 
+              const unreadCount =
+                unreadCounts[match.id] ?? 0;
+
               return (
                 <button
                   key={match.id}
-		onClick={() =>
-		  router.push(
-		    "/performer/matches/" + match.id
-		  )
-		}
+                  onClick={() =>
+                    router.push(
+                      "/performer/matches/" + match.id
+                    )
+                  }
                   className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border hover:bg-gray-50 active:bg-gray-100 transition"
                 >
                   {/* ステータス */}
@@ -217,11 +296,19 @@ export default function PerformerMatchesPage() {
                       🎉 マッチング成立
                     </span>
 
-                    <span className="text-xs bg-green-100 text-green-700 rounded-full px-3 py-1">
-                      {match.status === "active"
-                        ? "進行中"
-                        : "キャンセル"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <span className="text-xs bg-red-500 text-white rounded-full px-3 py-1 font-bold">
+                          💬 未読 {unreadCount}件
+                        </span>
+                      )}
+
+                      <span className="text-xs bg-green-100 text-green-700 rounded-full px-3 py-1">
+                        {match.status === "active"
+                          ? "進行中"
+                          : "キャンセル"}
+                      </span>
+                    </div>
                   </div>
 
                   {/* 案件タイトル */}
