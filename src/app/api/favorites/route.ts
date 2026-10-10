@@ -48,7 +48,14 @@ export async function GET(request: NextRequest) {
             id,
             display_name,
             picture_url,
-            user_type
+            user_type,
+            facilities!facilities_user_id_fkey (
+              id,
+              name,
+              facility_type,
+              address,
+              description
+            )
           )
           `
         )
