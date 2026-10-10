@@ -44,6 +44,17 @@ export default function PerformerHomePage() {
           <button
             onClick={() =>
               router.push(
+                "/performer/favorites"
+              )
+            }
+            className="w-full bg-white border rounded-xl p-4"
+          >
+            ⭐ お気に入り
+          </button>
+
+          <button
+            onClick={() =>
+              router.push(
                 "/performer/profile/edit"
               )
             }
