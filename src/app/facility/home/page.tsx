@@ -30,6 +30,15 @@ export default function FacilityHomePage() {
 
           <button
             onClick={() =>
+              router.push("/facility/favorites")
+            }
+            className="w-full bg-white border rounded-xl p-4"
+          >
+            ⭐ お気に入りの演奏者
+          </button>
+
+          <button
+            onClick={() =>
               router.push("/facility/request")
             }
             className="w-full bg-white border rounded-xl p-4"
