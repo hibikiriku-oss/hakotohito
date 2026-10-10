@@ -36,8 +36,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // まず、お気に入り情報だけを取得する
     const {
-      data: favorites,
+      data: favoriteRows,
       error: favoritesError,
     } = await supabase
       .from("favorites")
@@ -45,28 +46,7 @@ export async function GET(request: NextRequest) {
         `
         id,
         target_user_id,
-        created_at,
-        users!favorites_target_user_id_fkey (
-          id,
-          display_name,
-          picture_url,
-          user_type,
-          performers (
-            id,
-            name,
-            area,
-            instruments,
-            genres,
-            bio
-          ),
-          facilities (
-            id,
-            name,
-            facility_type,
-            address,
-            description
-          )
-        )
+        created_at
         `
       )
       .eq("user_id", user.id)
@@ -88,8 +68,161 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (!favoriteRows || favoriteRows.length === 0) {
+      return NextResponse.json({
+        favorites: [],
+      });
+    }
+
+    const targetUserIds = favoriteRows.map(
+      (favorite) => favorite.target_user_id
+    );
+
+    // お気に入り対象のユーザー情報を取得する
+    const {
+      data: targetUsers,
+      error: targetUsersError,
+    } = await supabase
+      .from("users")
+      .select(
+        `
+        id,
+        display_name,
+        picture_url,
+        user_type
+        `
+      )
+      .in("id", targetUserIds);
+
+    if (targetUsersError) {
+      console.error(
+        "お気に入り対象ユーザー取得エラー:",
+        targetUsersError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "お気に入り対象ユーザーの取得に失敗しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    // 演奏者情報を user_id から直接取得する
+    const {
+      data: performers,
+      error: performersError,
+    } = await supabase
+      .from("performers")
+      .select(
+        `
+        id,
+        user_id,
+        name,
+        area,
+        instruments,
+        genres,
+        bio
+        `
+      )
+      .in("user_id", targetUserIds);
+
+    if (performersError) {
+      console.error(
+        "お気に入り演奏者取得エラー:",
+        performersError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "お気に入り演奏者情報の取得に失敗しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    // 施設情報も同様に user_id から直接取得する
+    const {
+      data: facilities,
+      error: facilitiesError,
+    } = await supabase
+      .from("facilities")
+      .select(
+        `
+        id,
+        user_id,
+        name,
+        facility_type,
+        address,
+        description
+        `
+      )
+      .in("user_id", targetUserIds);
+
+    if (facilitiesError) {
+      console.error(
+        "お気に入り施設取得エラー:",
+        facilitiesError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "お気に入り施設情報の取得に失敗しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    // 取得した情報をフロントエンドが扱いやすい形にまとめる
+    const favorites = favoriteRows.map(
+      (favorite) => {
+        const targetUser =
+          targetUsers?.find(
+            (target) =>
+              target.id === favorite.target_user_id
+          ) ?? null;
+
+        const performer =
+          performers?.find(
+            (item) =>
+              item.user_id ===
+              favorite.target_user_id
+          ) ?? null;
+
+        const facility =
+          facilities?.find(
+            (item) =>
+              item.user_id ===
+              favorite.target_user_id
+          ) ?? null;
+
+        return {
+          id: favorite.id,
+          target_user_id:
+            favorite.target_user_id,
+          created_at: favorite.created_at,
+          users: targetUser
+            ? {
+                id: targetUser.id,
+                display_name:
+                  targetUser.display_name,
+                picture_url:
+                  targetUser.picture_url,
+                user_type:
+                  targetUser.user_type,
+                performers: performer,
+                facilities: facility,
+              }
+            : null,
+        };
+      }
+    );
+
     return NextResponse.json({
-      favorites: favorites ?? [],
+      favorites,
     });
   } catch (error) {
     console.error(
