@@ -543,6 +543,30 @@ export default function FacilityMatchDetailPage() {
             </section>
           )}
 
+          {/* チャット */}
+          <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
+            <h2 className="text-lg font-bold">
+              💬 演奏者との連絡
+            </h2>
+
+            <p className="mt-2 text-sm text-gray-600">
+              演奏時間や当日の流れなど、演奏者と直接確認できます。
+            </p>
+
+            <button
+              onClick={() =>
+                router.push(
+                  `/facility/matches/${matchId}/chat`
+                )
+              }
+              disabled={isCancelled}
+              className="w-full mt-4 bg-black text-white rounded-xl p-4 font-bold disabled:bg-gray-300"
+            >
+              💬 演奏者に連絡する
+            </button>
+
+          </section>
+
           <section className="mt-8">
             <h2 className="text-lg font-bold border-b pb-2">
               💬 応募時のメッセージ

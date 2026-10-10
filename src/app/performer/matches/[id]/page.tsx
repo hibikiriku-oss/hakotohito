@@ -554,6 +554,35 @@ export default function PerformerMatchDetailPage() {
           </section>
         )}
 
+        {/* チャット */}
+        <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
+
+          <h2 className="font-bold">
+            💬 施設との連絡
+          </h2>
+
+          <p className="mt-2 text-sm text-gray-600">
+            演奏時間や当日の流れなど、施設と直接確認できます。
+          </p>
+
+          <button
+            onClick={() =>
+              router.push(
+                `/performer/matches/${matchId}/chat`
+              )
+            }
+            disabled={
+              match.status !== "active" ||
+              match.performance_status ===
+                "cancelled"
+            }
+            className="w-full mt-4 bg-black text-white rounded-xl p-4 font-bold disabled:bg-gray-300"
+          >
+            💬 施設に連絡する
+          </button>
+
+        </section>
+
         {/* 評価 */}
         <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
 
