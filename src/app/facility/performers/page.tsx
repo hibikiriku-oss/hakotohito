@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import liff from "@line/liff";
 
 type User = {
   id: string;
@@ -23,11 +24,19 @@ type Performer = {
   average_rating: number | null;
 };
 
+type Favorite = {
+  id: string;
+  target_user_id: string;
+};
+
 export default function FacilityPerformersPage() {
   const router = useRouter();
 
   const [performers, setPerformers] =
     useState<Performer[]>([]);
+
+  const [favorites, setFavorites] =
+    useState<Favorite[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -53,25 +62,79 @@ export default function FacilityPerformersPage() {
   const [selectedPerformer, setSelectedPerformer] =
     useState<Performer | null>(null);
 
+  const [favoriteLoading, setFavoriteLoading] =
+    useState(false);
+
   useEffect(() => {
-    async function fetchPerformers() {
+    async function fetchData() {
       try {
-        const response = await fetch(
-          "/api/performers"
-        );
+        const liffId =
+          process.env.NEXT_PUBLIC_LIFF_ID;
 
-        const data =
-          await response.json();
-
-        if (!response.ok) {
+        if (!liffId) {
           throw new Error(
-            data.error ||
+            "NEXT_PUBLIC_LIFF_IDが設定されていません"
+          );
+        }
+
+        await liff.init({
+          liffId,
+          withLoginOnExternalBrowser: true,
+        });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile =
+          await liff.getProfile();
+
+        const [
+          performersResponse,
+          favoritesResponse,
+        ] = await Promise.all([
+          fetch("/api/performers"),
+          fetch("/api/favorites", {
+            headers: {
+              "x-line-user-id":
+                profile.userId,
+            },
+          }),
+        ]);
+
+        const performersData =
+          await performersResponse.json();
+
+        if (!performersResponse.ok) {
+          throw new Error(
+            performersData.error ||
               "演奏者の取得に失敗しました"
           );
         }
 
+        const favoritesData =
+          await favoritesResponse.json();
+
+        if (!favoritesResponse.ok) {
+          throw new Error(
+            favoritesData.error ||
+              "お気に入りの取得に失敗しました"
+          );
+        }
+
         setPerformers(
-          data.performers || []
+          performersData.performers || []
+        );
+
+        setFavorites(
+          (favoritesData.favorites || []).map(
+            (favorite: Favorite) => ({
+              id: favorite.id,
+              target_user_id:
+                favorite.target_user_id,
+            })
+          )
         );
       } catch (error) {
         console.error(
@@ -89,7 +152,7 @@ export default function FacilityPerformersPage() {
       }
     }
 
-    fetchPerformers();
+    fetchData();
   }, []);
 
   const areas = Array.from(
@@ -230,6 +293,110 @@ export default function FacilityPerformersPage() {
     }
 
     return performer.users;
+  };
+
+  const isFavorite = (
+    performer: Performer
+  ) => {
+    return favorites.some(
+      (favorite) =>
+        favorite.target_user_id ===
+        performer.user_id
+    );
+  };
+
+  const handleFavoriteToggle = async (
+    performer: Performer
+  ) => {
+    try {
+      setFavoriteLoading(true);
+
+      const liffId =
+        process.env.NEXT_PUBLIC_LIFF_ID;
+
+      if (!liffId) {
+        throw new Error(
+          "NEXT_PUBLIC_LIFF_IDが設定されていません"
+        );
+      }
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile =
+        await liff.getProfile();
+
+      const currentlyFavorite =
+        isFavorite(performer);
+
+      const response = await fetch(
+        "/api/favorites",
+        {
+          method: currentlyFavorite
+            ? "DELETE"
+            : "POST",
+          headers: {
+            "Content-Type":
+              "application/json",
+            "x-line-user-id":
+              profile.userId,
+          },
+          body: JSON.stringify({
+            targetUserId:
+              performer.user_id,
+          }),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "お気に入りの変更に失敗しました"
+        );
+      }
+
+      if (currentlyFavorite) {
+        setFavorites(
+          (currentFavorites) =>
+            currentFavorites.filter(
+              (favorite) =>
+                favorite.target_user_id !==
+                performer.user_id
+            )
+        );
+      } else {
+        setFavorites(
+          (currentFavorites) => [
+            ...currentFavorites,
+            {
+              id:
+                data.favorite?.id ||
+                `temporary-${performer.user_id}`,
+              target_user_id:
+                performer.user_id,
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      console.error(
+        "お気に入り変更エラー:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "お気に入りの変更中にエラーが発生しました"
+      );
+    } finally {
+      setFavoriteLoading(false);
+    }
   };
 
   if (loading) {
@@ -705,12 +872,37 @@ export default function FacilityPerformersPage() {
 
               <button
                 type="button"
+                onClick={() =>
+                  handleFavoriteToggle(
+                    selectedPerformer
+                  )
+                }
+                disabled={favoriteLoading}
+                className={`w-full mt-6 rounded-xl p-4 font-bold ${
+                  isFavorite(
+                    selectedPerformer
+                  )
+                    ? "bg-yellow-50 border border-yellow-300 text-yellow-700"
+                    : "bg-white border border-gray-300 text-gray-700"
+                } disabled:opacity-50`}
+              >
+                {favoriteLoading
+                  ? "変更しています..."
+                  : isFavorite(
+                      selectedPerformer
+                    )
+                  ? "♥ お気に入り済み"
+                  : "♡ お気に入りに追加"}
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   router.push(
                     `/facility/performers/${selectedPerformer.id}/invite`
                   );
                 }}
-                className="w-full mt-6 bg-blue-600 text-white rounded-xl p-4 font-bold"
+                className="w-full mt-3 bg-blue-600 text-white rounded-xl p-4 font-bold"
               >
                 この演奏者に依頼する
               </button>
