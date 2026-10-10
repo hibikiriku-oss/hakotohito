@@ -51,6 +51,9 @@ export default function PerformerFavoritesPage() {
       facility: Facility;
     } | null>(null);
 
+  const [removingFavoriteId, setRemovingFavoriteId] =
+    useState<string | null>(null);
+
   useEffect(() => {
     async function initialize() {
       try {
@@ -164,6 +167,110 @@ export default function PerformerFavoritesPage() {
     });
   };
 
+  const handleRemoveFavorite = async (
+    favorite: Favorite
+  ) => {
+    const user =
+      getFavoriteUser(favorite);
+
+    if (!user) {
+      alert(
+        "お気に入り情報を取得できませんでした。"
+      );
+      return;
+    }
+
+    const facility =
+      getFavoriteFacility(user);
+
+    const facilityName =
+      facility?.name ||
+      user.display_name ||
+      "この施設";
+
+    const confirmed =
+      window.confirm(
+        `${facilityName}をお気に入りから解除しますか？`
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setRemovingFavoriteId(
+        favorite.id
+      );
+
+      const liffId =
+        process.env.NEXT_PUBLIC_LIFF_ID;
+
+      if (!liffId) {
+        throw new Error(
+          "NEXT_PUBLIC_LIFF_IDが設定されていません"
+        );
+      }
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile =
+        await liff.getProfile();
+
+      const response = await fetch(
+        "/api/favorites",
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type":
+              "application/json",
+            "x-line-user-id":
+              profile.userId,
+          },
+          body: JSON.stringify({
+            targetUserId:
+              favorite.target_user_id,
+          }),
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "お気に入りの解除に失敗しました"
+        );
+      }
+
+      setFavorites((currentFavorites) =>
+        currentFavorites.filter(
+          (item) =>
+            item.id !== favorite.id
+        )
+      );
+
+      setSelectedFacility(null);
+
+    } catch (error) {
+      console.error(
+        "お気に入り解除エラー:",
+        error
+      );
+
+      alert(
+        error instanceof Error
+          ? error.message
+          : "お気に入りの解除中にエラーが発生しました"
+      );
+    } finally {
+      setRemovingFavoriteId(null);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
@@ -258,6 +365,10 @@ export default function PerformerFavoritesPage() {
               const facility =
                 getFavoriteFacility(user);
 
+              const isRemoving =
+                removingFavoriteId ===
+                favorite.id;
+
               return (
                 <div
                   key={favorite.id}
@@ -301,6 +412,20 @@ export default function PerformerFavoritesPage() {
                     className="w-full mt-4 border border-gray-300 rounded-xl p-3 font-bold"
                   >
                     施設プロフィールを見る
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      handleRemoveFavorite(
+                        favorite
+                      )
+                    }
+                    disabled={isRemoving}
+                    className="w-full mt-3 border border-red-300 text-red-600 rounded-xl p-3 font-bold disabled:opacity-50"
+                  >
+                    {isRemoving
+                      ? "解除しています..."
+                      : "⭐ お気に入り解除"}
                   </button>
                 </div>
               );
@@ -408,13 +533,41 @@ export default function PerformerFavoritesPage() {
                 </p>
               </div>
 
+              <button
+                onClick={() =>
+                  handleRemoveFavorite(
+                    favorites.find(
+                      (favorite) =>
+                        favorite.target_user_id ===
+                        selectedFacility.user.id
+                    ) ?? {
+                      id: "",
+                      target_user_id:
+                        selectedFacility.user.id,
+                      created_at: "",
+                      users:
+                        selectedFacility.user,
+                    }
+                  )
+                }
+                disabled={
+                  removingFavoriteId !==
+                    null
+                }
+                className="w-full border border-red-300 text-red-600 rounded-xl p-4 font-bold disabled:opacity-50"
+              >
+                {removingFavoriteId
+                  ? "解除しています..."
+                  : "⭐ お気に入り解除"}
+              </button>
+
             </div>
 
             <button
               onClick={() =>
                 setSelectedFacility(null)
               }
-              className="w-full mt-8 bg-black text-white rounded-xl p-4 font-bold"
+              className="w-full mt-4 bg-black text-white rounded-xl p-4 font-bold"
             >
               閉じる
             </button>
