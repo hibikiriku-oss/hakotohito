@@ -6,6 +6,7 @@ import liff from "@line/liff";
 
 type Facility = {
   id: string;
+  user_id: string;
   name: string;
   facility_type: string;
   address: string;
@@ -70,6 +71,12 @@ export default function PerformerRequestDetailPage() {
     useState<FacilityReview[]>([]);
 
   const [facilityReviewsLoading, setFacilityReviewsLoading] =
+    useState(false);
+
+  const [isFavorite, setIsFavorite] =
+    useState(false);
+
+  const [favoriteLoading, setFavoriteLoading] =
     useState(false);
 
   useEffect(() => {
@@ -147,6 +154,39 @@ export default function PerformerRequestDetailPage() {
           } finally {
             setFacilityReviewsLoading(false);
           }
+
+          try {
+            const favoritesResponse =
+              await fetch("/api/favorites", {
+                headers: {
+                  "x-line-user-id":
+                    profile.userId,
+                },
+              });
+
+            const favoritesData =
+              await favoritesResponse.json();
+
+            if (favoritesResponse.ok) {
+              const favoriteExists =
+                favoritesData.favorites?.some(
+                  (favorite: {
+                    target_user_id: string;
+                  }) =>
+                    favorite.target_user_id ===
+                    data.request.facilities.user_id
+                );
+
+              setIsFavorite(
+                favoriteExists ?? false
+              );
+            }
+          } catch (favoriteError) {
+            console.error(
+              "お気に入り状態取得エラー:",
+              favoriteError
+            );
+          }
         }
       } catch (error) {
         console.error(error);
@@ -163,6 +203,96 @@ export default function PerformerRequestDetailPage() {
 
     initialize();
   }, [requestId]);
+
+  const handleFavoriteToggle = async () => {
+    if (!lineUserId) {
+      alert(
+        "LINEユーザー情報を取得できていません"
+      );
+      return;
+    }
+
+    if (!request?.facilities?.id) {
+      return;
+    }
+
+    try {
+      setFavoriteLoading(true);
+
+      if (isFavorite) {
+        const response = await fetch(
+          "/api/favorites",
+          {
+            method: "DELETE",
+            headers: {
+              "Content-Type":
+                "application/json",
+              "x-line-user-id":
+                lineUserId,
+            },
+            body: JSON.stringify({
+              targetUserId:
+                request.facilities.user_id,
+            }),
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          alert(
+            data.error ||
+              "お気に入り解除に失敗しました"
+          );
+          return;
+        }
+
+        setIsFavorite(false);
+      } else {
+        const response = await fetch(
+          "/api/favorites",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              "x-line-user-id":
+                lineUserId,
+            },
+            body: JSON.stringify({
+              targetUserId:
+                request.facilities.user_id,
+            }),
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          alert(
+            data.error ||
+              "お気に入り登録に失敗しました"
+          );
+          return;
+        }
+
+        setIsFavorite(true);
+      }
+    } catch (error) {
+      console.error(
+        "お気に入り処理エラー:",
+        error
+      );
+
+      alert(
+        "通信エラーが発生しました"
+      );
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   const handleApply = async () => {
     if (!lineUserId) {
@@ -543,7 +673,6 @@ export default function PerformerRequestDetailPage() {
                 )}
 
                 <div className="mt-6 border-t pt-5">
-
                   <p className="text-sm text-gray-500">
                     施設のレビュー
                   </p>
@@ -574,7 +703,9 @@ export default function PerformerRequestDetailPage() {
                               <div className="flex items-center justify-between">
                                 <p className="font-bold">
                                   {"★".repeat(review.rating)}
-                                  {"☆".repeat(5 - review.rating)}
+                                  {"☆".repeat(
+                                    5 - review.rating
+                                  )}
                                 </p>
 
                                 <p className="text-xs text-gray-400">
@@ -601,14 +732,29 @@ export default function PerformerRequestDetailPage() {
                       まだレビューはありません。
                     </p>
                   )}
-
                 </div>
+
+                <button
+                  onClick={handleFavoriteToggle}
+                  disabled={favoriteLoading}
+                  className={`w-full mt-6 rounded-xl p-4 font-bold border ${
+                    isFavorite
+                      ? "bg-pink-50 border-pink-300 text-pink-600"
+                      : "bg-white border-gray-300 text-gray-700"
+                  } disabled:opacity-50`}
+                >
+                  {favoriteLoading
+                    ? "処理中..."
+                    : isFavorite
+                    ? "♥ お気に入り済み"
+                    : "♡ お気に入りに追加"}
+                </button>
 
                 <button
                   onClick={() =>
                     setShowFacilityProfile(false)
                   }
-                  className="w-full mt-8 bg-black text-white rounded-xl p-4 font-bold"
+                  className="w-full mt-3 bg-black text-white rounded-xl p-4 font-bold"
                 >
                   閉じる
                 </button>

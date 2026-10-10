@@ -60,7 +60,8 @@ export async function GET(
         reward,
         status,
         facilities (
-	  id,
+          id,
+          user_id,
           name,
           facility_type,
           address,
@@ -140,7 +141,10 @@ export async function PATCH(
 
     if (existingRequest.status !== "open") {
       return NextResponse.json(
-        { error: "募集終了またはマッチング済みの案件は編集できません" },
+        {
+          error:
+            "募集終了またはマッチング済みの案件は編集できません",
+        },
         { status: 400 }
       );
     }
@@ -313,7 +317,10 @@ export async function DELETE(
 
     if (existingRequest.status !== "open") {
       return NextResponse.json(
-        { error: "募集終了またはマッチング済みの案件は削除できません" },
+        {
+          error:
+            "募集終了またはマッチング済みの案件は削除できません",
+        },
         { status: 400 }
       );
     }
