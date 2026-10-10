@@ -36,33 +36,43 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: favorites, error: favoritesError } =
-      await supabase
-        .from("favorites")
-        .select(
-          `
+    const {
+      data: favorites,
+      error: favoritesError,
+    } = await supabase
+      .from("favorites")
+      .select(
+        `
+        id,
+        target_user_id,
+        created_at,
+        users!favorites_target_user_id_fkey (
           id,
-          target_user_id,
-          created_at,
-          users!favorites_target_user_id_fkey (
+          display_name,
+          picture_url,
+          user_type,
+          performers (
             id,
-            display_name,
-            picture_url,
-            user_type,
-            facilities!facilities_user_id_fkey (
-              id,
-              name,
-              facility_type,
-              address,
-              description
-            )
+            name,
+            area,
+            instruments,
+            genres,
+            bio
+          ),
+          facilities (
+            id,
+            name,
+            facility_type,
+            address,
+            description
           )
-          `
         )
-        .eq("user_id", user.id)
-        .order("created_at", {
-          ascending: false,
-        });
+        `
+      )
+      .eq("user_id", user.id)
+      .order("created_at", {
+        ascending: false,
+      });
 
     if (favoritesError) {
       console.error(
@@ -152,12 +162,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: targetUser, error: targetUserError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("id", targetUserId)
-        .single();
+    const {
+      data: targetUser,
+      error: targetUserError,
+    } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", targetUserId)
+      .single();
 
     if (targetUserError || !targetUser) {
       return NextResponse.json(
@@ -169,21 +181,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: favorite, error: favoriteError } =
-      await supabase
-        .from("favorites")
-        .insert({
-          user_id: user.id,
-          target_user_id: targetUserId,
-        })
-        .select(
-          `
-          id,
-          target_user_id,
-          created_at
-          `
-        )
-        .single();
+    const {
+      data: favorite,
+      error: favoriteError,
+    } = await supabase
+      .from("favorites")
+      .insert({
+        user_id: user.id,
+        target_user_id: targetUserId,
+      })
+      .select(
+        `
+        id,
+        target_user_id,
+        created_at
+        `
+      )
+      .single();
 
     if (favoriteError) {
       if (favoriteError.code === "23505") {
