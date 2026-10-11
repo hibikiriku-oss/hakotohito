@@ -175,6 +175,284 @@ export default function FacilityMatchesPage() {
     };
   }
 
+  const currentMatches =
+    matches.filter(
+      (match) =>
+        match.performance_status !==
+          "completed" &&
+        match.performance_status !==
+          "cancelled" &&
+        match.status !== "cancelled"
+    );
+
+  const historyMatches =
+    matches.filter(
+      (match) =>
+        match.performance_status ===
+          "completed" ||
+        match.performance_status ===
+          "cancelled" ||
+        match.status === "cancelled"
+    );
+
+  function renderMatchCard(match: Match) {
+    const request =
+      match.performance_requests;
+
+    const performer =
+      match.performers;
+
+    if (!request || !performer) {
+      return null;
+    }
+
+    const user =
+      performer.users;
+
+    const performanceStatus =
+      getPerformanceStatus(match);
+
+    return (
+      <button
+        key={match.id}
+        onClick={() =>
+          router.push(
+            "/facility/matches/" +
+              match.id
+          )
+        }
+        className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border hover:bg-gray-50 active:bg-gray-100 transition"
+      >
+        {/* ステータス */}
+        <div className="flex items-center justify-between gap-3">
+
+          <span className="text-sm font-bold">
+            🎉 マッチング成立
+          </span>
+
+          <span
+            className={
+              "text-xs rounded-full px-3 py-1 font-bold " +
+              performanceStatus.className
+            }
+          >
+            {performanceStatus.label}
+          </span>
+
+        </div>
+
+        {/* 案件タイトル */}
+        <h2 className="text-xl font-bold mt-4">
+          {request.title}
+        </h2>
+
+        {/* 演奏者 */}
+        <div className="mt-4">
+
+          <p className="text-sm text-gray-500">
+            演奏者
+          </p>
+
+          <div className="flex items-center gap-3 mt-2">
+
+            {user?.picture_url ? (
+              <img
+                src={
+                  user.picture_url
+                }
+                alt=""
+                className="w-12 h-12 rounded-full object-cover"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
+                🎸
+              </div>
+            )}
+
+            <div>
+              <p className="font-bold">
+                {performer.name ||
+                  user?.display_name ||
+                  "演奏者名未登録"}
+              </p>
+
+              {performer.area && (
+                <p className="text-sm text-gray-600">
+                  📍{" "}
+                  {performer.area}
+                </p>
+              )}
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* 演奏日時 */}
+        <div className="mt-4">
+
+          <p className="text-sm text-gray-500">
+            演奏日時
+          </p>
+
+          <p className="mt-1 font-bold">
+            📅{" "}
+            {formatDate(
+              request.performance_date
+            )}
+          </p>
+
+          <p className="text-sm text-gray-600 mt-1">
+            🕐{" "}
+            {formatTime(
+              request.start_time
+            )}
+            {" ～ "}
+            {formatTime(
+              request.end_time
+            )}
+          </p>
+
+        </div>
+
+        {/* 場所 */}
+        {request.area && (
+          <div className="mt-4">
+
+            <p className="text-sm text-gray-500">
+              場所
+            </p>
+
+            <p className="mt-1">
+              📍 {request.area}
+            </p>
+
+          </div>
+        )}
+
+        {/* 楽器 */}
+        {performer.instruments?.length >
+          0 && (
+          <div className="mt-4">
+
+            <p className="text-sm text-gray-500">
+              演奏楽器
+            </p>
+
+            <div className="flex flex-wrap gap-2 mt-2">
+
+              {performer.instruments.map(
+                (instrument) => (
+                  <span
+                    key={instrument}
+                    className="text-sm bg-gray-100 rounded-full px-3 py-1"
+                  >
+                    🎸 {instrument}
+                  </span>
+                )
+              )}
+
+            </div>
+
+          </div>
+        )}
+
+        {/* ジャンル */}
+        {performer.genres?.length >
+          0 && (
+          <div className="mt-4">
+
+            <p className="text-sm text-gray-500">
+              ジャンル
+            </p>
+
+            <div className="flex flex-wrap gap-2 mt-2">
+
+              {performer.genres.map(
+                (genre) => (
+                  <span
+                    key={genre}
+                    className="text-sm bg-gray-100 rounded-full px-3 py-1"
+                  >
+                    🎵 {genre}
+                  </span>
+                )
+              )}
+
+            </div>
+
+          </div>
+        )}
+
+        {/* 報酬 */}
+        {request.reward !== null && (
+          <div className="mt-4">
+
+            <p className="text-sm text-gray-500">
+              報酬
+            </p>
+
+            <p className="mt-1 font-bold">
+              💰{" "}
+              {request.reward.toLocaleString()}
+              円
+            </p>
+
+          </div>
+        )}
+
+        {/* キャンセル履歴 */}
+        {performanceStatus.label ===
+          "キャンセル済み" && (
+          <div className="mt-4 bg-red-50 rounded-xl p-3">
+            <p className="text-sm text-red-700">
+              このマッチングはキャンセルされています。
+            </p>
+          </div>
+        )}
+
+        {/* 完了履歴 */}
+        {performanceStatus.label ===
+          "演奏完了" && (
+          <div className="mt-4 bg-blue-50 rounded-xl p-3">
+            <p className="text-sm text-blue-700">
+              演奏が完了しています。
+            </p>
+
+            {match.completed_at && (
+              <p className="mt-1 text-xs text-blue-600">
+                完了日時：
+                {formatDate(
+                  match.completed_at.slice(0, 10)
+                )}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 現在のマッチング表示 */}
+        {performanceStatus.label ===
+          "演奏予定" && (
+          <div className="mt-4 bg-green-50 rounded-xl p-3">
+            <p className="text-sm text-green-700">
+              現在、この演奏者とのマッチングが進行中です。
+            </p>
+          </div>
+        )}
+
+        {/* 詳細への案内 */}
+        <div className="mt-5 pt-4 border-t text-center">
+
+          <span className="text-sm font-bold text-gray-600">
+            マッチング詳細を見る →
+          </span>
+
+        </div>
+
+      </button>
+    );
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
@@ -267,246 +545,57 @@ export default function FacilityMatchesPage() {
 
           </div>
         ) : (
-          <div className="mt-6 space-y-4">
+          <div className="mt-6 space-y-8">
 
-            {matches.map((match) => {
-              const request =
-                match.performance_requests;
-
-              const performer =
-                match.performers;
-
-              if (!request || !performer) {
-                return null;
-              }
-
-              const user =
-                performer.users;
-
-              const performanceStatus =
-                getPerformanceStatus(match);
-
-              return (
-                <button
-                  key={match.id}
-                  onClick={() =>
-                    router.push(
-                      "/facility/matches/" +
-                        match.id
-                    )
-                  }
-                  className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border hover:bg-gray-50 active:bg-gray-100 transition"
-                >
-                  {/* ステータス */}
-                  <div className="flex items-center justify-between gap-3">
-
-                    <span className="text-sm font-bold">
-                      🎉 マッチング成立
-                    </span>
-
-                    <span
-                      className={
-                        "text-xs rounded-full px-3 py-1 font-bold " +
-                        performanceStatus.className
-                      }
-                    >
-                      {performanceStatus.label}
-                    </span>
-
-                  </div>
-
-                  {/* 案件タイトル */}
-                  <h2 className="text-xl font-bold mt-4">
-                    {request.title}
+            {/* 現在のマッチング */}
+            {currentMatches.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold">
+                    📌 現在のマッチング
                   </h2>
 
-                  {/* 演奏者 */}
-                  <div className="mt-4">
+                  <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-1">
+                    {currentMatches.length}件
+                  </span>
+                </div>
 
-                    <p className="text-sm text-gray-500">
-                      演奏者
-                    </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  現在、演奏予定のマッチングです。
+                </p>
 
-                    <div className="flex items-center gap-3 mt-2">
-
-                      {user?.picture_url ? (
-                        <img
-                          src={
-                            user.picture_url
-                          }
-                          alt=""
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                          🎸
-                        </div>
-                      )}
-
-                      <div>
-                        <p className="font-bold">
-                          {performer.name ||
-                            user?.display_name ||
-                            "演奏者名未登録"}
-                        </p>
-
-                        {performer.area && (
-                          <p className="text-sm text-gray-600">
-                            📍{" "}
-                            {performer.area}
-                          </p>
-                        )}
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                  {/* 演奏日時 */}
-                  <div className="mt-4">
-
-                    <p className="text-sm text-gray-500">
-                      演奏日時
-                    </p>
-
-                    <p className="mt-1 font-bold">
-                      📅{" "}
-                      {formatDate(
-                        request.performance_date
-                      )}
-                    </p>
-
-                    <p className="text-sm text-gray-600 mt-1">
-                      🕐{" "}
-                      {formatTime(
-                        request.start_time
-                      )}
-                      {" ～ "}
-                      {formatTime(
-                        request.end_time
-                      )}
-                    </p>
-
-                  </div>
-
-                  {/* 場所 */}
-                  {request.area && (
-                    <div className="mt-4">
-
-                      <p className="text-sm text-gray-500">
-                        場所
-                      </p>
-
-                      <p className="mt-1">
-                        📍 {request.area}
-                      </p>
-
-                    </div>
+                <div className="mt-4 space-y-4">
+                  {currentMatches.map(
+                    renderMatchCard
                   )}
+                </div>
+              </section>
+            )}
 
-                  {/* 楽器 */}
-                  {performer.instruments?.length >
-                    0 && (
-                    <div className="mt-4">
+            {/* マッチング履歴 */}
+            {historyMatches.length > 0 && (
+              <section>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-bold">
+                    📚 マッチング履歴
+                  </h2>
 
-                      <p className="text-sm text-gray-500">
-                        演奏楽器
-                      </p>
+                  <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-1">
+                    {historyMatches.length}件
+                  </span>
+                </div>
 
-                      <div className="flex flex-wrap gap-2 mt-2">
+                <p className="mt-1 text-sm text-gray-500">
+                  演奏完了・キャンセル済みの過去のマッチングです。
+                </p>
 
-                        {performer.instruments.map(
-                          (instrument) => (
-                            <span
-                              key={instrument}
-                              className="text-sm bg-gray-100 rounded-full px-3 py-1"
-                            >
-                              🎸 {instrument}
-                            </span>
-                          )
-                        )}
-
-                      </div>
-
-                    </div>
+                <div className="mt-4 space-y-4">
+                  {historyMatches.map(
+                    renderMatchCard
                   )}
-
-                  {/* ジャンル */}
-                  {performer.genres?.length >
-                    0 && (
-                    <div className="mt-4">
-
-                      <p className="text-sm text-gray-500">
-                        ジャンル
-                      </p>
-
-                      <div className="flex flex-wrap gap-2 mt-2">
-
-                        {performer.genres.map(
-                          (genre) => (
-                            <span
-                              key={genre}
-                              className="text-sm bg-gray-100 rounded-full px-3 py-1"
-                            >
-                              🎵 {genre}
-                            </span>
-                          )
-                        )}
-
-                      </div>
-
-                    </div>
-                  )}
-
-                  {/* 報酬 */}
-                  {request.reward !== null && (
-                    <div className="mt-4">
-
-                      <p className="text-sm text-gray-500">
-                        報酬
-                      </p>
-
-                      <p className="mt-1 font-bold">
-                        💰{" "}
-                        {request.reward.toLocaleString()}
-                        円
-                      </p>
-
-                    </div>
-                  )}
-
-                  {/* キャンセル履歴の場合 */}
-                  {performanceStatus.label ===
-                    "キャンセル済み" && (
-                    <div className="mt-4 bg-red-50 rounded-xl p-3">
-                      <p className="text-sm text-red-700">
-                        このマッチングはキャンセルされています。
-                      </p>
-                    </div>
-                  )}
-
-                  {/* 完了の場合 */}
-                  {performanceStatus.label ===
-                    "演奏完了" && (
-                    <div className="mt-4 bg-blue-50 rounded-xl p-3">
-                      <p className="text-sm text-blue-700">
-                        演奏が完了しています。
-                      </p>
-                    </div>
-                  )}
-
-                  {/* 詳細への案内 */}
-                  <div className="mt-5 pt-4 border-t text-center">
-
-                    <span className="text-sm font-bold text-gray-600">
-                      マッチング詳細を見る →
-                    </span>
-
-                  </div>
-
-                </button>
-              );
-            })}
+                </div>
+              </section>
+            )}
 
           </div>
         )}
