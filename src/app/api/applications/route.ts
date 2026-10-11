@@ -112,42 +112,156 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 応募登録
+    // ==============================
+    // 既存応募を確認
+    // ==============================
+
     const {
-      data,
-      error,
+      data: existingApplication,
+      error: existingApplicationError,
     } = await supabase
       .from("applications")
-      .insert({
-        request_id: requestId,
-        performer_id: performer.id,
-        message: message || null,
-        status: "pending",
-      })
-      .select()
-      .single();
+      .select(
+        "id, request_id, performer_id, message, status, source, created_at"
+      )
+      .eq("request_id", requestId)
+      .eq("performer_id", performer.id)
+      .maybeSingle();
 
-    if (error) {
-      // unique(request_id, performer_id) による重複応募
-      if (error.code === "23505") {
-        return NextResponse.json(
-          {
-            error:
-              "この案件にはすでに応募しています",
-          },
-          { status: 409 }
-        );
-      }
-
+    if (existingApplicationError) {
       console.error(
-        "応募登録エラー:",
-        error
+        "既存応募確認エラー:",
+        existingApplicationError
       );
 
       return NextResponse.json(
-        { error: error.message },
+        {
+          error:
+            "既存応募情報の確認に失敗しました",
+        },
         { status: 500 }
       );
+    }
+
+    // すでに応募中の場合
+    if (
+      existingApplication &&
+      existingApplication.status === "pending"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "この案件にはすでに応募しています",
+        },
+        { status: 409 }
+      );
+    }
+
+    // すでに採用されている場合
+    if (
+      existingApplication &&
+      existingApplication.status === "accepted"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "この案件にはすでに採用されています",
+        },
+        { status: 409 }
+      );
+    }
+
+    // ==============================
+    // 再応募 / 新規応募
+    // ==============================
+
+    let data;
+
+    if (
+      existingApplication &&
+      existingApplication.status === "rejected"
+    ) {
+      // 一度見送りになった応募を再応募状態に戻す
+      const {
+        data: updatedApplication,
+        error: updateApplicationError,
+      } = await supabase
+        .from("applications")
+        .update({
+          message: message || null,
+          status: "pending",
+          source: "performer_apply",
+        })
+        .eq("id", existingApplication.id)
+        .eq("request_id", requestId)
+        .eq("performer_id", performer.id)
+        .select()
+        .single();
+
+      if (
+        updateApplicationError ||
+        !updatedApplication
+      ) {
+        console.error(
+          "再応募更新エラー:",
+          updateApplicationError
+        );
+
+        return NextResponse.json(
+          {
+            error:
+              "再応募の登録に失敗しました",
+          },
+          { status: 500 }
+        );
+      }
+
+      data = updatedApplication;
+    } else {
+      // 初回応募
+      const {
+        data: newApplication,
+        error: insertError,
+      } = await supabase
+        .from("applications")
+        .insert({
+          request_id: requestId,
+          performer_id: performer.id,
+          message: message || null,
+          status: "pending",
+          source: "performer_apply",
+        })
+        .select()
+        .single();
+
+      if (insertError || !newApplication) {
+        console.error(
+          "応募登録エラー:",
+          insertError
+        );
+
+        // 念のためunique制約違反も処理
+        if (insertError?.code === "23505") {
+          return NextResponse.json(
+            {
+              error:
+                "この案件にはすでに応募しています",
+            },
+            { status: 409 }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            error:
+              insertError?.message ||
+              "応募登録に失敗しました",
+          },
+          { status: 500 }
+        );
+      }
+
+      data = newApplication;
     }
 
     // ==============================
