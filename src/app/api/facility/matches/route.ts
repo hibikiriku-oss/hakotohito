@@ -38,12 +38,14 @@ export async function GET(request: NextRequest) {
     }
 
     // 施設を取得
-    const { data: facility, error: facilityError } =
-      await supabase
-        .from("facilities")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
+    const {
+      data: facility,
+      error: facilityError,
+    } = await supabase
+      .from("facilities")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
 
     if (facilityError || !facility) {
       return NextResponse.json(
@@ -55,49 +57,53 @@ export async function GET(request: NextRequest) {
     }
 
     // 施設の案件に紐づくマッチングを取得
-    const { data: matches, error: matchesError } =
-      await supabase
-        .from("matches")
-        .select(`
+    const {
+      data: matches,
+      error: matchesError,
+    } = await supabase
+      .from("matches")
+      .select(`
+        id,
+        request_id,
+        performer_id,
+        matched_at,
+        status,
+        performance_status,
+        completed_at,
+        performance_requests (
           id,
-          request_id,
-          performer_id,
-          matched_at,
-          status,
-          performance_requests (
+          title,
+          description,
+          performance_date,
+          start_time,
+          end_time,
+          area,
+          instruments,
+          genres,
+          reward,
+          status
+        ),
+        performers (
+          id,
+          name,
+          instruments,
+          genres,
+          area,
+          bio,
+          users (
             id,
-            title,
-            description,
-            performance_date,
-            start_time,
-            end_time,
-            area,
-            instruments,
-            genres,
-            reward,
-            status
-          ),
-          performers (
-            id,
-            name,
-            instruments,
-            genres,
-            area,
-            bio,
-            users (
-              id,
-              display_name,
-              picture_url
-            )
+            display_name,
+            picture_url
           )
-        `)
-        .eq(
-          "performance_requests.facility_id",
-          facility.id
         )
-        .order("matched_at", {
-          ascending: false,
-        });
+      `)
+      .eq(
+        "performance_requests.facility_id",
+        facility.id
+      )
+      .order("matched_at", {
+        ascending: false,
+      });
 
     if (matchesError) {
       console.error(

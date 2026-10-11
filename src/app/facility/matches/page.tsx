@@ -40,25 +40,23 @@ type Match = {
   performer_id: string;
   matched_at: string;
   status: string;
+  performance_status: string;
+  completed_at: string | null;
   performance_requests:
     | PerformanceRequest
     | null;
   performers: Performer | null;
 };
 
-type ChatSummaryResponse = {
-  unreadCount: number;
-};
-
 export default function FacilityMatchesPage() {
   const router = useRouter();
 
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [unreadCounts, setUnreadCounts] = useState<
-    Record<string, number>
-  >({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [matches, setMatches] =
+    useState<Match[]>([]);
+  const [loading, setLoading] =
+    useState(true);
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     async function initialize() {
@@ -105,76 +103,9 @@ export default function FacilityMatchesPage() {
           );
         }
 
-        const loadedMatches: Match[] =
-          data.matches || [];
-
-        setMatches(loadedMatches);
-
-        // 各マッチングの未読メッセージ数を取得
-        const unreadResults = await Promise.all(
-          loadedMatches.map(async (match) => {
-            try {
-              const chatResponse = await fetch(
-                `/api/matches/${match.id}/chat?summary=true`,
-                {
-                  headers: {
-                    "x-line-user-id":
-                      profile.userId,
-                  },
-                  cache: "no-store",
-                }
-              );
-
-              const chatData =
-                (await chatResponse.json()) as
-                  | ChatSummaryResponse
-                  | { error: string };
-
-              if (!chatResponse.ok) {
-                console.error(
-                  "未読件数取得エラー:",
-                  "error" in chatData
-                    ? chatData.error
-                    : "未読件数の取得に失敗しました"
-                );
-
-                return {
-                  matchId: match.id,
-                  unreadCount: 0,
-                };
-              }
-
-              return {
-                matchId: match.id,
-                unreadCount:
-                  (chatData as ChatSummaryResponse)
-                    .unreadCount ?? 0,
-              };
-            } catch (error) {
-              console.error(
-                "未読件数取得エラー:",
-                error
-              );
-
-              return {
-                matchId: match.id,
-                unreadCount: 0,
-              };
-            }
-          })
+        setMatches(
+          data.matches || []
         );
-
-        const nextUnreadCounts: Record<
-          string,
-          number
-        > = {};
-
-        unreadResults.forEach((result) => {
-          nextUnreadCounts[result.matchId] =
-            result.unreadCount;
-        });
-
-        setUnreadCounts(nextUnreadCounts);
       } catch (error) {
         console.error(
           "施設マッチング取得エラー:",
@@ -209,6 +140,39 @@ export default function FacilityMatchesPage() {
 
   function formatTime(time: string) {
     return time.slice(0, 5);
+  }
+
+  function getPerformanceStatus(
+    match: Match
+  ) {
+    if (
+      match.performance_status ===
+      "completed"
+    ) {
+      return {
+        label: "演奏完了",
+        className:
+          "bg-blue-100 text-blue-700",
+      };
+    }
+
+    if (
+      match.performance_status ===
+      "cancelled" ||
+      match.status === "cancelled"
+    ) {
+      return {
+        label: "キャンセル済み",
+        className:
+          "bg-red-100 text-red-700",
+      };
+    }
+
+    return {
+      label: "演奏予定",
+      className:
+        "bg-green-100 text-green-700",
+    };
   }
 
   if (loading) {
@@ -279,6 +243,10 @@ export default function FacilityMatchesPage() {
           🎉 マッチング一覧
         </h1>
 
+        <p className="mt-2 text-sm text-gray-500">
+          マッチングした演奏者との履歴を確認できます。
+        </p>
+
         {matches.length === 0 ? (
           <div className="mt-6 bg-white rounded-2xl p-6 text-center">
 
@@ -315,8 +283,8 @@ export default function FacilityMatchesPage() {
               const user =
                 performer.users;
 
-              const unreadCount =
-                unreadCounts[match.id] ?? 0;
+              const performanceStatus =
+                getPerformanceStatus(match);
 
               return (
                 <button
@@ -330,26 +298,20 @@ export default function FacilityMatchesPage() {
                   className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border hover:bg-gray-50 active:bg-gray-100 transition"
                 >
                   {/* ステータス */}
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3">
 
                     <span className="text-sm font-bold">
                       🎉 マッチング成立
                     </span>
 
-                    <div className="flex items-center gap-2">
-                      {unreadCount > 0 && (
-                        <span className="text-xs bg-red-500 text-white rounded-full px-3 py-1 font-bold">
-                          💬 未読 {unreadCount}件
-                        </span>
-                      )}
-
-                      <span className="text-xs bg-green-100 text-green-700 rounded-full px-3 py-1">
-                        {match.status ===
-                        "active"
-                          ? "進行中"
-                          : "キャンセル"}
-                      </span>
-                    </div>
+                    <span
+                      className={
+                        "text-xs rounded-full px-3 py-1 font-bold " +
+                        performanceStatus.className
+                      }
+                    >
+                      {performanceStatus.label}
+                    </span>
 
                   </div>
 
@@ -510,6 +472,26 @@ export default function FacilityMatchesPage() {
                         円
                       </p>
 
+                    </div>
+                  )}
+
+                  {/* キャンセル履歴の場合 */}
+                  {performanceStatus.label ===
+                    "キャンセル済み" && (
+                    <div className="mt-4 bg-red-50 rounded-xl p-3">
+                      <p className="text-sm text-red-700">
+                        このマッチングはキャンセルされています。
+                      </p>
+                    </div>
+                  )}
+
+                  {/* 完了の場合 */}
+                  {performanceStatus.label ===
+                    "演奏完了" && (
+                    <div className="mt-4 bg-blue-50 rounded-xl p-3">
+                      <p className="text-sm text-blue-700">
+                        演奏が完了しています。
+                      </p>
                     </div>
                   )}
 
