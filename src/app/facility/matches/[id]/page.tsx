@@ -464,6 +464,25 @@ export default function FacilityMatchDetailPage() {
 
           </div>
 
+          {!isCancelled && (
+            <section className="mt-6">
+              <button
+                onClick={() =>
+                  router.push(
+                    `/facility/matches/${matchId}/chat`
+                  )
+                }
+                className="w-full bg-black text-white rounded-xl p-4 font-bold"
+              >
+                💬 演奏者とチャットする
+              </button>
+
+              <p className="mt-2 text-xs text-gray-400 text-center">
+                演奏に関する連絡や確認を行えます。
+              </p>
+            </section>
+          )}
+
           <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
 
             <h2 className="text-lg font-bold">
