@@ -10,7 +10,10 @@ type Match = {
   performer_id: string;
   matched_at: string;
   status: string;
-  performance_status: "scheduled" | "completed" | "cancelled";
+  performance_status:
+    | "scheduled"
+    | "completed"
+    | "cancelled";
   completed_at: string | null;
   performance_requests:
     | {
@@ -165,20 +168,30 @@ export default function FacilityMatchDetailPage() {
 
   const matchId = params.id as string;
 
-  const [match, setMatch] = useState<Match | null>(null);
+  const [match, setMatch] =
+    useState<Match | null>(null);
+
   const [application, setApplication] =
     useState<Application | null>(null);
 
-  const [reviewed, setReviewed] = useState(false);
+  const [reviewed, setReviewed] =
+    useState(false);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loading, setLoading] =
+    useState(true);
+
+  const [cancelling, setCancelling] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
 
   useEffect(() => {
     async function loadMatch() {
       try {
         await liff.init({
-          liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
+          liffId:
+            process.env.NEXT_PUBLIC_LIFF_ID!,
         });
 
         if (!liff.isLoggedIn()) {
@@ -186,18 +199,22 @@ export default function FacilityMatchDetailPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const profile =
+          await liff.getProfile();
 
         const response = await fetch(
-          "/api/facility/matches/" + matchId,
+          "/api/facility/matches/" +
+            matchId,
           {
             headers: {
-              "x-line-user-id": profile.userId,
+              "x-line-user-id":
+                profile.userId,
             },
           }
         );
 
-        const data = await response.json();
+        const data =
+          await response.json();
 
         if (!response.ok) {
           throw new Error(
@@ -207,20 +224,29 @@ export default function FacilityMatchDetailPage() {
         }
 
         setMatch(data.match);
-        setApplication(data.application || null);
-
-        const reviewResponse = await fetch(
-          "/api/reviews?match_id=" + matchId,
-          {
-            headers: {
-              "x-line-user-id": profile.userId,
-            },
-          }
+        setApplication(
+          data.application || null
         );
 
+        const reviewResponse =
+          await fetch(
+            "/api/reviews?match_id=" +
+              matchId,
+            {
+              headers: {
+                "x-line-user-id":
+                  profile.userId,
+              },
+            }
+          );
+
         if (reviewResponse.ok) {
-          const reviewData = await reviewResponse.json();
-          setReviewed(reviewData.reviewed);
+          const reviewData =
+            await reviewResponse.json();
+
+          setReviewed(
+            reviewData.reviewed
+          );
         }
       } catch (err) {
         console.error(err);
@@ -238,6 +264,91 @@ export default function FacilityMatchDetailPage() {
     loadMatch();
   }, [matchId]);
 
+  async function handleCancel() {
+    if (!match) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "このマッチングをキャンセルしますか？\n\nキャンセルすると、この演奏予定は取り消されます。"
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCancelling(true);
+      setError("");
+
+      const liffId =
+        process.env.NEXT_PUBLIC_LIFF_ID;
+
+      if (!liffId) {
+        throw new Error(
+          "LINE MINI Appの設定がありません"
+        );
+      }
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile =
+        await liff.getProfile();
+
+      const response =
+        await fetch(
+          `/api/facility/matches/${matchId}/cancel`,
+          {
+            method: "POST",
+            headers: {
+              "x-line-user-id":
+                profile.userId,
+            },
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "マッチングのキャンセルに失敗しました"
+        );
+      }
+
+      setMatch((currentMatch) => {
+        if (!currentMatch) {
+          return currentMatch;
+        }
+
+        return {
+          ...currentMatch,
+          status: "cancelled",
+          performance_status:
+            "cancelled",
+        };
+      });
+    } catch (err) {
+      console.error(
+        "マッチングキャンセル処理エラー:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "マッチングのキャンセルに失敗しました"
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
@@ -250,7 +361,7 @@ export default function FacilityMatchDetailPage() {
     );
   }
 
-  if (error) {
+  if (error && !match) {
     return (
       <main className="min-h-screen bg-gray-50 p-6">
         <div className="max-w-md mx-auto">
@@ -264,7 +375,9 @@ export default function FacilityMatchDetailPage() {
 
           <button
             onClick={() =>
-              router.push("/facility/matches")
+              router.push(
+                "/facility/matches"
+              )
             }
             className="mt-6 w-full bg-black text-white rounded-xl p-4"
           >
@@ -288,7 +401,9 @@ export default function FacilityMatchDetailPage() {
   }
 
   const performanceRequest =
-    getRequest(match.performance_requests);
+    getRequest(
+      match.performance_requests
+    );
 
   const performer =
     getPerformer(match.performers);
@@ -297,10 +412,12 @@ export default function FacilityMatchDetailPage() {
     getUser(performer?.users);
 
   const isCompleted =
-    match.performance_status === "completed";
+    match.performance_status ===
+    "completed";
 
   const isCancelled =
-    match.performance_status === "cancelled";
+    match.performance_status ===
+    "cancelled";
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
@@ -308,7 +425,9 @@ export default function FacilityMatchDetailPage() {
 
         <button
           onClick={() =>
-            router.push("/facility/matches")
+            router.push(
+              "/facility/matches"
+            )
           }
           className="text-gray-600 mb-4"
         >
@@ -318,26 +437,42 @@ export default function FacilityMatchDetailPage() {
         <div className="bg-white rounded-2xl p-6 shadow-sm">
 
           <div className="text-center">
+
             <div className="text-4xl">
-              🎉
+              {isCancelled
+                ? "⚠️"
+                : "🎉"}
             </div>
 
             <h1 className="text-2xl font-bold mt-2">
-              マッチング成立
+              {isCancelled
+                ? "キャンセル済み"
+                : "マッチング成立"}
             </h1>
 
-            <p className="mt-2 text-green-600 font-medium">
-              演奏者とのマッチングが成立しています
+            <p
+              className={`mt-2 font-medium ${
+                isCancelled
+                  ? "text-gray-500"
+                  : "text-green-600"
+              }`}
+            >
+              {isCancelled
+                ? "この演奏予定はキャンセルされています"
+                : "演奏者とのマッチングが成立しています"}
             </p>
+
           </div>
 
           <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
+
             <h2 className="text-lg font-bold">
               🎵 演奏状況
             </h2>
 
             {isCompleted ? (
               <div className="mt-4 bg-white rounded-xl p-4">
+
                 <p className="text-green-600 font-bold">
                   ✅ 演奏完了
                 </p>
@@ -345,22 +480,32 @@ export default function FacilityMatchDetailPage() {
                 {match.completed_at && (
                   <p className="mt-2 text-sm text-gray-500">
                     完了日時：
-                    {formatDateTime(match.completed_at)}
+                    {formatDateTime(
+                      match.completed_at
+                    )}
                   </p>
                 )}
 
                 <p className="mt-3 text-sm text-gray-600">
                   演奏者から演奏完了の報告がありました。
                 </p>
+
               </div>
             ) : isCancelled ? (
               <div className="mt-4 bg-white rounded-xl p-4">
+
                 <p className="text-gray-600 font-bold">
                   キャンセル済み
                 </p>
+
+                <p className="mt-2 text-sm text-gray-500">
+                  このマッチングでの演奏予定はキャンセルされています。
+                </p>
+
               </div>
             ) : (
               <div className="mt-4 bg-white rounded-xl p-4">
+
                 <p className="text-blue-600 font-bold">
                   📅 演奏予定
                 </p>
@@ -369,12 +514,37 @@ export default function FacilityMatchDetailPage() {
                   現在、演奏予定の状態です。
                   演奏終了後、演奏者が完了報告を行います。
                 </p>
+
+                <button
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                  className="w-full mt-5 bg-white border border-red-300 text-red-600 rounded-xl p-4 font-bold disabled:opacity-50"
+                >
+                  {cancelling
+                    ? "キャンセル中..."
+                    : "⚠️ この出演をキャンセルする"}
+                </button>
+
+                <p className="mt-2 text-xs text-gray-400 text-center">
+                  ※ キャンセルすると、このマッチングでの演奏予定が取り消されます。
+                </p>
+
               </div>
             )}
+
           </section>
+
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-red-600">
+                {error}
+              </p>
+            </div>
+          )}
 
           {performanceRequest && (
             <section className="mt-8">
+
               <h2 className="text-lg font-bold border-b pb-2">
                 🎵 演奏案件
               </h2>
@@ -450,6 +620,7 @@ export default function FacilityMatchDetailPage() {
 
           {performer && (
             <section className="mt-8">
+
               <h2 className="text-lg font-bold border-b pb-2">
                 🎸 演奏者
               </h2>
@@ -471,6 +642,7 @@ export default function FacilityMatchDetailPage() {
                   )}
 
                   <div>
+
                     <p className="text-lg font-bold">
                       {performer.name ||
                         "名前未設定"}
@@ -482,6 +654,7 @@ export default function FacilityMatchDetailPage() {
                         {lineUser.display_name}
                       </p>
                     )}
+
                   </div>
 
                 </div>
@@ -543,31 +716,8 @@ export default function FacilityMatchDetailPage() {
             </section>
           )}
 
-          {/* チャット */}
-          <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
-            <h2 className="text-lg font-bold">
-              💬 演奏者との連絡
-            </h2>
-
-            <p className="mt-2 text-sm text-gray-600">
-              演奏時間や当日の流れなど、演奏者と直接確認できます。
-            </p>
-
-            <button
-              onClick={() =>
-                router.push(
-                  `/facility/matches/${matchId}/chat`
-                )
-              }
-              disabled={isCancelled}
-              className="w-full mt-4 bg-black text-white rounded-xl p-4 font-bold disabled:bg-gray-300"
-            >
-              💬 演奏者に連絡する
-            </button>
-
-          </section>
-
           <section className="mt-8">
+
             <h2 className="text-lg font-bold border-b pb-2">
               💬 応募時のメッセージ
             </h2>
@@ -588,12 +738,14 @@ export default function FacilityMatchDetailPage() {
           </section>
 
           <section className="mt-8 bg-gray-50 rounded-2xl p-5 border">
+
             <h2 className="text-lg font-bold">
               ⭐ 演奏者を評価
             </h2>
 
             {reviewed ? (
               <div className="mt-4 bg-white rounded-xl p-4">
+
                 <p className="text-gray-700 font-bold">
                   評価済みです
                 </p>
@@ -601,9 +753,11 @@ export default function FacilityMatchDetailPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   このマッチングはすでに評価しています。
                 </p>
+
               </div>
             ) : isCompleted ? (
               <div>
+
                 <p className="mt-3 text-sm text-gray-600">
                   演奏が完了しました。
                   演奏者への評価をお願いします。
@@ -619,9 +773,11 @@ export default function FacilityMatchDetailPage() {
                 >
                   ⭐ この演奏者を評価する
                 </button>
+
               </div>
             ) : (
               <div className="mt-4 bg-white rounded-xl p-4">
+
                 <p className="text-gray-700 font-bold">
                   演奏完了後に評価できます
                 </p>
@@ -630,8 +786,10 @@ export default function FacilityMatchDetailPage() {
                   演奏者の演奏が完了すると、
                   ここから評価できるようになります。
                 </p>
+
               </div>
             )}
+
           </section>
 
         </div>
