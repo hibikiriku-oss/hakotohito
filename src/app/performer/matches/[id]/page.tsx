@@ -422,15 +422,40 @@ export default function PerformerMatchDetailPage() {
           🎵 マッチング詳細
         </h1>
 
-        <div className="mt-5 bg-green-50 border border-green-200 rounded-2xl p-5">
-          <p className="text-green-700 font-bold">
-            🎉 マッチング成立
-          </p>
+        {/* マッチング状態 */}
+        {match.performance_status ===
+        "cancelled" ? (
+          <div className="mt-5 bg-red-50 border border-red-200 rounded-2xl p-5">
+            <p className="text-red-700 font-bold">
+              ⚠️ マッチングキャンセル
+            </p>
 
-          <p className="mt-2 text-sm text-green-700">
-            この施設への出演が決定しています。
-          </p>
-        </div>
+            <p className="mt-2 text-sm text-red-700">
+              このマッチングはキャンセルされています。
+            </p>
+          </div>
+        ) : match.performance_status ===
+          "completed" ? (
+          <div className="mt-5 bg-green-50 border border-green-200 rounded-2xl p-5">
+            <p className="text-green-700 font-bold">
+              ✅ マッチング完了
+            </p>
+
+            <p className="mt-2 text-sm text-green-700">
+              このマッチングでの演奏は完了しています。
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 bg-green-50 border border-green-200 rounded-2xl p-5">
+            <p className="text-green-700 font-bold">
+              🎉 マッチング成立
+            </p>
+
+            <p className="mt-2 text-sm text-green-700">
+              この施設への出演が決定しています。
+            </p>
+          </div>
+        )}
 
         {/* 演奏ステータス */}
         <section className="mt-4 bg-white rounded-2xl p-5 shadow-sm border">
