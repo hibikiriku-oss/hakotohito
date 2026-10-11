@@ -6,11 +6,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET(
-  request: NextRequest
-) {
+export async function GET(request: NextRequest) {
   try {
-    // LINEユーザーID取得
     const lineUserId =
       request.headers.get("x-line-user-id");
 
@@ -18,13 +15,12 @@ export async function GET(
       return NextResponse.json(
         {
           error:
-            "LINEユーザー情報がありません",
+            "LINEユーザーIDが指定されていません",
         },
         { status: 400 }
       );
     }
 
-    // LINEユーザーを取得
     const { data: user, error: userError } =
       await supabase
         .from("users")
@@ -33,21 +29,14 @@ export async function GET(
         .single();
 
     if (userError || !user) {
-      console.error(
-        "ユーザー取得エラー:",
-        userError
-      );
-
       return NextResponse.json(
         {
-          error:
-            "ユーザー情報が見つかりません",
+          error: "ユーザーが見つかりません",
         },
         { status: 404 }
       );
     }
 
-    // 演奏者を取得
     const { data: performer, error: performerError } =
       await supabase
         .from("performers")
@@ -56,11 +45,6 @@ export async function GET(
         .single();
 
     if (performerError || !performer) {
-      console.error(
-        "演奏者取得エラー:",
-        performerError
-      );
-
       return NextResponse.json(
         {
           error:
@@ -70,16 +54,18 @@ export async function GET(
       );
     }
 
-    // マッチング一覧を取得
     const { data: matches, error: matchesError } =
       await supabase
         .from("matches")
-        .select(`
+        .select(
+          `
           id,
           request_id,
           performer_id,
           matched_at,
           status,
+          performance_status,
+          completed_at,
           performance_requests (
             id,
             title,
@@ -100,7 +86,8 @@ export async function GET(
               description
             )
           )
-        `)
+          `
+        )
         .eq("performer_id", performer.id)
         .order("matched_at", {
           ascending: false,
@@ -108,23 +95,22 @@ export async function GET(
 
     if (matchesError) {
       console.error(
-        "マッチング取得エラー:",
+        "演奏者マッチング取得エラー:",
         matchesError
       );
 
       return NextResponse.json(
         {
           error:
-            matchesError.message,
+            "マッチング情報の取得に失敗しました",
         },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
-      matches: matches || [],
+      matches: matches ?? [],
     });
-
   } catch (error) {
     console.error(
       "演奏者マッチングAPIエラー:",
@@ -133,7 +119,8 @@ export async function GET(
 
     return NextResponse.json(
       {
-        error: "サーバーエラー",
+        error:
+          "マッチング情報の取得中にエラーが発生しました",
       },
       { status: 500 }
     );
