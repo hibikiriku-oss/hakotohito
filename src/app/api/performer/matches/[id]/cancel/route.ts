@@ -44,7 +44,9 @@ export async function POST(
     const { data: user, error: userError } =
       await supabase
         .from("users")
-        .select("id")
+        .select(
+          "id, line_user_id, display_name"
+        )
         .eq("line_user_id", lineUserId)
         .single();
 
@@ -66,7 +68,7 @@ export async function POST(
     const { data: performer, error: performerError } =
       await supabase
         .from("performers")
-        .select("id")
+        .select("id, name")
         .eq("user_id", user.id)
         .single();
 
@@ -86,15 +88,35 @@ export async function POST(
     }
 
     // 自分のマッチングか確認
+    // 通知に必要な案件・施設情報もここで取得
     const { data: match, error: matchError } =
       await supabase
         .from("matches")
         .select(
           `
           id,
+          request_id,
           performer_id,
           status,
-          performance_status
+          performance_status,
+          performance_requests (
+            id,
+            title,
+            performance_date,
+            start_time,
+            end_time,
+            facility_id,
+            facilities (
+              id,
+              name,
+              user_id,
+              users (
+                id,
+                line_user_id,
+                display_name
+              )
+            )
+          )
           `
         )
         .eq("id", matchId)
@@ -156,6 +178,36 @@ export async function POST(
       );
     }
 
+    // 案件情報を取得
+    const performanceRequest = Array.isArray(
+      match.performance_requests
+    )
+      ? match.performance_requests[0]
+      : match.performance_requests;
+
+    if (!performanceRequest) {
+      return NextResponse.json(
+        {
+          error:
+            "案件情報が見つかりません",
+        },
+        { status: 404 }
+      );
+    }
+
+    // 施設情報を取得
+    const facility = Array.isArray(
+      performanceRequest.facilities
+    )
+      ? performanceRequest.facilities[0]
+      : performanceRequest.facilities;
+
+    if (!facility) {
+      console.error(
+        "施設情報が見つかりません"
+      );
+    }
+
     // マッチングをキャンセル
     const { data: updatedMatch, error: updateError } =
       await supabase
@@ -194,11 +246,147 @@ export async function POST(
       );
     }
 
+    let notificationSent = false;
+
+    // 施設のLINEユーザーIDを取得
+    const facilityUser = facility?.users
+      ? Array.isArray(facility.users)
+        ? facility.users[0]
+        : facility.users
+      : null;
+
+    const facilityLineUserId =
+      facilityUser?.line_user_id;
+
+    // 施設へLINE通知
+    // 通知に失敗してもキャンセル処理自体は成功とする
+    if (
+      facilityLineUserId &&
+      process.env.LINE_CHANNEL_ACCESS_TOKEN
+    ) {
+      const miniAppBaseUrl =
+        "https://miniapp.line.me/2011785379-l5XCTbIf";
+
+      const matchUrl =
+        `${miniAppBaseUrl}/facility/matches/${matchId}`;
+
+      const lineResponse = await fetch(
+        "https://api.line.me/v2/bot/message/push",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization:
+              `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+          },
+          body: JSON.stringify({
+            to: facilityLineUserId,
+            messages: [
+              {
+                type: "flex",
+                altText:
+                  "マッチングがキャンセルされました",
+                contents: {
+                  type: "bubble",
+                  body: {
+                    type: "box",
+                    layout: "vertical",
+                    spacing: "md",
+                    contents: [
+                      {
+                        type: "text",
+                        text:
+                          "⚠️ マッチングキャンセル",
+                        weight: "bold",
+                        size: "xl",
+                      },
+                      {
+                        type: "text",
+                        text:
+                          "演奏者が今回のマッチングをキャンセルしました。",
+                        wrap: true,
+                      },
+                      {
+                        type: "separator",
+                        margin: "md",
+                      },
+                      {
+                        type: "text",
+                        text:
+                          performanceRequest.title,
+                        weight: "bold",
+                        size: "lg",
+                        wrap: true,
+                      },
+                      {
+                        type: "text",
+                        text:
+                          `演奏者：${
+                            performer.name ||
+                            user.display_name ||
+                            "演奏者"
+                          }`,
+                        wrap: true,
+                      },
+                    ],
+                  },
+                  footer: {
+                    type: "box",
+                    layout: "vertical",
+                    spacing: "sm",
+                    contents: [
+                      {
+                        type: "button",
+                        style: "primary",
+                        action: {
+                          type: "uri",
+                          label:
+                            "マッチングを確認する",
+                          uri: matchUrl,
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          }),
+        }
+      );
+
+      if (lineResponse.ok) {
+        notificationSent = true;
+      } else {
+        const lineError =
+          await lineResponse.text();
+
+        console.error(
+          "施設へのLINE通知エラー:",
+          lineError
+        );
+      }
+    } else {
+      if (!facilityLineUserId) {
+        console.error(
+          "施設のLINEユーザーIDが取得できません"
+        );
+      }
+
+      if (
+        !process.env.LINE_CHANNEL_ACCESS_TOKEN
+      ) {
+        console.error(
+          "LINE_CHANNEL_ACCESS_TOKENが設定されていません"
+        );
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message:
         "マッチングをキャンセルしました",
       match: updatedMatch,
+      notificationSent,
     });
   } catch (error) {
     console.error(
