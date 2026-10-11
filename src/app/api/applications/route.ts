@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendLinePushMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -318,153 +319,124 @@ export async function POST(request: NextRequest) {
             facilityUserError
           );
         } else {
-          const channelAccessToken =
-            process.env
-              .LINE_CHANNEL_ACCESS_TOKEN;
+          const performerName =
+            performer.name ||
+            "演奏者";
 
-          if (!channelAccessToken) {
-            console.error(
-              "LINE_CHANNEL_ACCESS_TOKENが設定されていません"
-            );
-          } else {
-            const performerName =
-              performer.name ||
-              "演奏者";
+          const facilityName =
+            facility.name ||
+            facilityUser.display_name ||
+            "施設";
 
-            const facilityName =
-              facility.name ||
-              facilityUser.display_name ||
-              "施設";
+          // LINE MINI Appの案件詳細ページURL
+          const detailUrl =
+            "https://miniapp.line.me/2011785379-l5XCTbIf/facility/requests/" +
+            requestId;
 
-            // LINE MINI Appの案件詳細ページURL
-            const detailUrl =
-              "https://miniapp.line.me/2011785379-l5XCTbIf/facility/requests/" +
-              requestId;
-
-            // LINE Flex Message
-            const messages = [
-              {
-                type: "flex",
-                altText:
-                  "🎵 新しい応募があります！",
-                contents: {
-                  type: "bubble",
-                  body: {
-                    type: "box",
-                    layout: "vertical",
-                    contents: [
-                      {
-                        type: "text",
-                        text:
-                          "🎵 新しい応募があります！",
-                        weight: "bold",
-                        size: "xl",
-                        wrap: true,
+          // LINE Flex Message
+          const messages = [
+            {
+              type: "flex",
+              altText:
+                "🎵 新しい応募があります！",
+              contents: {
+                type: "bubble",
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  contents: [
+                    {
+                      type: "text",
+                      text:
+                        "🎵 新しい応募があります！",
+                      weight: "bold",
+                      size: "xl",
+                      wrap: true,
+                    },
+                    {
+                      type: "text",
+                      text:
+                        facilityName +
+                        "さんの案件に、" +
+                        performerName +
+                        "さんから応募がありました。",
+                      margin: "md",
+                      wrap: true,
+                    },
+                    {
+                      type: "text",
+                      text:
+                        "案件：" +
+                        performanceRequest.title,
+                      margin: "md",
+                      wrap: true,
+                    },
+                    {
+                      type: "text",
+                      text:
+                        "演奏日時：" +
+                        performanceRequest.performance_date +
+                        "\n" +
+                        "時間：" +
+                        performanceRequest.start_time +
+                        " ～ " +
+                        performanceRequest.end_time +
+                        "\n" +
+                        "場所：" +
+                        (performanceRequest.area ||
+                          "未設定"),
+                      margin: "md",
+                      wrap: true,
+                    },
+                    {
+                      type: "text",
+                      text:
+                        message
+                          ? "応募メッセージ：\n" +
+                            message
+                          : "応募メッセージ：なし",
+                      margin: "md",
+                      wrap: true,
+                    },
+                  ],
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      action: {
+                        type: "uri",
+                        label:
+                          "応募者を確認する",
+                        uri: detailUrl,
                       },
-                      {
-                        type: "text",
-                        text:
-                          facilityName +
-                          "さんの案件に、" +
-                          performerName +
-                          "さんから応募がありました。",
-                        margin: "md",
-                        wrap: true,
-                      },
-                      {
-                        type: "text",
-                        text:
-                          "案件：" +
-                          performanceRequest.title,
-                        margin: "md",
-                        wrap: true,
-                      },
-                      {
-                        type: "text",
-                        text:
-                          "演奏日時：" +
-                          performanceRequest.performance_date +
-                          "\n" +
-                          "時間：" +
-                          performanceRequest.start_time +
-                          " ～ " +
-                          performanceRequest.end_time +
-                          "\n" +
-                          "場所：" +
-                          (performanceRequest.area ||
-                            "未設定"),
-                        margin: "md",
-                        wrap: true,
-                      },
-                      {
-                        type: "text",
-                        text:
-                          message
-                            ? "応募メッセージ：\n" +
-                              message
-                            : "応募メッセージ：なし",
-                        margin: "md",
-                        wrap: true,
-                      },
-                    ],
-                  },
-                  footer: {
-                    type: "box",
-                    layout: "vertical",
-                    contents: [
-                      {
-                        type: "button",
-                        style: "primary",
-                        action: {
-                          type: "uri",
-                          label:
-                            "応募者を確認する",
-                          uri: detailUrl,
-                        },
-                      },
-                    ],
-                  },
+                    },
+                  ],
                 },
               },
-            ];
+            },
+          ];
 
-            const lineResponse =
-              await fetch(
-                "https://api.line.me/v2/bot/message/push",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type":
-                      "application/json",
-                    Authorization:
-                      "Bearer " +
-                      channelAccessToken,
-                  },
-                  body: JSON.stringify({
-                    to: facilityUser.line_user_id,
-                    messages,
-                  }),
-                }
-              );
+          const lineResult =
+            await sendLinePushMessage(
+              facilityUser.line_user_id,
+              messages
+            );
 
-            if (
-              lineResponse.ok
-            ) {
-              notificationSent = true;
+          if (lineResult.success) {
+            notificationSent = true;
 
-              console.log(
-                "施設へのLINE通知送信成功"
-              );
-            } else {
-              const lineError =
-                await lineResponse.text();
-
-              console.error(
-                "施設へのLINE通知送信エラー:",
-                lineResponse.status,
-                lineError
-              );
-            }
+            console.log(
+              "施設へのLINE通知送信成功"
+            );
+          } else {
+            console.error(
+              "施設へのLINE通知送信失敗:",
+              lineResult.error
+            );
           }
         }
       }
