@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendLinePushMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -286,125 +287,101 @@ export async function POST(
 
     // 施設へLINE通知
     // 通知に失敗してもキャンセル処理自体は成功とする
-    if (
-      facilityLineUserId &&
-      process.env.LINE_CHANNEL_ACCESS_TOKEN
-    ) {
+    if (facilityLineUserId) {
       const miniAppBaseUrl =
         "https://miniapp.line.me/2011785379-l5XCTbIf";
 
       const matchUrl =
         `${miniAppBaseUrl}/facility/matches/${matchId}`;
 
-      const lineResponse = await fetch(
-        "https://api.line.me/v2/bot/message/push",
+      const messages = [
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization:
-              `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
-          },
-          body: JSON.stringify({
-            to: facilityLineUserId,
-            messages: [
-              {
-                type: "flex",
-                altText:
-                  "マッチングがキャンセルされました",
-                contents: {
-                  type: "bubble",
-                  body: {
-                    type: "box",
-                    layout: "vertical",
-                    spacing: "md",
-                    contents: [
-                      {
-                        type: "text",
-                        text:
-                          "⚠️ マッチングキャンセル",
-                        weight: "bold",
-                        size: "xl",
-                      },
-                      {
-                        type: "text",
-                        text:
-                          "演奏者が今回のマッチングをキャンセルしました。",
-                        wrap: true,
-                      },
-                      {
-                        type: "separator",
-                        margin: "md",
-                      },
-                      {
-                        type: "text",
-                        text:
-                          performanceRequest.title,
-                        weight: "bold",
-                        size: "lg",
-                        wrap: true,
-                      },
-                      {
-                        type: "text",
-                        text:
-                          `演奏者：${
-                            performer.name ||
-                            user.display_name ||
-                            "演奏者"
-                          }`,
-                        wrap: true,
-                      },
-                    ],
-                  },
-                  footer: {
-                    type: "box",
-                    layout: "vertical",
-                    spacing: "sm",
-                    contents: [
-                      {
-                        type: "button",
-                        style: "primary",
-                        action: {
-                          type: "uri",
-                          label:
-                            "マッチングを確認する",
-                          uri: matchUrl,
-                        },
-                      },
-                    ],
+          type: "flex",
+          altText:
+            "マッチングがキャンセルされました",
+          contents: {
+            type: "bubble",
+            body: {
+              type: "box",
+              layout: "vertical",
+              spacing: "md",
+              contents: [
+                {
+                  type: "text",
+                  text:
+                    "⚠️ マッチングキャンセル",
+                  weight: "bold",
+                  size: "xl",
+                },
+                {
+                  type: "text",
+                  text:
+                    "演奏者が今回のマッチングをキャンセルしました。",
+                  wrap: true,
+                },
+                {
+                  type: "separator",
+                  margin: "md",
+                },
+                {
+                  type: "text",
+                  text:
+                    performanceRequest.title,
+                  weight: "bold",
+                  size: "lg",
+                  wrap: true,
+                },
+                {
+                  type: "text",
+                  text:
+                    `演奏者：${
+                      performer.name ||
+                      user.display_name ||
+                      "演奏者"
+                    }`,
+                  wrap: true,
+                },
+              ],
+            },
+            footer: {
+              type: "box",
+              layout: "vertical",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "button",
+                  style: "primary",
+                  action: {
+                    type: "uri",
+                    label:
+                      "マッチングを確認する",
+                    uri: matchUrl,
                   },
                 },
-              },
-            ],
-          }),
-        }
-      );
+              ],
+            },
+          },
+        },
+      ];
 
-      if (lineResponse.ok) {
+      const lineResult =
+        await sendLinePushMessage(
+          facilityLineUserId,
+          messages
+        );
+
+      if (lineResult.success) {
         notificationSent = true;
       } else {
-        const lineError =
-          await lineResponse.text();
-
         console.error(
           "施設へのLINE通知エラー:",
-          lineError
+          lineResult.error
         );
       }
     } else {
-      if (!facilityLineUserId) {
-        console.error(
-          "施設のLINEユーザーIDが取得できません"
-        );
-      }
-
-      if (
-        !process.env.LINE_CHANNEL_ACCESS_TOKEN
-      ) {
-        console.error(
-          "LINE_CHANNEL_ACCESS_TOKENが設定されていません"
-        );
-      }
+      console.error(
+        "施設のLINEユーザーIDが取得できません"
+      );
     }
 
     return NextResponse.json({

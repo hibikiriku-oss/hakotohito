@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendLinePushMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -273,104 +274,91 @@ export async function POST(
 
     const facilityLineUserId = facilityUser?.line_user_id;
 
-    if (
-      facilityLineUserId &&
-      process.env.LINE_CHANNEL_ACCESS_TOKEN
-    ) {
+    if (facilityLineUserId) {
       const miniAppBaseUrl =
         "https://miniapp.line.me/2011785379-l5XCTbIf";
 
       const matchUrl =
         `${miniAppBaseUrl}/facility/matches/${match.id}`;
 
-      const lineResponse = await fetch(
-        "https://api.line.me/v2/bot/message/push",
+      const messages = [
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization:
-              `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
-          },
-          body: JSON.stringify({
-            to: facilityLineUserId,
-            messages: [
-              {
-                type: "flex",
-                altText:
-                  "演奏依頼が承諾され、マッチングが成立しました",
-                contents: {
-                  type: "bubble",
-                  body: {
-                    type: "box",
-                    layout: "vertical",
-                    spacing: "md",
-                    contents: [
-                      {
-                        type: "text",
-                        text: "🎉 マッチング成立",
-                        weight: "bold",
-                        size: "xl",
-                      },
-                      {
-                        type: "text",
-                        text:
-                          "演奏者があなたの依頼を承諾しました。",
-                        wrap: true,
-                      },
-                      {
-                        type: "separator",
-                        margin: "md",
-                      },
-                      {
-                        type: "text",
-                        text: performanceRequest.title,
-                        weight: "bold",
-                        size: "lg",
-                        wrap: true,
-                      },
-                      {
-                        type: "text",
-                        text: `演奏者：${
-                          performer.name ||
-                          user.display_name ||
-                          "演奏者"
-                        }`,
-                        wrap: true,
-                      },
-                    ],
-                  },
-                  footer: {
-                    type: "box",
-                    layout: "vertical",
-                    spacing: "sm",
-                    contents: [
-                      {
-                        type: "button",
-                        style: "primary",
-                        action: {
-                          type: "uri",
-                          label: "マッチングを確認する",
-                          uri: matchUrl,
-                        },
-                      },
-                    ],
+          type: "flex",
+          altText:
+            "演奏依頼が承諾され、マッチングが成立しました",
+          contents: {
+            type: "bubble",
+            body: {
+              type: "box",
+              layout: "vertical",
+              spacing: "md",
+              contents: [
+                {
+                  type: "text",
+                  text: "🎉 マッチング成立",
+                  weight: "bold",
+                  size: "xl",
+                },
+                {
+                  type: "text",
+                  text:
+                    "演奏者があなたの依頼を承諾しました。",
+                  wrap: true,
+                },
+                {
+                  type: "separator",
+                  margin: "md",
+                },
+                {
+                  type: "text",
+                  text: performanceRequest.title,
+                  weight: "bold",
+                  size: "lg",
+                  wrap: true,
+                },
+                {
+                  type: "text",
+                  text: `演奏者：${
+                    performer.name ||
+                    user.display_name ||
+                    "演奏者"
+                  }`,
+                  wrap: true,
+                },
+              ],
+            },
+            footer: {
+              type: "box",
+              layout: "vertical",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "button",
+                  style: "primary",
+                  action: {
+                    type: "uri",
+                    label: "マッチングを確認する",
+                    uri: matchUrl,
                   },
                 },
-              },
-            ],
-          }),
-        }
-      );
+              ],
+            },
+          },
+        },
+      ];
 
-      if (lineResponse.ok) {
+      const lineResult =
+        await sendLinePushMessage(
+          facilityLineUserId,
+          messages
+        );
+
+      if (lineResult.success) {
         notificationSent = true;
       } else {
-        const lineError = await lineResponse.text();
-
         console.error(
           "施設へのLINE通知エラー:",
-          lineError
+          lineResult.error
         );
       }
     }

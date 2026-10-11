@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendLinePushMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -261,142 +262,119 @@ export async function POST(request: NextRequest) {
     let notificationSent = false;
 
     try {
-      const channelAccessToken =
-        process.env.LINE_CHANNEL_ACCESS_TOKEN;
+      const performerName =
+        performer.name ||
+        performerUser.display_name ||
+        "演奏者";
 
-      if (!channelAccessToken) {
-        console.error(
-          "LINE_CHANNEL_ACCESS_TOKENが設定されていません"
-        );
-      } else {
-        const performerName =
-          performer.name ||
-          performerUser.display_name ||
-          "演奏者";
+      const facilityName =
+        facility.name ||
+        user.display_name ||
+        "施設";
 
-        const facilityName =
-          facility.name ||
-          user.display_name ||
-          "施設";
+      const detailUrl =
+        "https://miniapp.line.me/2011785379-l5XCTbIf/performer/invitations";
 
-        const detailUrl =
-          "https://miniapp.line.me/2011785379-l5XCTbIf/performer/invitations";
-
-        const messages = [
-          {
-            type: "flex",
-            altText: "施設から演奏依頼が届きました",
-            contents: {
-              type: "bubble",
-              body: {
-                type: "box",
-                layout: "vertical",
-                contents: [
-                  {
-                    type: "text",
-                    text: "🎵 演奏依頼が届きました",
-                    weight: "bold",
-                    size: "xl",
-                    wrap: true,
+      const messages = [
+        {
+          type: "flex",
+          altText: "施設から演奏依頼が届きました",
+          contents: {
+            type: "bubble",
+            body: {
+              type: "box",
+              layout: "vertical",
+              contents: [
+                {
+                  type: "text",
+                  text: "🎵 演奏依頼が届きました",
+                  weight: "bold",
+                  size: "xl",
+                  wrap: true,
+                },
+                {
+                  type: "text",
+                  text:
+                    facilityName +
+                    "から演奏依頼が届いています。",
+                  margin: "md",
+                  wrap: true,
+                },
+                {
+                  type: "text",
+                  text:
+                    "案件：" +
+                    performanceRequest.title,
+                  margin: "md",
+                  wrap: true,
+                },
+                {
+                  type: "text",
+                  text:
+                    "演奏日：" +
+                    performanceRequest.performance_date +
+                    "\n" +
+                    "時間：" +
+                    performanceRequest.start_time +
+                    " ～ " +
+                    performanceRequest.end_time +
+                    "\n" +
+                    "場所：" +
+                    (performanceRequest.area ||
+                      "未設定"),
+                  margin: "md",
+                  wrap: true,
+                },
+                ...(message
+                  ? [
+                      {
+                        type: "text",
+                        text:
+                          "施設からのメッセージ\n" +
+                          message,
+                        margin: "md",
+                        wrap: true,
+                      },
+                    ]
+                  : []),
+              ],
+            },
+            footer: {
+              type: "box",
+              layout: "vertical",
+              contents: [
+                {
+                  type: "button",
+                  style: "primary",
+                  action: {
+                    type: "uri",
+                    label: "依頼を確認する",
+                    uri: detailUrl,
                   },
-                  {
-                    type: "text",
-                    text:
-                      facilityName +
-                      "から演奏依頼が届いています。",
-                    margin: "md",
-                    wrap: true,
-                  },
-                  {
-                    type: "text",
-                    text:
-                      "案件：" +
-                      performanceRequest.title,
-                    margin: "md",
-                    wrap: true,
-                  },
-                  {
-                    type: "text",
-                    text:
-                      "演奏日：" +
-                      performanceRequest.performance_date +
-                      "\n" +
-                      "時間：" +
-                      performanceRequest.start_time +
-                      " ～ " +
-                      performanceRequest.end_time +
-                      "\n" +
-                      "場所：" +
-                      (performanceRequest.area ||
-                        "未設定"),
-                    margin: "md",
-                    wrap: true,
-                  },
-                  ...(message
-                    ? [
-                        {
-                          type: "text",
-                          text:
-                            "施設からのメッセージ\n" +
-                            message,
-                          margin: "md",
-                          wrap: true,
-                        },
-                      ]
-                    : []),
-                ],
-              },
-              footer: {
-                type: "box",
-                layout: "vertical",
-                contents: [
-                  {
-                    type: "button",
-                    style: "primary",
-                    action: {
-                      type: "uri",
-                      label: "依頼を確認する",
-                      uri: detailUrl,
-                    },
-                  },
-                ],
-              },
+                },
+              ],
             },
           },
-        ];
+        },
+      ];
 
-        const lineResponse = await fetch(
-          "https://api.line.me/v2/bot/message/push",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization:
-                "Bearer " + channelAccessToken,
-            },
-            body: JSON.stringify({
-              to: performerUser.line_user_id,
-              messages,
-            }),
-          }
+      const lineResult =
+        await sendLinePushMessage(
+          performerUser.line_user_id,
+          messages
         );
 
-        if (lineResponse.ok) {
-          notificationSent = true;
+      if (lineResult.success) {
+        notificationSent = true;
 
-          console.log(
-            "演奏者へのLINE通知に成功しました"
-          );
-        } else {
-          const lineError =
-            await lineResponse.text();
-
-          console.error(
-            "LINE通知エラー:",
-            lineResponse.status,
-            lineError
-          );
-        }
+        console.log(
+          "演奏者へのLINE通知に成功しました"
+        );
+      } else {
+        console.error(
+          "演奏者へのLINE通知失敗:",
+          lineResult.error
+        );
       }
     } catch (notificationError) {
       console.error(
