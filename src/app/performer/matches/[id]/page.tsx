@@ -33,7 +33,10 @@ type Match = {
   performer_id: string;
   matched_at: string;
   status: string;
-  performance_status: "scheduled" | "completed" | "cancelled";
+  performance_status:
+    | "scheduled"
+    | "completed"
+    | "cancelled";
   completed_at: string | null;
   performance_requests: PerformanceRequest | null;
 };
@@ -54,6 +57,9 @@ export default function PerformerMatchDetailPage() {
     useState(true);
 
   const [completing, setCompleting] =
+    useState(false);
+
+  const [cancelling, setCancelling] =
     useState(false);
 
   const [error, setError] =
@@ -228,6 +234,89 @@ export default function PerformerMatchDetailPage() {
     }
   }
 
+  async function handleCancel() {
+    if (!match) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この出演をキャンセルしますか？\n\nキャンセルすると、このマッチングでは演奏できなくなります。"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setCancelling(true);
+      setError("");
+
+      const liffId =
+        process.env.NEXT_PUBLIC_LIFF_ID;
+
+      if (!liffId) {
+        throw new Error(
+          "LINE MINI Appの設定がありません"
+        );
+      }
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile =
+        await liff.getProfile();
+
+      const response = await fetch(
+        `/api/performer/matches/${matchId}/cancel`,
+        {
+          method: "POST",
+          headers: {
+            "x-line-user-id":
+              profile.userId,
+          },
+        }
+      );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "マッチングのキャンセルに失敗しました"
+        );
+      }
+
+      setMatch((currentMatch) => {
+        if (!currentMatch) {
+          return currentMatch;
+        }
+
+        return {
+          ...currentMatch,
+          status: "cancelled",
+          performance_status:
+            "cancelled",
+        };
+      });
+    } catch (error) {
+      console.error(
+        "マッチングキャンセル処理エラー:",
+        error
+      );
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "マッチングのキャンセルに失敗しました"
+      );
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   function formatDate(date: string) {
     const [year, month, day] =
       date.split("-");
@@ -372,6 +461,10 @@ export default function PerformerMatchDetailPage() {
               <p className="text-gray-600 font-bold">
                 キャンセル済み
               </p>
+
+              <p className="mt-1 text-sm text-gray-500">
+                この出演はキャンセルされています。
+              </p>
             </div>
           ) : (
             <>
@@ -387,13 +480,27 @@ export default function PerformerMatchDetailPage() {
 
               <button
                 onClick={handleComplete}
-                disabled={completing}
+                disabled={completing || cancelling}
                 className="w-full mt-4 bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
               >
                 {completing
                   ? "更新中..."
                   : "🎵 演奏完了"}
               </button>
+
+              <button
+                onClick={handleCancel}
+                disabled={completing || cancelling}
+                className="w-full mt-3 bg-white border border-red-300 text-red-600 rounded-xl p-4 font-bold disabled:opacity-50"
+              >
+                {cancelling
+                  ? "キャンセル中..."
+                  : "⚠️ 出演をキャンセルする"}
+              </button>
+
+              <p className="mt-2 text-xs text-gray-400 text-center">
+                ※ キャンセルすると、このマッチングでは出演できなくなります。
+              </p>
             </>
           )}
 
