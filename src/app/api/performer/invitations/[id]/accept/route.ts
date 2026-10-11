@@ -63,30 +63,31 @@ export async function POST(
     }
 
     // 施設から送られた依頼を取得
-    const { data: application, error: applicationError } = await supabase
-      .from("applications")
-      .select(`
-        id,
-        request_id,
-        performer_id,
-        message,
-        status,
-        source,
-        performance_requests (
+    const { data: application, error: applicationError } =
+      await supabase
+        .from("applications")
+        .select(`
           id,
-          title,
-          performance_date,
-          start_time,
-          end_time,
-          facility_id,
-          status
-        )
-      `)
-      .eq("id", id)
-      .eq("performer_id", performer.id)
-      .eq("source", "facility_invite")
-      .eq("status", "pending")
-      .single();
+          request_id,
+          performer_id,
+          message,
+          status,
+          source,
+          performance_requests (
+            id,
+            title,
+            performance_date,
+            start_time,
+            end_time,
+            facility_id,
+            status
+          )
+        `)
+        .eq("id", id)
+        .eq("performer_id", performer.id)
+        .eq("source", "facility_invite")
+        .eq("status", "pending")
+        .single();
 
     if (applicationError || !application) {
       console.error("依頼取得エラー:", applicationError);
@@ -120,16 +121,23 @@ export async function POST(
       );
     }
 
-    // 念のため既存のマッチングを確認
+    // 現在有効なマッチングが存在するか確認
+    //
+    // 同じ案件に過去のキャンセル済みマッチングが
+    // 残っていても、それは再マッチングを妨げない。
     const { data: existingMatch, error: existingMatchError } =
       await supabase
         .from("matches")
         .select("id")
         .eq("request_id", performanceRequest.id)
+        .eq("status", "active")
         .maybeSingle();
 
     if (existingMatchError) {
-      console.error("既存マッチング確認エラー:", existingMatchError);
+      console.error(
+        "既存マッチング確認エラー:",
+        existingMatchError
+      );
 
       return NextResponse.json(
         { error: "マッチング状態の確認に失敗しました" },
@@ -147,7 +155,10 @@ export async function POST(
     }
 
     // 依頼を承諾
-    const { data: acceptedApplication, error: acceptError } = await supabase
+    const {
+      data: acceptedApplication,
+      error: acceptError,
+    } = await supabase
       .from("applications")
       .update({
         status: "accepted",
@@ -262,11 +273,15 @@ export async function POST(
 
     const facilityLineUserId = facilityUser?.line_user_id;
 
-    if (facilityLineUserId && process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    if (
+      facilityLineUserId &&
+      process.env.LINE_CHANNEL_ACCESS_TOKEN
+    ) {
       const miniAppBaseUrl =
         "https://miniapp.line.me/2011785379-l5XCTbIf";
 
-      const matchUrl = `${miniAppBaseUrl}/facility/matches/${match.id}`;
+      const matchUrl =
+        `${miniAppBaseUrl}/facility/matches/${match.id}`;
 
       const lineResponse = await fetch(
         "https://api.line.me/v2/bot/message/push",
@@ -274,14 +289,16 @@ export async function POST(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
+            Authorization:
+              `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
           },
           body: JSON.stringify({
             to: facilityLineUserId,
             messages: [
               {
                 type: "flex",
-                altText: "演奏依頼が承諾され、マッチングが成立しました",
+                altText:
+                  "演奏依頼が承諾され、マッチングが成立しました",
                 contents: {
                   type: "bubble",
                   body: {
@@ -297,7 +314,8 @@ export async function POST(
                       },
                       {
                         type: "text",
-                        text: "演奏者があなたの依頼を承諾しました。",
+                        text:
+                          "演奏者があなたの依頼を承諾しました。",
                         wrap: true,
                       },
                       {
@@ -349,21 +367,32 @@ export async function POST(
         notificationSent = true;
       } else {
         const lineError = await lineResponse.text();
-        console.error("施設へのLINE通知エラー:", lineError);
+
+        console.error(
+          "施設へのLINE通知エラー:",
+          lineError
+        );
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: "依頼を承諾し、マッチングが成立しました",
+      message:
+        "依頼を承諾し、マッチングが成立しました",
       match,
       notificationSent,
     });
   } catch (error) {
-    console.error("依頼承諾APIエラー:", error);
+    console.error(
+      "依頼承諾APIエラー:",
+      error
+    );
 
     return NextResponse.json(
-      { error: "依頼の承諾中にエラーが発生しました" },
+      {
+        error:
+          "依頼の承諾中にエラーが発生しました",
+      },
       { status: 500 }
     );
   }

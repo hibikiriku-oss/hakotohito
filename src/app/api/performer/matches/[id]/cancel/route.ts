@@ -65,12 +65,14 @@ export async function POST(
     }
 
     // 演奏者プロフィールを取得
-    const { data: performer, error: performerError } =
-      await supabase
-        .from("performers")
-        .select("id, name")
-        .eq("user_id", user.id)
-        .single();
+    const {
+      data: performer,
+      error: performerError,
+    } = await supabase
+      .from("performers")
+      .select("id, name")
+      .eq("user_id", user.id)
+      .single();
 
     if (performerError || !performer) {
       console.error(
@@ -179,11 +181,12 @@ export async function POST(
     }
 
     // 案件情報を取得
-    const performanceRequest = Array.isArray(
-      match.performance_requests
-    )
-      ? match.performance_requests[0]
-      : match.performance_requests;
+    const performanceRequest =
+      Array.isArray(
+        match.performance_requests
+      )
+        ? match.performance_requests[0]
+        : match.performance_requests;
 
     if (!performanceRequest) {
       return NextResponse.json(
@@ -209,27 +212,29 @@ export async function POST(
     }
 
     // マッチングをキャンセル
-    const { data: updatedMatch, error: updateError } =
-      await supabase
-        .from("matches")
-        .update({
-          status: "cancelled",
-          performance_status: "cancelled",
-        })
-        .eq("id", matchId)
-        .eq("performer_id", performer.id)
-        .select(
-          `
-          id,
-          request_id,
-          performer_id,
-          matched_at,
-          status,
-          performance_status,
-          completed_at
-          `
-        )
-        .single();
+    const {
+      data: updatedMatch,
+      error: updateError,
+    } = await supabase
+      .from("matches")
+      .update({
+        status: "cancelled",
+        performance_status: "cancelled",
+      })
+      .eq("id", matchId)
+      .eq("performer_id", performer.id)
+      .select(
+        `
+        id,
+        request_id,
+        performer_id,
+        matched_at,
+        status,
+        performance_status,
+        completed_at
+        `
+      )
+      .single();
 
     if (updateError) {
       console.error(
@@ -244,6 +249,27 @@ export async function POST(
         },
         { status: 500 }
       );
+    }
+
+    // キャンセルされた案件を再募集状態に戻す
+    const {
+      error: requestUpdateError,
+    } = await supabase
+      .from("performance_requests")
+      .update({
+        status: "open",
+      })
+      .eq("id", performanceRequest.id);
+
+    if (requestUpdateError) {
+      console.error(
+        "案件再募集状態への更新エラー:",
+        requestUpdateError
+      );
+
+      // マッチングのキャンセル自体は完了しているため、
+      // ここではキャンセル処理を失敗扱いにせず、
+      // エラーをログに残す。
     }
 
     let notificationSent = false;
@@ -384,7 +410,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message:
-        "マッチングをキャンセルしました",
+        "マッチングをキャンセルし、案件を再募集状態にしました",
       match: updatedMatch,
       notificationSent,
     });
