@@ -18,6 +18,53 @@ type ReviewData = {
   reviews: Review[];
 };
 
+type StatusLevel =
+  | "beginner"
+  | "amateur"
+  | "pro"
+  | "";
+
+const statusLevelOptions: {
+  value: Exclude<StatusLevel, "">;
+  label: string;
+  shortLabel: string;
+  description: string;
+  colorClass: string;
+  borderClass: string;
+  textClass: string;
+}[] = [
+  {
+    value: "beginner",
+    label: "初心者",
+    shortLabel: "BEGINNER",
+    description:
+      "人前での演奏経験がほぼ0",
+    colorClass: "bg-green-50",
+    borderClass: "border-green-200",
+    textClass: "text-green-700",
+  },
+  {
+    value: "amateur",
+    label: "アマチュア",
+    shortLabel: "AMATEUR",
+    description:
+      "人前での演奏は度々こなしているが、有料チケットを購入してもらえるほどの腕前ではない",
+    colorClass: "bg-blue-50",
+    borderClass: "border-blue-200",
+    textClass: "text-blue-700",
+  },
+  {
+    value: "pro",
+    label: "プロ",
+    shortLabel: "PRO",
+    description:
+      "演奏料やレッスン代金を生活の糧にしている",
+    colorClass: "bg-violet-200",
+    borderClass: "border-violet-400",
+    textClass: "text-violet-900",
+  },
+];
+
 export default function PerformerProfileEditPage() {
   const router = useRouter();
 
@@ -38,6 +85,9 @@ export default function PerformerProfileEditPage() {
 
   const [bio, setBio] =
     useState("");
+
+  const [statusLevel, setStatusLevel] =
+    useState<StatusLevel>("");
 
   const [performerId, setPerformerId] =
     useState("");
@@ -123,6 +173,21 @@ export default function PerformerProfileEditPage() {
       setBio(
         performer.bio || ""
       );
+
+      if (
+        performer.status_level ===
+          "beginner" ||
+        performer.status_level ===
+          "amateur" ||
+        performer.status_level ===
+          "pro"
+      ) {
+        setStatusLevel(
+          performer.status_level
+        );
+      } else {
+        setStatusLevel("");
+      }
 
       if (performer.id) {
         await loadReviews(
@@ -305,7 +370,8 @@ export default function PerformerProfileEditPage() {
       !name ||
       !area ||
       !instruments ||
-      !genres
+      !genres ||
+      !statusLevel
     ) {
       alert(
         "必須項目を入力してください"
@@ -355,6 +421,7 @@ export default function PerformerProfileEditPage() {
                   )
                   .filter(Boolean),
               bio,
+              statusLevel,
             }),
           }
         );
@@ -763,6 +830,90 @@ export default function PerformerProfileEditPage() {
               <p className="text-xs text-gray-400 mt-2">
                 複数ある場合は「,」で区切ってください。
               </p>
+            </div>
+
+            {/* 演奏レベル */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="font-bold text-sm">
+                  演奏レベル
+                </label>
+
+                <span className="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full">
+                  必須
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-400 leading-5 mb-4">
+                ご自身の判断で近いものを選択してください。
+                <br />
+                このレベルは自己申告であり、運営による認定ではありません。
+              </p>
+
+              <div className="space-y-3">
+                {statusLevelOptions.map(
+                  (option) => {
+                    const selected =
+                      statusLevel ===
+                      option.value;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setStatusLevel(
+                            option.value
+                          )
+                        }
+                        disabled={saving}
+                        className={`w-full text-left rounded-2xl border p-4 transition ${
+                          selected
+                            ? "border-black ring-2 ring-black/10"
+                            : "border-gray-200"
+                        } bg-white hover:bg-gray-50 disabled:opacity-50`}
+                      >
+                        <div className="flex items-center gap-4">
+                          {/* ワッペン */}
+                          <div
+                            className={`shrink-0 w-[86px] h-[64px] flex flex-col items-center justify-center border-2 shadow-sm ${option.colorClass} ${option.borderClass} ${option.textClass}`}
+                            style={{
+                              clipPath:
+                                "polygon(8% 0%, 92% 0%, 100% 12%, 100% 82%, 82% 82%, 50% 100%, 18% 82%, 0% 82%, 0% 12%)",
+                            }}
+                          >
+                            <span className="text-[10px] font-black tracking-wider">
+                              {option.shortLabel}
+                            </span>
+
+                            <span className="text-sm font-black mt-0.5">
+                              {option.label}
+                            </span>
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-gray-900">
+                                {option.label}
+                              </p>
+
+                              {selected && (
+                                <span className="text-[10px] bg-black text-white px-2 py-0.5 rounded-full">
+                                  選択中
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-gray-500 leading-5 mt-1">
+                              {option.description}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
             </div>
 
             {/* 自己紹介 */}

@@ -58,7 +58,7 @@ export async function GET(
     } = await supabase
       .from("performers")
       .select(
-        "id, user_id, name, instruments, genres, area, bio"
+        "id, user_id, name, instruments, genres, area, bio, status_level"
       )
       .eq("user_id", user.id)
       .single();
@@ -136,6 +136,11 @@ export async function PATCH(
         ? body.bio.trim()
         : "";
 
+    const statusLevel =
+      typeof body.statusLevel === "string"
+        ? body.statusLevel.trim()
+        : "";
+
     const instruments = Array.isArray(
       body.instruments
     )
@@ -168,12 +173,30 @@ export async function PATCH(
       !name ||
       !area ||
       instruments.length === 0 ||
-      genres.length === 0
+      genres.length === 0 ||
+      !statusLevel
     ) {
       return NextResponse.json(
         {
           error:
             "必須項目を入力してください",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 演奏レベルの値を厳密にチェック
+    if (
+      ![
+        "beginner",
+        "amateur",
+        "pro",
+      ].includes(statusLevel)
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "演奏レベルの指定が正しくありません",
         },
         { status: 400 }
       );
@@ -241,10 +264,11 @@ export async function PATCH(
         instruments,
         genres,
         bio,
+        status_level: statusLevel,
       })
       .eq("id", performer.id)
       .select(
-        "id, user_id, name, instruments, genres, area, bio"
+        "id, user_id, name, instruments, genres, area, bio, status_level"
       )
       .single();
 
