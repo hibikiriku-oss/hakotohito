@@ -1,9 +1,70 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import liff from "@line/liff";
 
 export default function PerformerHomePage() {
   const router = useRouter();
+
+  const [coinBalance, setCoinBalance] =
+    useState<number | null>(null);
+
+  const [coinLoading, setCoinLoading] =
+    useState(true);
+
+  useEffect(() => {
+    async function loadCoinBalance() {
+      try {
+        await liff.init({
+          liffId:
+            process.env.NEXT_PUBLIC_LIFF_ID!,
+        });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile =
+          await liff.getProfile();
+
+        const response = await fetch(
+          "/api/coins/balance",
+          {
+            headers: {
+              "x-line-user-id":
+                profile.userId,
+            },
+            cache: "no-store",
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error ||
+              "コイン残高の取得に失敗しました"
+          );
+        }
+
+        setCoinBalance(
+          data.coinBalance ?? 0
+        );
+      } catch (error) {
+        console.error(
+          "コイン残高取得エラー:",
+          error
+        );
+      } finally {
+        setCoinLoading(false);
+      }
+    }
+
+    loadCoinBalance();
+  }, []);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -23,6 +84,39 @@ export default function PerformerHomePage() {
             演奏案件を探したり、施設からの依頼を確認できます。
           </p>
         </header>
+
+        {/* コイン残高 */}
+        <section className="mt-5">
+          <div className="rounded-2xl bg-white border border-amber-200 p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-500">
+                  現在のコイン
+                </p>
+
+                <p className="mt-1 text-xs text-gray-400">
+                  1コイン = 10円相当
+                </p>
+              </div>
+
+              <div className="text-right">
+                {coinLoading ? (
+                  <p className="text-sm text-gray-400">
+                    読み込み中...
+                  </p>
+                ) : (
+                  <p className="text-2xl font-bold text-amber-600">
+                    🪙{" "}
+                    {coinBalance?.toLocaleString() ?? 0}
+                    <span className="ml-1 text-sm font-medium text-gray-500">
+                      コイン
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* メインメニュー */}
         <section className="mt-7 space-y-3">
