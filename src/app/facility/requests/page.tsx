@@ -16,6 +16,10 @@ type PerformanceRequest = {
   genres: string[];
   reward: number | null;
   status: string;
+  display_status: string;
+  latest_match_status: string | null;
+  latest_performance_status: string | null;
+  latest_match_id: string | null;
   created_at: string;
 };
 
@@ -59,7 +63,9 @@ export default function FacilityRequestsPage() {
         const profile =
           await liff.getProfile();
 
-        setLineUserId(profile.userId);
+        setLineUserId(
+          profile.userId
+        );
 
         const response = await fetch(
           "/api/facility/requests",
@@ -68,6 +74,7 @@ export default function FacilityRequestsPage() {
               "x-line-user-id":
                 profile.userId,
             },
+            cache: "no-store",
           }
         );
 
@@ -114,6 +121,14 @@ export default function FacilityRequestsPage() {
       return "マッチング済み";
     }
 
+    if (status === "completed") {
+      return "演奏完了";
+    }
+
+    if (status === "cancelled") {
+      return "キャンセル";
+    }
+
     return "終了";
   }
 
@@ -126,6 +141,14 @@ export default function FacilityRequestsPage() {
 
     if (status === "matched") {
       return "bg-blue-50 text-blue-700 border-blue-100";
+    }
+
+    if (status === "completed") {
+      return "bg-gray-100 text-gray-600 border-gray-200";
+    }
+
+    if (status === "cancelled") {
+      return "bg-red-50 text-red-600 border-red-100";
     }
 
     return "bg-gray-100 text-gray-500 border-gray-200";
@@ -324,11 +347,11 @@ export default function FacilityRequestsPage() {
 
                   <span
                     className={`shrink-0 text-xs font-bold border rounded-full px-3 py-1 ${getStatusClass(
-                      request.status
+                      request.display_status
                     )}`}
                   >
                     {getStatusLabel(
-                      request.status
+                      request.display_status
                     )}
                   </span>
 
