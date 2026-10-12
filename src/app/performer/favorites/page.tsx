@@ -254,7 +254,6 @@ export default function PerformerFavoritesPage() {
       );
 
       setSelectedFacility(null);
-
     } catch (error) {
       console.error(
         "お気に入り解除エラー:",
@@ -273,42 +272,42 @@ export default function PerformerFavoritesPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <h1 className="text-2xl font-bold">
-            お気に入り
-          </h1>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen px-5 py-6">
+          <header>
+            <button
+              onClick={() =>
+                router.push(
+                  "/performer/home"
+                )
+              }
+              className="text-sm text-gray-500"
+            >
+              ← ホームへ戻る
+            </button>
 
-          <p className="mt-8 text-center text-gray-500">
-            お気に入りを読み込んでいます...
-          </p>
-        </div>
-      </main>
-    );
-  }
+            <div className="mt-6">
+              <p className="text-sm font-bold text-gray-500">
+                🎸 演奏者ホーム
+              </p>
 
-  if (error) {
-    return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <button
-            onClick={() =>
-              router.push(
-                "/performer/home"
-              )
-            }
-            className="text-sm text-gray-500 mb-4"
-          >
-            ← ホームへ戻る
-          </button>
+              <h1 className="text-2xl font-bold mt-1">
+                ⭐ お気に入り
+              </h1>
 
-          <h1 className="text-2xl font-bold">
-            お気に入り
-          </h1>
+              <p className="text-sm text-gray-500 mt-2">
+                気になる施設をすぐ確認できます。
+              </p>
+            </div>
+          </header>
 
-          <div className="mt-6 bg-red-50 rounded-xl p-4">
-            <p className="text-red-600">
-              {error}
+          <div className="mt-10 bg-white rounded-2xl p-8 text-center shadow-sm">
+            <div className="text-4xl">
+              ⭐
+            </div>
+
+            <p className="mt-4 text-gray-600">
+              お気に入りを読み込んでいます...
             </p>
           </div>
         </div>
@@ -316,33 +315,114 @@ export default function PerformerFavoritesPage() {
     );
   }
 
+  if (error) {
+    return (
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen px-5 py-6">
+          <button
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
+
+          <div className="mt-6">
+            <p className="text-sm font-bold text-gray-500">
+              🎸 演奏者ホーム
+            </p>
+
+            <h1 className="text-2xl font-bold mt-1">
+              ⭐ お気に入り
+            </h1>
+          </div>
+
+          <div className="mt-8 bg-red-50 border border-red-200 rounded-2xl p-5">
+            <div className="flex items-start gap-3">
+              <div className="text-xl">
+                ⚠️
+              </div>
+
+              <div>
+                <p className="font-bold text-red-700">
+                  お気に入りを取得できませんでした
+                </p>
+
+                <p className="text-sm text-red-600 mt-1">
+                  {error}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto min-h-screen px-5 py-6 pb-10">
 
-        <button
-          onClick={() =>
-            router.push(
-              "/performer/home"
-            )
-          }
-          className="text-sm text-gray-500 mb-4"
-        >
-          ← ホームへ戻る
-        </button>
+        {/* ヘッダー */}
+        <header>
+          <button
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
 
-        <h1 className="text-2xl font-bold">
-          お気に入り
-        </h1>
+          <div className="mt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-gray-500">
+                  🎸 演奏者ホーム
+                </p>
 
-        <p className="mt-2 text-sm text-gray-500">
-          お気に入り登録した施設
-        </p>
+                <h1 className="text-2xl font-bold mt-1">
+                  ⭐ お気に入り
+                </h1>
+              </div>
 
+              <div className="bg-yellow-50 border border-yellow-100 rounded-2xl px-4 py-3 text-center">
+                <p className="text-xl font-bold text-yellow-700">
+                  {favorites.length}
+                </p>
+
+                <p className="text-[11px] text-yellow-600">
+                  件
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-500 mt-3">
+              気になる施設をお気に入りに登録しておくと、あとから簡単に確認できます。
+            </p>
+          </div>
+        </header>
+
+        {/* 空状態 */}
         {favorites.length === 0 ? (
-          <div className="mt-8 bg-white rounded-2xl p-6 text-center shadow-sm">
-            <p className="text-gray-500">
-              まだお気に入りはありません。
+          <div className="mt-8 bg-white rounded-3xl p-8 text-center shadow-sm border border-gray-100">
+            <div className="w-20 h-20 mx-auto rounded-full bg-yellow-50 flex items-center justify-center text-4xl">
+              ⭐
+            </div>
+
+            <h2 className="text-lg font-bold mt-5">
+              まだお気に入りはありません
+            </h2>
+
+            <p className="text-sm text-gray-500 mt-2 leading-6">
+              気になる施設を見つけたら、
+              <br />
+              お気に入りに登録しておきましょう。
             </p>
 
             <button
@@ -351,13 +431,13 @@ export default function PerformerFavoritesPage() {
                   "/performer/requests"
                 )
               }
-              className="w-full mt-5 bg-black text-white rounded-xl p-4 font-bold"
+              className="w-full mt-6 bg-black text-white rounded-2xl p-4 font-bold"
             >
-              案件を探す
+              🔍 演奏案件を探す
             </button>
           </div>
         ) : (
-          <div className="mt-6 space-y-4">
+          <div className="mt-7 space-y-4">
             {favorites.map((favorite) => {
               const user =
                 getFavoriteUser(favorite);
@@ -369,212 +449,251 @@ export default function PerformerFavoritesPage() {
                 removingFavoriteId ===
                 favorite.id;
 
+              const facilityName =
+                facility?.name ||
+                user?.display_name ||
+                "施設";
+
               return (
                 <div
                   key={favorite.id}
-                  className="bg-white rounded-2xl p-4 shadow-sm"
+                  className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100"
                 >
-                  <div className="flex items-center gap-4">
-
+                  {/* 施設情報 */}
+                  <div className="flex items-start gap-4">
                     {user?.picture_url ? (
                       <img
                         src={user.picture_url}
                         alt=""
-                        className="w-14 h-14 rounded-full object-cover"
+                        className="w-16 h-16 rounded-2xl object-cover shrink-0"
                       />
                     ) : (
-                      <div className="w-14 h-14 rounded-full bg-gray-200 flex items-center justify-center text-2xl">
+                      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl shrink-0">
                         🏢
                       </div>
                     )}
 
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-lg truncate">
-                        {facility?.name ||
-                          user?.display_name ||
-                          "施設"}
-                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <h2 className="font-bold text-lg truncate">
+                            {facilityName}
+                          </h2>
 
-                      <p className="text-sm text-gray-500 mt-1">
-                        {facility?.facility_type ||
-                          "施設"}
-                      </p>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {facility?.facility_type ||
+                              "施設"}
+                          </p>
+                        </div>
+
+                        <span className="shrink-0 bg-yellow-50 text-yellow-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                          ⭐ お気に入り
+                        </span>
+                      </div>
+
+                      {facility?.address && (
+                        <p className="text-sm text-gray-500 mt-3 line-clamp-2">
+                          📍 {facility.address}
+                        </p>
+                      )}
                     </div>
-
                   </div>
 
-                  <button
-                    onClick={() =>
-                      handleFacilityProfile(
-                        favorite
-                      )
-                    }
-                    className="w-full mt-4 border border-gray-300 rounded-xl p-3 font-bold"
-                  >
-                    施設プロフィールを見る
-                  </button>
+                  {/* アクション */}
+                  <div className="mt-5 pt-4 border-t border-gray-100">
+                    <button
+                      onClick={() =>
+                        handleFacilityProfile(
+                          favorite
+                        )
+                      }
+                      className="w-full bg-black text-white rounded-2xl p-3.5 font-bold"
+                    >
+                      施設プロフィールを見る
+                    </button>
 
-                  <button
-                    onClick={() =>
-                      handleRemoveFavorite(
-                        favorite
-                      )
-                    }
-                    disabled={isRemoving}
-                    className="w-full mt-3 border border-red-300 text-red-600 rounded-xl p-3 font-bold disabled:opacity-50"
-                  >
-                    {isRemoving
-                      ? "解除しています..."
-                      : "⭐ お気に入り解除"}
-                  </button>
+                    <button
+                      onClick={() =>
+                        handleRemoveFavorite(
+                          favorite
+                        )
+                      }
+                      disabled={isRemoving}
+                      className="w-full mt-2.5 text-gray-500 rounded-2xl p-3 text-sm font-medium disabled:opacity-50"
+                    >
+                      {isRemoving
+                        ? "解除しています..."
+                        : "お気に入りから解除"}
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
 
-      </div>
-
-      {selectedFacility && (
-        <div
-          className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center"
-          onClick={() =>
-            setSelectedFacility(null)
-          }
-        >
+        {/* プロフィールモーダル */}
+        {selectedFacility && (
           <div
-            className="w-full max-w-md bg-white rounded-t-3xl p-6 max-h-[85vh] overflow-y-auto"
-            onClick={(event) =>
-              event.stopPropagation()
+            className="fixed inset-0 z-50 bg-black/50 flex items-end justify-center"
+            onClick={() =>
+              setSelectedFacility(null)
             }
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">
-                施設プロフィール
-              </h2>
-
-              <button
-                onClick={() =>
-                  setSelectedFacility(null)
-                }
-                className="text-gray-500 text-2xl leading-none"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mt-6 flex items-center gap-4">
-              {selectedFacility.user
-                .picture_url ? (
-                <img
-                  src={
-                    selectedFacility.user
-                      .picture_url
-                  }
-                  alt=""
-                  className="w-16 h-16 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-3xl">
-                  🏢
-                </div>
-              )}
-
-              <div className="min-w-0">
-                <h3 className="text-xl font-bold">
-                  {selectedFacility.facility
-                    .name ||
-                    selectedFacility.user
-                      .display_name ||
-                    "施設"}
-                </h3>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  {selectedFacility.facility
-                    .facility_type ||
-                    "施設"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-5">
-
-              <div>
-                <p className="text-sm font-bold text-gray-500">
-                  📍 住所
-                </p>
-
-                <p className="mt-1 text-gray-800">
-                  {selectedFacility.facility
-                    .address ||
-                    "住所は登録されていません"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-bold text-gray-500">
-                  📝 施設について
-                </p>
-
-                <p className="mt-1 text-gray-800 whitespace-pre-wrap">
-                  {selectedFacility.facility
-                    .description ||
-                    "施設の説明は登録されていません"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm font-bold text-gray-500">
-                  ⭐ お気に入り
-                </p>
-
-                <p className="mt-1 text-gray-800">
-                  この施設をお気に入り登録しています。
-                </p>
-              </div>
-
-              <button
-                onClick={() =>
-                  handleRemoveFavorite(
-                    favorites.find(
-                      (favorite) =>
-                        favorite.target_user_id ===
-                        selectedFacility.user.id
-                    ) ?? {
-                      id: "",
-                      target_user_id:
-                        selectedFacility.user.id,
-                      created_at: "",
-                      users:
-                        selectedFacility.user,
-                    }
-                  )
-                }
-                disabled={
-                  removingFavoriteId !==
-                    null
-                }
-                className="w-full border border-red-300 text-red-600 rounded-xl p-4 font-bold disabled:opacity-50"
-              >
-                {removingFavoriteId
-                  ? "解除しています..."
-                  : "⭐ お気に入り解除"}
-              </button>
-
-            </div>
-
-            <button
-              onClick={() =>
-                setSelectedFacility(null)
+            <div
+              className="w-full max-w-md bg-white rounded-t-3xl max-h-[88vh] overflow-y-auto"
+              onClick={(event) =>
+                event.stopPropagation()
               }
-              className="w-full mt-4 bg-black text-white rounded-xl p-4 font-bold"
             >
-              閉じる
-            </button>
-          </div>
-        </div>
-      )}
+              {/* モーダルヘッダー */}
+              <div className="sticky top-0 bg-white border-b px-5 py-4 flex items-center justify-between z-10">
+                <div>
+                  <p className="text-xs font-bold text-gray-400">
+                    FACILITY PROFILE
+                  </p>
 
+                  <h2 className="text-lg font-bold mt-0.5">
+                    施設プロフィール
+                  </h2>
+                </div>
+
+                <button
+                  onClick={() =>
+                    setSelectedFacility(null)
+                  }
+                  className="w-9 h-9 rounded-full bg-gray-100 text-gray-500 text-xl"
+                  aria-label="閉じる"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="p-5">
+                {/* プロフィール */}
+                <div className="flex items-center gap-4">
+                  {selectedFacility.user
+                    .picture_url ? (
+                    <img
+                      src={
+                        selectedFacility.user
+                          .picture_url
+                      }
+                      alt=""
+                      className="w-20 h-20 rounded-2xl object-cover"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center text-4xl">
+                      🏢
+                    </div>
+                  )}
+
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-bold">
+                      {selectedFacility.facility
+                        .name ||
+                        selectedFacility.user
+                          .display_name ||
+                        "施設"}
+                    </h3>
+
+                    <p className="text-sm text-gray-500 mt-1">
+                      {selectedFacility.facility
+                        .facility_type ||
+                        "施設"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-7 space-y-6">
+
+                  {/* 住所 */}
+                  <section>
+                    <p className="text-xs font-bold text-gray-400">
+                      LOCATION
+                    </p>
+
+                    <h4 className="font-bold mt-1">
+                      📍 住所
+                    </h4>
+
+                    <p className="text-gray-700 mt-2 leading-6">
+                      {selectedFacility.facility
+                        .address ||
+                        "住所は登録されていません"}
+                    </p>
+                  </section>
+
+                  {/* 施設説明 */}
+                  <section>
+                    <p className="text-xs font-bold text-gray-400">
+                      ABOUT
+                    </p>
+
+                    <h4 className="font-bold mt-1">
+                      📝 施設について
+                    </h4>
+
+                    <p className="text-gray-700 mt-2 leading-6 whitespace-pre-wrap">
+                      {selectedFacility.facility
+                        .description ||
+                        "施設の説明は登録されていません"}
+                    </p>
+                  </section>
+
+                  {/* お気に入り状態 */}
+                  <section className="bg-yellow-50 border border-yellow-100 rounded-2xl p-4">
+                    <p className="text-sm font-bold text-yellow-700">
+                      ⭐ お気に入り登録中
+                    </p>
+
+                    <p className="text-sm text-yellow-700/80 mt-1">
+                      この施設をお気に入りに登録しています。
+                    </p>
+                  </section>
+
+                  <button
+                    onClick={() =>
+                      handleRemoveFavorite(
+                        favorites.find(
+                          (favorite) =>
+                            favorite.target_user_id ===
+                            selectedFacility.user.id
+                        ) ?? {
+                          id: "",
+                          target_user_id:
+                            selectedFacility.user.id,
+                          created_at: "",
+                          users:
+                            selectedFacility.user,
+                        }
+                      )
+                    }
+                    disabled={
+                      removingFavoriteId !==
+                      null
+                    }
+                    className="w-full border border-red-200 text-red-600 rounded-2xl p-4 font-bold disabled:opacity-50"
+                  >
+                    {removingFavoriteId
+                      ? "解除しています..."
+                      : "お気に入りから解除"}
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      setSelectedFacility(null)
+                    }
+                    className="w-full bg-black text-white rounded-2xl p-4 font-bold"
+                  >
+                    閉じる
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </main>
   );
 }

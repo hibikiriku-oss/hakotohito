@@ -304,15 +304,33 @@ export default function FacilityPerformerInvitePage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <h1 className="text-2xl font-bold">
-            🎹 演奏者に依頼する
-          </h1>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto px-4 py-6">
 
-          <p className="mt-8 text-center text-gray-500">
-            情報を読み込んでいます…
-          </p>
+          <header className="pb-6">
+            <p className="text-sm font-medium text-gray-500">
+              演奏者検索
+            </p>
+
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">
+              🎹 演奏者に依頼する
+            </h1>
+
+            <p className="text-sm text-gray-500 mt-2">
+              演奏者と案件を確認しています。
+            </p>
+          </header>
+
+          <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
+            <div className="text-3xl">
+              🎹
+            </div>
+
+            <p className="text-sm text-gray-500 mt-3">
+              情報を読み込んでいます…
+            </p>
+          </div>
+
         </div>
       </main>
     );
@@ -320,16 +338,33 @@ export default function FacilityPerformerInvitePage() {
 
   if (error && !performer) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <h1 className="text-2xl font-bold">
-            🎹 演奏者に依頼する
-          </h1>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto px-4 py-6">
 
-          <div className="mt-6 p-4 bg-red-50 rounded-xl">
-            <p className="text-red-600">
+          <header className="pb-6">
+            <p className="text-sm font-medium text-gray-500">
+              演奏者検索
+            </p>
+
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">
+              🎹 演奏者に依頼する
+            </h1>
+          </header>
+
+          <div className="bg-red-50 border border-red-100 rounded-2xl p-5">
+
+            <div className="text-2xl">
+              ⚠️
+            </div>
+
+            <p className="text-sm font-bold text-red-700 mt-2">
+              情報を取得できませんでした
+            </p>
+
+            <p className="text-sm text-red-600 mt-1 leading-relaxed">
               {error}
             </p>
+
           </div>
 
           <button
@@ -339,20 +374,23 @@ export default function FacilityPerformerInvitePage() {
                 "/facility/performers"
               )
             }
-            className="w-full mt-6 bg-white border rounded-xl p-4"
+            className="w-full mt-5 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-700"
           >
             ← 演奏者を探すへ戻る
           </button>
+
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto px-4 py-6">
 
-        <div className="mb-6">
+        {/* ヘッダー */}
+        <header className="pb-5">
+
           <button
             type="button"
             onClick={() =>
@@ -365,142 +403,272 @@ export default function FacilityPerformerInvitePage() {
             ← 演奏者一覧へ戻る
           </button>
 
-          <h1 className="text-2xl font-bold">
+          <p className="text-sm font-medium text-gray-500">
+            演奏者への依頼
+          </p>
+
+          <h1 className="text-2xl font-bold text-gray-900 mt-1">
             🎹 演奏者に依頼する
           </h1>
 
-          <p className="text-sm text-gray-500 mt-1">
-            募集中の案件を選択して依頼できます
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            募集中の案件を選択して、この演奏者へ依頼を送れます。
           </p>
-        </div>
 
+        </header>
+
+        {/* 演奏者プロフィール */}
         {performer && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6">
-            <p className="text-sm text-gray-500">
-              依頼する演奏者
-            </p>
+          <section className="bg-white border border-gray-200 rounded-2xl p-5">
 
-            <h2 className="text-xl font-bold mt-1">
-              🎹 {performer.name}
-            </h2>
+            <div className="flex items-start gap-4">
 
-            <p className="text-sm text-gray-500 mt-1">
-              📍 {performer.area}
-            </p>
+              {performer.users &&
+              !Array.isArray(
+                performer.users
+              ) &&
+              performer.users.picture_url ? (
+                <img
+                  src={
+                    performer.users.picture_url
+                  }
+                  alt=""
+                  className="w-16 h-16 rounded-2xl object-cover shrink-0"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl shrink-0">
+                  🎹
+                </div>
+              )}
 
-            <div className="mt-3 flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <span className="text-yellow-500">
-                  ⭐
-                </span>
+              <div className="min-w-0 flex-1">
 
-                <span className="font-bold">
+                <p className="text-xs text-gray-400">
+                  依頼する演奏者
+                </p>
+
+                <h2 className="text-xl font-bold text-gray-900 mt-1">
+                  {performer.name}
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  📍 {performer.area}
+                </p>
+
+              </div>
+
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+
+              <div className="bg-gray-50 rounded-xl px-3 py-2">
+                <p className="text-xs text-gray-400">
+                  評価
+                </p>
+
+                <p className="font-bold text-gray-900 mt-0.5">
+                  ⭐{" "}
                   {rating !== null
                     ? rating.toFixed(1)
                     : "評価なし"}
-                </span>
+                </p>
               </div>
 
-              <span className="text-sm text-gray-500">
-                📝 {reviewCount}件のレビュー
-              </span>
+              <div className="bg-gray-50 rounded-xl px-3 py-2">
+                <p className="text-xs text-gray-400">
+                  レビュー
+                </p>
+
+                <p className="font-bold text-gray-900 mt-0.5">
+                  {reviewCount}件
+                </p>
+              </div>
+
             </div>
 
             {performer.instruments?.length >
               0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {performer.instruments.map(
-                  (instrument) => (
-                    <span
-                      key={instrument}
-                      className="text-xs bg-gray-100 rounded-full px-3 py-1"
-                    >
-                      {instrument}
-                    </span>
-                  )
-                )}
+              <div className="mt-4">
+
+                <p className="text-xs font-bold text-gray-500">
+                  楽器
+                </p>
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {performer.instruments.map(
+                    (instrument) => (
+                      <span
+                        key={instrument}
+                        className="text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1"
+                      >
+                        🎹 {instrument}
+                      </span>
+                    )
+                  )}
+                </div>
+
               </div>
             )}
-          </div>
+
+            {performer.genres?.length >
+              0 && (
+              <div className="mt-3">
+
+                <p className="text-xs font-bold text-gray-500">
+                  ジャンル
+                </p>
+
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {performer.genres.map(
+                    (genre) => (
+                      <span
+                        key={genre}
+                        className="text-xs bg-blue-50 text-blue-700 rounded-full px-2.5 py-1"
+                      >
+                        🎵 {genre}
+                      </span>
+                    )
+                  )}
+                </div>
+
+              </div>
+            )}
+
+            {performer.bio && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+
+                <p className="text-xs font-bold text-gray-500">
+                  自己紹介
+                </p>
+
+                <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">
+                  {performer.bio}
+                </p>
+
+              </div>
+            )}
+
+          </section>
         )}
 
-        {reviews.length > 0 && (
-          <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">
-                💬 レビュー
-              </h2>
+        {/* レビュー */}
+        {reviews.length > 0 ? (
+          <section className="mt-4 bg-white border border-gray-200 rounded-2xl p-5">
 
-              <span className="text-sm text-gray-500">
+            <div className="flex items-center justify-between gap-3">
+
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  💬 レビュー
+                </h2>
+
+                <p className="text-xs text-gray-400 mt-1">
+                  実際に演奏を依頼した施設からの評価です。
+                </p>
+              </div>
+
+              <span className="shrink-0 bg-gray-100 rounded-full px-3 py-1 text-xs font-bold text-gray-600">
                 {reviewCount}件
               </span>
+
             </div>
 
-            <div className="mt-4 space-y-4">
+            <div className="mt-4 space-y-3">
+
               {reviews.map(
                 (review, index) => (
                   <div
                     key={`${review.created_at}-${index}`}
-                    className="border-b last:border-b-0 pb-4 last:pb-0"
+                    className="bg-gray-50 rounded-2xl p-4"
                   >
-                    <div className="flex items-center justify-between">
+
+                    <div className="flex items-center justify-between gap-3">
+
                       <span className="text-yellow-500 text-sm tracking-wide">
                         {renderStars(
                           review.rating
                         )}
                       </span>
 
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-400 shrink-0">
                         {formatReviewDate(
                           review.created_at
                         )}
                       </span>
+
                     </div>
 
-                    {review.comment && (
-                      <p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">
+                    {review.comment ? (
+                      <p className="mt-3 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
                         {review.comment}
                       </p>
-                    )}
-
-                    {!review.comment && (
-                      <p className="mt-2 text-sm text-gray-400">
+                    ) : (
+                      <p className="mt-3 text-sm text-gray-400">
                         コメントはありません。
                       </p>
                     )}
+
                   </div>
                 )
               )}
-            </div>
-          </div>
-        )}
 
-        {performer &&
-          reviews.length === 0 && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6">
-              <h2 className="text-lg font-bold">
+            </div>
+
+          </section>
+        ) : (
+          performer && (
+            <section className="mt-4 bg-white border border-gray-200 rounded-2xl p-5">
+
+              <h2 className="text-lg font-bold text-gray-900">
                 💬 レビュー
               </h2>
 
-              <p className="mt-3 text-sm text-gray-500">
-                まだレビューがありません。
+              <div className="mt-3 bg-gray-50 rounded-2xl p-4">
+                <p className="text-sm text-gray-500">
+                  まだレビューがありません。
+                </p>
+              </div>
+
+            </section>
+          )
+        )}
+
+        {/* 案件選択 */}
+        <section className="mt-4 bg-white border border-gray-200 rounded-2xl p-5">
+
+          <div className="flex items-start justify-between gap-3">
+
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">
+                📋 依頼する案件
+              </h2>
+
+              <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                現在募集中の案件から選択してください。
               </p>
             </div>
-          )}
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border">
-          <h2 className="text-lg font-bold">
-            📋 依頼する案件を選択
-          </h2>
+            {requests.length > 0 && (
+              <span className="shrink-0 bg-gray-100 rounded-full px-3 py-1 text-xs font-bold text-gray-600">
+                {requests.length}件
+              </span>
+            )}
 
-          <p className="text-sm text-gray-500 mt-1">
-            現在募集中の案件から選択してください
-          </p>
+          </div>
 
           {requests.length === 0 ? (
-            <div className="mt-5 p-5 bg-gray-50 rounded-xl text-center">
-              <p className="text-gray-500">
-                現在、募集中の案件がありません。
+            <div className="mt-5 bg-gray-50 rounded-2xl p-6 text-center">
+
+              <div className="text-3xl">
+                📋
+              </div>
+
+              <p className="font-bold text-gray-800 mt-3">
+                現在、募集中の案件がありません
+              </p>
+
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                新しい案件を登録すると、演奏者へ依頼できるようになります。
               </p>
 
               <button
@@ -510,13 +678,15 @@ export default function FacilityPerformerInvitePage() {
                     "/facility/request"
                   )
                 }
-                className="mt-4 text-blue-600 text-sm font-medium"
+                className="mt-5 bg-black text-white rounded-xl px-5 py-3 font-bold"
               >
                 ＋ 新しい案件を登録する
               </button>
+
             </div>
           ) : (
             <div className="mt-5 space-y-3">
+
               {requests.map(
                 (request) => {
                   const selected =
@@ -532,83 +702,129 @@ export default function FacilityPerformerInvitePage() {
                           request.id
                         )
                       }
-                      className={`w-full text-left rounded-xl border p-4 ${
+                      className={`w-full text-left rounded-2xl border p-4 transition ${
                         selected
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-gray-200 bg-white"
+                          ? "border-black bg-gray-50 ring-1 ring-black"
+                          : "border-gray-200 bg-white active:scale-[0.99]"
                       }`}
                     >
+
                       <div className="flex items-start gap-3">
+
                         <div
-                          className={`mt-1 w-5 h-5 rounded-full border flex items-center justify-center ${
+                          className={`mt-0.5 w-6 h-6 rounded-full border flex items-center justify-center shrink-0 ${
                             selected
-                              ? "border-blue-500"
+                              ? "border-black"
                               : "border-gray-300"
                           }`}
                         >
                           {selected && (
-                            <div className="w-3 h-3 rounded-full bg-blue-500" />
+                            <div className="w-3 h-3 rounded-full bg-black" />
                           )}
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-bold">
-                            {request.title}
-                          </h3>
 
-                          <p className="mt-2 text-sm text-gray-600">
-                            📅{" "}
-                            {formatDate(
-                              request.performance_date
-                            )}
-                          </p>
+                          <div className="flex items-start justify-between gap-3">
 
-                          <p className="mt-1 text-sm text-gray-600">
-                            🕐{" "}
-                            {formatTime(
-                              request.start_time
-                            )}
-                            {" ～ "}
-                            {formatTime(
-                              request.end_time
-                            )}
-                          </p>
+                            <h3 className="font-bold text-gray-900 leading-snug">
+                              {request.title}
+                            </h3>
 
-                          {request.area && (
-                            <p className="mt-1 text-sm text-gray-600">
-                              📍 {request.area}
+                            {request.reward !==
+                              null && (
+                              <span className="shrink-0 text-xs font-bold text-gray-700 bg-gray-100 rounded-full px-2.5 py-1">
+                                ¥{" "}
+                                {request.reward.toLocaleString()}
+                              </span>
+                            )}
+
+                          </div>
+
+                          <div className="mt-3 space-y-1.5">
+
+                            <p className="text-sm text-gray-600">
+                              📅{" "}
+                              {formatDate(
+                                request.performance_date
+                              )}
                             </p>
-                          )}
 
-                          {request.reward !==
-                            null && (
-                            <p className="mt-1 text-sm font-medium text-gray-700">
-                              💰 報酬{" "}
-                              {request.reward.toLocaleString()}
-                              円
+                            <p className="text-sm text-gray-600">
+                              🕐{" "}
+                              {formatTime(
+                                request.start_time
+                              )}
+                              {" ～ "}
+                              {formatTime(
+                                request.end_time
+                              )}
                             </p>
+
+                            {request.area && (
+                              <p className="text-sm text-gray-600">
+                                📍 {request.area}
+                              </p>
+                            )}
+
+                          </div>
+
+                          {(request.instruments?.length >
+                            0 ||
+                            request.genres?.length >
+                              0) && (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+
+                              {request.instruments.map(
+                                (instrument) => (
+                                  <span
+                                    key={`instrument-${instrument}`}
+                                    className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
+                                  >
+                                    🎹 {instrument}
+                                  </span>
+                                )
+                              )}
+
+                              {request.genres.map(
+                                (genre) => (
+                                  <span
+                                    key={`genre-${genre}`}
+                                    className="text-xs bg-blue-50 text-blue-700 rounded-full px-2.5 py-1"
+                                  >
+                                    🎵 {genre}
+                                  </span>
+                                )
+                              )}
+
+                            </div>
                           )}
 
                           {request.description && (
-                            <p className="mt-3 text-sm text-gray-500 line-clamp-3">
-                              {
-                                request.description
-                              }
+                            <p className="mt-3 text-sm text-gray-500 line-clamp-3 leading-relaxed">
+                              {request.description}
                             </p>
                           )}
+
                         </div>
+
                       </div>
+
                     </button>
                   );
                 }
               )}
+
             </div>
           )}
 
           {requests.length > 0 && (
             <>
+
+              {/* メッセージ */}
               <div className="mt-6">
-                <label className="block text-sm font-medium mb-2">
+
+                <label className="block text-sm font-bold text-gray-800 mb-2">
                   💬 依頼メッセージ
                 </label>
 
@@ -620,31 +836,55 @@ export default function FacilityPerformerInvitePage() {
                     )
                   }
                   rows={5}
+                  maxLength={1000}
                   placeholder="演奏者へのメッセージを入力してください"
-                  className="w-full border rounded-xl p-3 resize-none"
+                  className="w-full border border-gray-200 rounded-2xl px-4 py-3 bg-gray-50 resize-none outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
                 />
 
-                <p className="mt-2 text-xs text-gray-400">
-                  例：ぜひこちらのイベントで演奏をお願いしたいです。ご検討よろしくお願いします。
-                </p>
+                <div className="flex items-start justify-between gap-3 mt-2">
+
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    例：ぜひこちらのイベントで演奏をお願いしたいです。ご検討よろしくお願いします。
+                  </p>
+
+                  <span className="text-xs text-gray-400 shrink-0">
+                    {message.length}/1000
+                  </span>
+
+                </div>
+
               </div>
 
+              {/* エラー・成功 */}
               {error && (
-                <div className="mt-4 p-4 bg-red-50 rounded-xl">
-                  <p className="text-sm text-red-600">
+                <div className="mt-4 bg-red-50 border border-red-100 rounded-2xl p-4">
+
+                  <p className="text-sm font-bold text-red-700">
+                    ⚠️ 送信できませんでした
+                  </p>
+
+                  <p className="text-sm text-red-600 mt-1">
                     {error}
                   </p>
+
                 </div>
               )}
 
               {success && (
-                <div className="mt-4 p-4 bg-green-50 rounded-xl">
-                  <p className="text-sm text-green-600">
-                    {success}
+                <div className="mt-4 bg-green-50 border border-green-100 rounded-2xl p-4">
+
+                  <p className="text-sm font-bold text-green-700">
+                    ✓ 依頼を送信しました
                   </p>
+
+                  <p className="text-sm text-green-600 mt-1">
+                    演奏者一覧へ移動します…
+                  </p>
+
                 </div>
               )}
 
+              {/* 送信 */}
               <button
                 type="button"
                 onClick={handleSubmit}
@@ -652,32 +892,29 @@ export default function FacilityPerformerInvitePage() {
                   sending ||
                   !selectedRequestId
                 }
-                className={`w-full mt-5 rounded-xl p-4 font-bold ${
+                className={`w-full mt-5 rounded-2xl p-4 font-bold transition ${
                   sending ||
                   !selectedRequestId
-                    ? "bg-gray-300 text-gray-500"
-                    : "bg-blue-600 text-white"
+                    ? "bg-gray-200 text-gray-400"
+                    : "bg-black text-white active:scale-[0.99]"
                 }`}
               >
                 {sending
                   ? "送信中..."
-                  : "この案件で依頼を送信"}
+                  : selectedRequestId
+                  ? "この案件で依頼を送信"
+                  : "まず案件を選択してください"}
               </button>
+
             </>
           )}
-        </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            router.push(
-              "/facility/home"
-            )
-          }
-          className="w-full mt-6 bg-white border rounded-xl p-4"
-        >
-          ← 施設ホームへ戻る
-        </button>
+        </section>
+
+        {/* フッター */}
+        <p className="text-center text-xs text-gray-400 mt-6 pb-4">
+          演奏者と施設をつなぐ、演奏マッチング
+        </p>
 
       </div>
     </main>

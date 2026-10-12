@@ -45,8 +45,10 @@ export default function PerformerMatchesPage() {
 
   const [matches, setMatches] =
     useState<Match[]>([]);
+
   const [loading, setLoading] =
     useState(true);
+
   const [error, setError] =
     useState("");
 
@@ -144,7 +146,7 @@ export default function PerformerMatchesPage() {
       return {
         label: "演奏完了",
         className:
-          "bg-blue-100 text-blue-700",
+          "bg-blue-50 text-blue-700 border-blue-200",
       };
     }
 
@@ -156,29 +158,41 @@ export default function PerformerMatchesPage() {
       return {
         label: "キャンセル済み",
         className:
-          "bg-red-100 text-red-700",
+          "bg-red-50 text-red-700 border-red-200",
       };
     }
 
     return {
       label: "演奏予定",
       className:
-        "bg-green-100 text-green-700",
+        "bg-green-50 text-green-700 border-green-200",
     };
   }
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen px-4 py-6">
 
-          <h1 className="text-2xl font-bold">
-            🎉 マッチング一覧
-          </h1>
+          <header>
+            <p className="text-sm font-semibold text-gray-500">
+              演奏マッチング
+            </p>
 
-          <p className="mt-8 text-center text-gray-500">
-            マッチング情報を読み込んでいます...
-          </p>
+            <h1 className="mt-1 text-2xl font-bold text-gray-900">
+              🎉 マッチング
+            </h1>
+          </header>
+
+          <div className="mt-8 rounded-2xl bg-white border border-gray-200 p-8 text-center shadow-sm">
+            <div className="text-3xl">
+              🎉
+            </div>
+
+            <p className="mt-3 text-sm text-gray-500">
+              マッチング情報を読み込んでいます...
+            </p>
+          </div>
 
         </div>
       </main>
@@ -187,15 +201,21 @@ export default function PerformerMatchesPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen px-4 py-6">
 
-          <h1 className="text-2xl font-bold">
-            🎉 マッチング一覧
-          </h1>
+          <header>
+            <p className="text-sm font-semibold text-gray-500">
+              演奏マッチング
+            </p>
 
-          <div className="mt-6 p-4 bg-red-50 rounded-xl">
-            <p className="text-red-600">
+            <h1 className="mt-1 text-2xl font-bold text-gray-900">
+              🎉 マッチング
+            </h1>
+          </header>
+
+          <div className="mt-6 rounded-2xl bg-red-50 border border-red-200 p-5">
+            <p className="text-sm leading-6 text-red-600">
               {error}
             </p>
           </div>
@@ -206,7 +226,7 @@ export default function PerformerMatchesPage() {
                 "/performer/home"
               )
             }
-            className="w-full mt-6 bg-white border rounded-xl p-4"
+            className="w-full mt-5 rounded-2xl bg-white border border-gray-200 px-5 py-4 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-50"
           >
             ← ホームへ戻る
           </button>
@@ -217,33 +237,58 @@ export default function PerformerMatchesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto min-h-screen px-4 py-6">
 
-        <button
-          onClick={() =>
-            router.push(
-              "/performer/home"
-            )
-          }
-          className="text-sm text-gray-500 mb-4"
-        >
-          ← ホームへ戻る
-        </button>
+        {/* ヘッダー */}
+        <header>
+          <button
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="inline-flex items-center text-sm font-medium text-gray-500 active:text-gray-800"
+          >
+            ← ホームへ戻る
+          </button>
 
-        <h1 className="text-2xl font-bold">
-          🎉 マッチング一覧
-        </h1>
+          <div className="mt-5 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-500">
+                演奏マッチング
+              </p>
 
-        <p className="mt-2 text-sm text-gray-500">
-          マッチングした施設との履歴を確認できます。
-        </p>
+              <h1 className="mt-1 text-2xl font-bold text-gray-900">
+                🎉 マッチング
+              </h1>
+            </div>
 
+            <span className="shrink-0 rounded-full bg-white border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600">
+              {matches.length}件
+            </span>
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            マッチングした施設との演奏予定や履歴を確認できます。
+          </p>
+        </header>
+
+        {/* 空状態 */}
         {matches.length === 0 ? (
-          <div className="mt-6 bg-white rounded-2xl p-6 text-center">
+          <div className="mt-6 rounded-2xl bg-white border border-gray-200 p-6 text-center shadow-sm">
 
-            <p className="text-gray-500">
-              まだマッチングはありません。
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 text-3xl">
+              🎵
+            </div>
+
+            <h2 className="mt-4 text-base font-bold text-gray-900">
+              まだマッチングはありません
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-gray-500">
+              気になる演奏案件に応募して、
+              マッチングを目指しましょう。
             </p>
 
             <button
@@ -252,7 +297,7 @@ export default function PerformerMatchesPage() {
                   "/performer/requests"
                 )
               }
-              className="w-full mt-5 bg-black text-white rounded-xl p-4"
+              className="w-full mt-5 rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white active:bg-gray-800"
             >
               🔍 演奏案件を探す
             </button>
@@ -284,18 +329,22 @@ export default function PerformerMatchesPage() {
                         match.id
                     )
                   }
-                  className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border hover:bg-gray-50 active:bg-gray-100 transition"
+                  className="w-full text-left rounded-2xl bg-white border border-gray-200 p-5 shadow-sm transition active:bg-gray-50"
                 >
+
                   {/* ステータス */}
                   <div className="flex items-center justify-between gap-3">
 
-                    <span className="text-sm font-bold">
-                      🎉 マッチング成立
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-500">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-50">
+                        🎉
+                      </span>
+                      マッチング成立
                     </span>
 
                     <span
                       className={
-                        "text-xs rounded-full px-3 py-1 font-bold " +
+                        "shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold " +
                         performanceStatus.className
                       }
                     >
@@ -305,26 +354,32 @@ export default function PerformerMatchesPage() {
                   </div>
 
                   {/* 案件タイトル */}
-                  <h2 className="text-xl font-bold mt-4">
-                    {performanceRequest.title}
-                  </h2>
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-gray-400">
+                      演奏案件
+                    </p>
+
+                    <h2 className="mt-1 text-lg font-bold leading-7 text-gray-900">
+                      {performanceRequest.title}
+                    </h2>
+                  </div>
 
                   {/* 施設 */}
                   {facility && (
-                    <div className="mt-4">
+                    <div className="mt-4 rounded-xl bg-gray-50 p-4">
 
-                      <p className="text-sm text-gray-500">
-                        施設
+                      <p className="text-xs font-semibold text-gray-400">
+                        演奏先
                       </p>
 
-                      <p className="mt-1 font-bold">
+                      <p className="mt-1 font-bold text-gray-900">
                         🏢{" "}
                         {facility.name ||
                           "施設名未登録"}
                       </p>
 
                       {facility.facility_type && (
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="mt-1 text-xs text-gray-500">
                           {facility.facility_type}
                         </p>
                       )}
@@ -333,50 +388,58 @@ export default function PerformerMatchesPage() {
                   )}
 
                   {/* 演奏日時 */}
-                  <div className="mt-4">
+                  <div className="mt-3 grid grid-cols-2 gap-3">
 
-                    <p className="text-sm text-gray-500">
-                      演奏日時
-                    </p>
+                    <div className="rounded-xl border border-gray-100 bg-white p-3">
+                      <p className="text-xs font-medium text-gray-400">
+                        演奏日
+                      </p>
 
-                    <p className="mt-1 font-bold">
-                      📅{" "}
-                      {formatDate(
-                        performanceRequest.performance_date
-                      )}
-                    </p>
+                      <p className="mt-1 text-sm font-bold text-gray-900">
+                        📅{" "}
+                        {formatDate(
+                          performanceRequest.performance_date
+                        )}
+                      </p>
+                    </div>
 
-                    <p className="text-sm text-gray-600 mt-1">
-                      🕐{" "}
-                      {formatTime(
-                        performanceRequest.start_time
-                      )}
-                      {" ～ "}
-                      {formatTime(
-                        performanceRequest.end_time
-                      )}
-                    </p>
+                    <div className="rounded-xl border border-gray-100 bg-white p-3">
+                      <p className="text-xs font-medium text-gray-400">
+                        時間
+                      </p>
+
+                      <p className="mt-1 text-sm font-bold text-gray-900">
+                        🕐{" "}
+                        {formatTime(
+                          performanceRequest.start_time
+                        )}
+                        {" ～ "}
+                        {formatTime(
+                          performanceRequest.end_time
+                        )}
+                      </p>
+                    </div>
 
                   </div>
 
                   {/* 場所 */}
                   {(performanceRequest.area ||
                     facility?.address) && (
-                    <div className="mt-4">
+                    <div className="mt-3 rounded-xl border border-gray-100 p-4">
 
-                      <p className="text-sm text-gray-500">
-                        場所
+                      <p className="text-xs font-semibold text-gray-400">
+                        演奏場所
                       </p>
 
                       {performanceRequest.area && (
-                        <p className="mt-1">
+                        <p className="mt-1 text-sm font-semibold text-gray-800">
                           📍{" "}
                           {performanceRequest.area}
                         </p>
                       )}
 
                       {facility?.address && (
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="mt-1 text-xs leading-5 text-gray-500">
                           {facility.address}
                         </p>
                       )}
@@ -384,56 +447,56 @@ export default function PerformerMatchesPage() {
                     </div>
                   )}
 
-                  {/* 募集楽器 */}
-                  {performanceRequest.instruments?.length >
-                    0 && (
+                  {/* 楽器・ジャンル */}
+                  {(performanceRequest.instruments?.length >
+                    0 ||
+                    performanceRequest.genres?.length >
+                      0) && (
                     <div className="mt-4">
 
-                      <p className="text-sm text-gray-500">
-                        募集楽器
-                      </p>
+                      {performanceRequest.instruments?.length >
+                        0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-gray-400">
+                            募集楽器
+                          </p>
 
-                      <div className="flex flex-wrap gap-2 mt-2">
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {performanceRequest.instruments.map(
+                              (instrument) => (
+                                <span
+                                  key={instrument}
+                                  className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700"
+                                >
+                                  🎸 {instrument}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
 
-                        {performanceRequest.instruments.map(
-                          (instrument) => (
-                            <span
-                              key={instrument}
-                              className="text-sm bg-gray-100 rounded-full px-3 py-1"
-                            >
-                              🎸 {instrument}
-                            </span>
-                          )
-                        )}
+                      {performanceRequest.genres?.length >
+                        0 && (
+                        <div className="mt-3">
+                          <p className="text-xs font-semibold text-gray-400">
+                            ジャンル
+                          </p>
 
-                      </div>
-
-                    </div>
-                  )}
-
-                  {/* ジャンル */}
-                  {performanceRequest.genres?.length >
-                    0 && (
-                    <div className="mt-4">
-
-                      <p className="text-sm text-gray-500">
-                        ジャンル
-                      </p>
-
-                      <div className="flex flex-wrap gap-2 mt-2">
-
-                        {performanceRequest.genres.map(
-                          (genre) => (
-                            <span
-                              key={genre}
-                              className="text-sm bg-gray-100 rounded-full px-3 py-1"
-                            >
-                              🎵 {genre}
-                            </span>
-                          )
-                        )}
-
-                      </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {performanceRequest.genres.map(
+                              (genre) => (
+                                <span
+                                  key={genre}
+                                  className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700"
+                                >
+                                  🎵 {genre}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                     </div>
                   )}
@@ -441,61 +504,65 @@ export default function PerformerMatchesPage() {
                   {/* 報酬 */}
                   {performanceRequest.reward !==
                     null && (
-                    <div className="mt-4">
+                    <div className="mt-4 flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
 
-                      <p className="text-sm text-gray-500">
-                        報酬
-                      </p>
+                      <span className="text-xs font-semibold text-gray-500">
+                        謝礼
+                      </span>
 
-                      <p className="mt-1 font-bold">
+                      <span className="text-base font-bold text-gray-900">
                         💰{" "}
                         {performanceRequest.reward.toLocaleString()}
                         円
-                      </p>
+                      </span>
 
                     </div>
                   )}
 
                   {/* 施設について */}
                   {facility?.description && (
-                    <div className="mt-4">
+                    <div className="mt-4 rounded-xl border border-gray-100 p-4">
 
-                      <p className="text-sm text-gray-500">
+                      <p className="text-xs font-semibold text-gray-400">
                         施設について
                       </p>
 
-                      <p className="mt-1 text-sm whitespace-pre-wrap">
+                      <p className="mt-2 text-sm leading-6 text-gray-600 whitespace-pre-wrap">
                         {facility.description}
                       </p>
 
                     </div>
                   )}
 
-                  {/* キャンセル履歴の場合 */}
+                  {/* キャンセル */}
                   {performanceStatus.label ===
                     "キャンセル済み" && (
-                    <div className="mt-4 bg-red-50 rounded-xl p-3">
-                      <p className="text-sm text-red-700">
+                    <div className="mt-4 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                      <p className="text-sm font-medium text-red-700">
                         このマッチングはキャンセルされています。
                       </p>
                     </div>
                   )}
 
-                  {/* 完了の場合 */}
+                  {/* 完了 */}
                   {performanceStatus.label ===
                     "演奏完了" && (
-                    <div className="mt-4 bg-blue-50 rounded-xl p-3">
-                      <p className="text-sm text-blue-700">
+                    <div className="mt-4 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+                      <p className="text-sm font-medium text-blue-700">
                         演奏が完了しています。
                       </p>
                     </div>
                   )}
 
-                  {/* 詳細画面への案内 */}
-                  <div className="mt-5 pt-4 border-t text-center">
+                  {/* 詳細 */}
+                  <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
 
-                    <span className="text-sm font-bold text-gray-600">
-                      マッチング詳細を見る →
+                    <span className="text-xs font-medium text-gray-400">
+                      マッチング詳細
+                    </span>
+
+                    <span className="text-sm font-bold text-gray-700">
+                      詳細を見る →
                     </span>
 
                   </div>
@@ -507,16 +574,21 @@ export default function PerformerMatchesPage() {
           </div>
         )}
 
+        {/* 下部ホームボタン */}
         <button
           onClick={() =>
             router.push(
               "/performer/home"
             )
           }
-          className="w-full mt-6 bg-white border rounded-xl p-4"
+          className="w-full mt-6 rounded-2xl bg-white border border-gray-200 px-5 py-4 text-sm font-semibold text-gray-600 shadow-sm active:bg-gray-50"
         >
           ← ホームへ戻る
         </button>
+
+        <p className="pb-5 pt-6 text-center text-xs text-gray-400">
+          あなたの演奏を、必要としている場所へ。
+        </p>
 
       </div>
     </main>

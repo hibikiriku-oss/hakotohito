@@ -227,12 +227,17 @@ export default function PerformerInvitationDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-lg mx-auto">
-          <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-            <p className="text-gray-600">
-              依頼情報を読み込んでいます...
-            </p>
+      <main className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden animate-pulse">
+            <div className="h-32 bg-gray-200" />
+
+            <div className="p-5 space-y-5">
+              <div className="h-5 bg-gray-200 rounded w-1/3" />
+              <div className="h-20 bg-gray-100 rounded-2xl" />
+              <div className="h-20 bg-gray-100 rounded-2xl" />
+              <div className="h-20 bg-gray-100 rounded-2xl" />
+            </div>
           </div>
         </div>
       </main>
@@ -241,14 +246,18 @@ export default function PerformerInvitationDetailPage() {
 
   if (error && !invitation) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-lg mx-auto">
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h1 className="text-xl font-bold mb-4">
-              依頼詳細
+      <main className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-md mx-auto pt-4">
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+            <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-2xl mb-4">
+              ⚠️
+            </div>
+
+            <h1 className="text-xl font-bold text-gray-900 mb-3">
+              依頼詳細を表示できません
             </h1>
 
-            <div className="bg-red-50 text-red-700 rounded-xl p-4 mb-6">
+            <div className="bg-red-50 border border-red-100 text-red-700 rounded-2xl p-4 text-sm leading-6">
               {error}
             </div>
 
@@ -257,7 +266,7 @@ export default function PerformerInvitationDetailPage() {
               onClick={() =>
                 router.push("/performer/invitations")
               }
-              className="w-full bg-gray-200 text-gray-800 rounded-xl p-4 font-bold"
+              className="w-full mt-5 bg-black text-white rounded-2xl py-4 font-bold"
             >
               依頼一覧に戻る
             </button>
@@ -269,12 +278,26 @@ export default function PerformerInvitationDetailPage() {
 
   if (!invitation) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-lg mx-auto">
-          <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
+      <main className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-md mx-auto pt-4">
+          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+            <div className="text-4xl mb-4">
+              📭
+            </div>
+
             <p className="text-gray-600">
               依頼情報が見つかりません。
             </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                router.push("/performer/invitations")
+              }
+              className="w-full mt-6 bg-black text-white rounded-2xl py-4 font-bold"
+            >
+              依頼一覧に戻る
+            </button>
           </div>
         </div>
       </main>
@@ -304,123 +327,187 @@ export default function PerformerInvitationDetailPage() {
       ? "辞退"
       : invitation.status;
 
-  const processing = accepting || rejecting;
+  const processing =
+    accepting || rejecting;
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 pb-10">
-      <div className="max-w-lg mx-auto">
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto px-4 pt-4 pb-10">
+
+        {/* 戻る */}
         <button
           type="button"
           onClick={() =>
             router.push("/performer/invitations")
           }
-          className="text-gray-600 mb-4"
+          className="inline-flex items-center text-sm font-bold text-gray-600 py-2 mb-3"
         >
           ← 依頼一覧に戻る
         </button>
 
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="bg-blue-600 text-white p-6">
-            <p className="text-sm opacity-90 mb-2">
-              施設からの演奏依頼
-            </p>
+        {/* メインカード */}
+        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
 
-            <h1 className="text-2xl font-bold">
+          {/* ヘッダー */}
+          <div className="bg-black text-white px-5 py-6">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <span className="text-xs font-bold tracking-wider text-gray-300">
+                施設からの演奏依頼
+              </span>
+
+              <span className="text-xs font-bold bg-white/10 border border-white/10 rounded-full px-3 py-1">
+                {statusLabel}
+              </span>
+            </div>
+
+            <h1 className="text-2xl font-bold leading-tight">
               {performanceRequest.title}
             </h1>
           </div>
 
-          <div className="p-6 space-y-6">
+          <div className="p-5 space-y-7">
+
+            {/* エラー */}
             {error && (
-              <div className="bg-red-50 text-red-700 rounded-xl p-4">
+              <div className="bg-red-50 border border-red-100 text-red-700 rounded-2xl p-4 text-sm leading-6">
                 {error}
               </div>
             )}
 
+            {/* 成功 */}
             {success && (
-              <div className="bg-green-50 text-green-700 rounded-xl p-4">
+              <div className="bg-green-50 border border-green-100 text-green-700 rounded-2xl p-4 text-sm leading-6">
                 {success}
               </div>
             )}
 
+            {/* 依頼状況 */}
             <section>
-              <h2 className="text-sm font-bold text-gray-500 mb-2">
+              <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                 依頼状況
-              </h2>
+              </p>
 
-              <div className="inline-block bg-yellow-100 text-yellow-800 rounded-full px-4 py-2 font-bold">
-                {statusLabel}
-              </div>
+              <span
+                className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-bold ${
+                  invitation.status === "pending"
+                    ? "bg-amber-50 text-amber-700"
+                    : invitation.status === "accepted"
+                    ? "bg-green-50 text-green-700"
+                    : invitation.status === "rejected"
+                    ? "bg-gray-100 text-gray-600"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {invitation.status === "pending"
+                  ? "● 承諾待ち"
+                  : invitation.status === "accepted"
+                  ? "✓ 承諾済み"
+                  : invitation.status === "rejected"
+                  ? "辞退済み"
+                  : statusLabel}
+              </span>
             </section>
 
+            {/* 施設 */}
             <section>
-              <h2 className="text-sm font-bold text-gray-500 mb-2">
+              <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                 施設
-              </h2>
+              </p>
 
-              <div className="border rounded-xl p-4">
-                <p className="text-lg font-bold">
-                  {facility?.name || "施設名未設定"}
-                </p>
+              <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-xl shrink-0">
+                    🏢
+                  </div>
 
-                {facility?.facility_type && (
-                  <p className="text-gray-600 mt-1">
-                    {facility.facility_type}
-                  </p>
-                )}
+                  <div className="min-w-0">
+                    <p className="text-lg font-bold text-gray-900">
+                      {facility?.name || "施設名未設定"}
+                    </p>
 
-                {facility?.address && (
-                  <p className="text-gray-600 mt-2">
-                    📍 {facility.address}
-                  </p>
-                )}
+                    {facility?.facility_type && (
+                      <p className="text-sm text-gray-500 mt-1">
+                        {facility.facility_type}
+                      </p>
+                    )}
+
+                    {facility?.address && (
+                      <p className="text-sm text-gray-600 mt-2">
+                        📍 {facility.address}
+                      </p>
+                    )}
+                  </div>
+                </div>
 
                 {facility?.description && (
-                  <p className="text-gray-600 mt-3 whitespace-pre-wrap">
-                    {facility.description}
-                  </p>
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap leading-6">
+                      {facility.description}
+                    </p>
+                  </div>
                 )}
               </div>
             </section>
 
+            {/* 演奏日時 */}
             <section>
-              <h2 className="text-sm font-bold text-gray-500 mb-2">
+              <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                 演奏日時
-              </h2>
+              </p>
 
-              <div className="border rounded-xl p-4">
-                <p className="font-bold text-lg">
-                  {formattedDate}
-                </p>
+              <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-white border border-gray-100 flex items-center justify-center text-xl shrink-0">
+                    📅
+                  </div>
 
-                <p className="text-gray-700 mt-2">
-                  {performanceRequest.start_time.slice(0, 5)}
-                  {" ～ "}
-                  {performanceRequest.end_time.slice(0, 5)}
-                </p>
+                  <div>
+                    <p className="font-bold text-gray-900">
+                      {formattedDate}
+                    </p>
+
+                    <p className="text-gray-600 mt-1">
+                      {performanceRequest.start_time.slice(0, 5)}
+                      {" ～ "}
+                      {performanceRequest.end_time.slice(0, 5)}
+                    </p>
+                  </div>
+                </div>
               </div>
             </section>
 
+            {/* エリア */}
             {performanceRequest.area && (
               <section>
-                <h2 className="text-sm font-bold text-gray-500 mb-2">
+                <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                   エリア
-                </h2>
+                </p>
 
-                <div className="border rounded-xl p-4">
-                  📍 {performanceRequest.area}
+                <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4 flex items-center gap-3">
+                  <span className="text-xl">
+                    📍
+                  </span>
+
+                  <span className="font-medium text-gray-800">
+                    {performanceRequest.area}
+                  </span>
                 </div>
               </section>
             )}
 
+            {/* 報酬 */}
             {performanceRequest.reward !== null && (
               <section>
-                <h2 className="text-sm font-bold text-gray-500 mb-2">
+                <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                   報酬
-                </h2>
+                </p>
 
-                <div className="border rounded-xl p-4">
-                  <p className="text-xl font-bold">
+                <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
+                  <p className="text-xs text-gray-500 mb-1">
+                    演奏報酬
+                  </p>
+
+                  <p className="text-2xl font-bold text-gray-900">
                     ¥
                     {performanceRequest.reward.toLocaleString()}
                   </p>
@@ -428,21 +515,22 @@ export default function PerformerInvitationDetailPage() {
               </section>
             )}
 
+            {/* 希望楽器 */}
             {performanceRequest.instruments &&
               performanceRequest.instruments.length > 0 && (
                 <section>
-                  <h2 className="text-sm font-bold text-gray-500 mb-2">
+                  <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                     希望楽器
-                  </h2>
+                  </p>
 
                   <div className="flex flex-wrap gap-2">
                     {performanceRequest.instruments.map(
                       (instrument) => (
                         <span
                           key={instrument}
-                          className="bg-gray-100 rounded-full px-3 py-2 text-sm"
+                          className="bg-gray-100 text-gray-700 rounded-full px-3 py-2 text-sm font-medium"
                         >
-                          {instrument}
+                          🎸 {instrument}
                         </span>
                       )
                     )}
@@ -450,21 +538,22 @@ export default function PerformerInvitationDetailPage() {
                 </section>
               )}
 
+            {/* 希望ジャンル */}
             {performanceRequest.genres &&
               performanceRequest.genres.length > 0 && (
                 <section>
-                  <h2 className="text-sm font-bold text-gray-500 mb-2">
+                  <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                     希望ジャンル
-                  </h2>
+                  </p>
 
                   <div className="flex flex-wrap gap-2">
                     {performanceRequest.genres.map(
                       (genre) => (
                         <span
                           key={genre}
-                          className="bg-gray-100 rounded-full px-3 py-2 text-sm"
+                          className="bg-gray-100 text-gray-700 rounded-full px-3 py-2 text-sm font-medium"
                         >
-                          {genre}
+                          🎵 {genre}
                         </span>
                       )
                     )}
@@ -472,37 +561,50 @@ export default function PerformerInvitationDetailPage() {
                 </section>
               )}
 
+            {/* 案件詳細 */}
             {performanceRequest.description && (
               <section>
-                <h2 className="text-sm font-bold text-gray-500 mb-2">
+                <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                   案件詳細
-                </h2>
+                </p>
 
-                <div className="border rounded-xl p-4 whitespace-pre-wrap text-gray-700">
-                  {performanceRequest.description}
+                <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4">
+                  <p className="whitespace-pre-wrap text-sm text-gray-700 leading-7">
+                    {performanceRequest.description}
+                  </p>
                 </div>
               </section>
             )}
 
+            {/* 施設からのメッセージ */}
             {invitation.message && (
               <section>
-                <h2 className="text-sm font-bold text-gray-500 mb-2">
+                <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
                   施設からのメッセージ
-                </h2>
+                </p>
 
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 whitespace-pre-wrap">
-                  {invitation.message}
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-xl">
+                      💬
+                    </span>
+
+                    <p className="flex-1 whitespace-pre-wrap text-sm text-gray-700 leading-7">
+                      {invitation.message}
+                    </p>
+                  </div>
                 </div>
               </section>
             )}
 
+            {/* 承諾・辞退 */}
             {invitation.status === "pending" && (
-              <div className="pt-2 space-y-3">
+              <div className="pt-1 space-y-3">
                 <button
                   type="button"
                   onClick={handleAccept}
                   disabled={processing}
-                  className="w-full bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
+                  className="w-full bg-black text-white rounded-2xl py-4 font-bold shadow-sm disabled:opacity-50"
                 >
                   {accepting
                     ? "承諾処理中..."
@@ -513,33 +615,55 @@ export default function PerformerInvitationDetailPage() {
                   type="button"
                   onClick={handleReject}
                   disabled={processing}
-                  className="w-full bg-gray-200 text-gray-800 rounded-xl p-4 font-bold disabled:opacity-50"
+                  className="w-full bg-white border border-gray-300 text-gray-700 rounded-2xl py-4 font-bold disabled:opacity-50"
                 >
                   {rejecting
                     ? "辞退処理中..."
                     : "今回は見送る"}
                 </button>
+
+                <p className="text-center text-xs text-gray-400 pt-1">
+                  承諾するとマッチングが成立します
+                </p>
               </div>
             )}
 
+            {/* 承諾済み */}
             {invitation.status === "accepted" && (
-              <div className="pt-2">
+              <div className="pt-1">
+                <div className="bg-green-50 border border-green-100 rounded-2xl p-4 mb-3">
+                  <p className="text-sm font-bold text-green-700">
+                    ✓ この依頼は承諾済みです
+                  </p>
+
+                  <p className="text-xs text-green-600 mt-1">
+                    マッチング詳細から施設との連絡を確認できます。
+                  </p>
+                </div>
+
                 <button
                   type="button"
                   onClick={() =>
                     router.push("/performer/matches")
                   }
-                  className="w-full bg-blue-600 text-white rounded-xl p-4 font-bold"
+                  className="w-full bg-black text-white rounded-2xl py-4 font-bold"
                 >
                   マッチングを確認する
                 </button>
               </div>
             )}
 
+            {/* 辞退済み */}
             {invitation.status === "rejected" && (
-              <div className="pt-2">
-                <div className="bg-gray-100 text-gray-600 rounded-xl p-4 text-center mb-3">
-                  この依頼は辞退しました。
+              <div className="pt-1">
+                <div className="bg-gray-100 text-gray-600 rounded-2xl p-4 text-center mb-3">
+                  <p className="font-bold">
+                    この依頼は辞退しました。
+                  </p>
+
+                  <p className="text-xs mt-1 text-gray-500">
+                    依頼一覧から他の依頼を確認できます。
+                  </p>
                 </div>
 
                 <button
@@ -547,20 +671,21 @@ export default function PerformerInvitationDetailPage() {
                   onClick={() =>
                     router.push("/performer/invitations")
                   }
-                  className="w-full bg-blue-600 text-white rounded-xl p-4 font-bold"
+                  className="w-full bg-black text-white rounded-2xl py-4 font-bold"
                 >
                   依頼一覧に戻る
                 </button>
               </div>
             )}
 
+            {/* ホーム */}
             <button
               type="button"
               onClick={() =>
                 router.push("/performer/home")
               }
               disabled={processing}
-              className="w-full text-gray-600 p-3 disabled:opacity-50"
+              className="w-full text-gray-500 py-3 text-sm font-medium disabled:opacity-50"
             >
               演奏者ホームへ戻る
             </button>

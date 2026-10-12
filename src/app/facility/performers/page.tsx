@@ -401,15 +401,33 @@ export default function FacilityPerformersPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <h1 className="text-2xl font-bold">
-            🎹 演奏者を探す
-          </h1>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto px-4 py-6">
 
-          <p className="mt-8 text-center text-gray-500">
-            演奏者を読み込んでいます…
-          </p>
+          <header className="pb-6">
+            <p className="text-sm font-medium text-gray-500">
+              演奏マッチング
+            </p>
+
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">
+              🎹 演奏者を探す
+            </h1>
+
+            <p className="text-sm text-gray-500 mt-2">
+              登録されている演奏者から、条件に合う方を探せます。
+            </p>
+          </header>
+
+          <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
+            <div className="text-3xl">
+              🎹
+            </div>
+
+            <p className="text-sm text-gray-500 mt-3">
+              演奏者を読み込んでいます…
+            </p>
+          </div>
+
         </div>
       </main>
     );
@@ -417,14 +435,29 @@ export default function FacilityPerformersPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <h1 className="text-2xl font-bold">
-            🎹 演奏者を探す
-          </h1>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto px-4 py-6">
 
-          <div className="mt-6 p-4 bg-red-50 rounded-xl">
-            <p className="text-red-600">
+          <header className="pb-6">
+            <p className="text-sm font-medium text-gray-500">
+              演奏マッチング
+            </p>
+
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">
+              🎹 演奏者を探す
+            </h1>
+          </header>
+
+          <div className="bg-red-50 border border-red-100 rounded-2xl p-5">
+            <div className="text-2xl">
+              ⚠️
+            </div>
+
+            <p className="text-sm font-bold text-red-700 mt-2">
+              演奏者を取得できませんでした
+            </p>
+
+            <p className="text-sm text-red-600 mt-1 leading-relaxed">
               {error}
             </p>
           </div>
@@ -435,38 +468,93 @@ export default function FacilityPerformersPage() {
                 "/facility/home"
               )
             }
-            className="w-full mt-6 bg-white border rounded-xl p-4"
+            className="w-full mt-5 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-700"
           >
             ← 施設ホームへ戻る
           </button>
+
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto px-4 py-6">
 
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold">
-            🎹 演奏者を探す
-          </h1>
+        {/* ヘッダー */}
+        <header className="pb-5">
 
-          <p className="text-sm text-gray-500 mt-1">
-            登録されている演奏者から探せます
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/facility/home"
+              )
+            }
+            className="text-sm text-gray-500 mb-4"
+          >
+            ← 施設ホーム
+          </button>
+
+          <p className="text-sm font-medium text-gray-500">
+            演奏者検索
           </p>
-        </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border mb-6">
-          <h2 className="text-lg font-bold mb-4">
-            🔎 演奏者を絞り込む
-          </h2>
-
-          <div className="space-y-4">
-
+          <div className="flex items-end justify-between gap-3 mt-1">
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <h1 className="text-2xl font-bold text-gray-900">
+                🎹 演奏者を探す
+              </h1>
+
+              <p className="text-sm text-gray-500 mt-2">
+                条件から演奏者を検索できます。
+              </p>
+            </div>
+
+            <div className="shrink-0 bg-white border border-gray-200 rounded-full px-3 py-1">
+              <span className="text-sm font-bold text-gray-700">
+                {filteredPerformers.length}人
+              </span>
+            </div>
+          </div>
+
+        </header>
+
+        {/* 検索条件 */}
+        <section className="bg-white border border-gray-200 rounded-2xl p-5">
+
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-gray-900">
+                🔎 条件で絞り込む
+              </h2>
+
+              <p className="text-xs text-gray-400 mt-1">
+                名前・地域・楽器・ジャンル・評価から検索できます。
+              </p>
+            </div>
+
+            {(keyword ||
+              areaFilter ||
+              instrumentFilter ||
+              genreFilter ||
+              ratingFilter) && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="shrink-0 text-xs font-bold text-gray-500 border border-gray-200 rounded-full px-3 py-1.5"
+              >
+                クリア
+              </button>
+            )}
+          </div>
+
+          <div className="space-y-4 mt-5">
+
+            {/* キーワード */}
+            <div>
+              <label className="block text-sm font-bold text-gray-800 mb-2">
                 キーワード
               </label>
 
@@ -479,172 +567,197 @@ export default function FacilityPerformersPage() {
                   )
                 }
                 placeholder="名前・自己紹介から検索"
-                className="w-full border rounded-xl p-3"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                地域
-              </label>
+            {/* 地域・楽器 */}
+            <div className="grid grid-cols-2 gap-3">
 
-              <select
-                value={areaFilter}
-                onChange={(event) =>
-                  setAreaFilter(
-                    event.target.value
-                  )
-                }
-                className="w-full border rounded-xl p-3 bg-white"
-              >
-                <option value="">
-                  すべての地域
-                </option>
+              <div>
+                <label className="block text-sm font-bold text-gray-800 mb-2">
+                  地域
+                </label>
 
-                {areas.map((area) => (
-                  <option
-                    key={area}
-                    value={area}
-                  >
-                    {area}
+                <select
+                  value={areaFilter}
+                  onChange={(event) =>
+                    setAreaFilter(
+                      event.target.value
+                    )
+                  }
+                  className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
+                >
+                  <option value="">
+                    すべて
                   </option>
-                ))}
-              </select>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                楽器
-              </label>
-
-              <select
-                value={instrumentFilter}
-                onChange={(event) =>
-                  setInstrumentFilter(
-                    event.target.value
-                  )
-                }
-                className="w-full border rounded-xl p-3 bg-white"
-              >
-                <option value="">
-                  すべての楽器
-                </option>
-
-                {instruments.map(
-                  (instrument) => (
+                  {areas.map((area) => (
                     <option
-                      key={instrument}
-                      value={instrument}
+                      key={area}
+                      value={area}
                     >
-                      {instrument}
+                      {area}
                     </option>
-                  )
-                )}
-              </select>
-            </div>
+                  ))}
+                </select>
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                ジャンル
-              </label>
+              <div>
+                <label className="block text-sm font-bold text-gray-800 mb-2">
+                  楽器
+                </label>
 
-              <select
-                value={genreFilter}
-                onChange={(event) =>
-                  setGenreFilter(
-                    event.target.value
-                  )
-                }
-                className="w-full border rounded-xl p-3 bg-white"
-              >
-                <option value="">
-                  すべてのジャンル
-                </option>
-
-                {genres.map((genre) => (
-                  <option
-                    key={genre}
-                    value={genre}
-                  >
-                    {genre}
+                <select
+                  value={instrumentFilter}
+                  onChange={(event) =>
+                    setInstrumentFilter(
+                      event.target.value
+                    )
+                  }
+                  className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
+                >
+                  <option value="">
+                    すべて
                   </option>
-                ))}
-              </select>
+
+                  {instruments.map(
+                    (instrument) => (
+                      <option
+                        key={instrument}
+                        value={instrument}
+                      >
+                        {instrument}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                最低評価
-              </label>
+            {/* ジャンル・評価 */}
+            <div className="grid grid-cols-2 gap-3">
 
-              <select
-                value={ratingFilter}
-                onChange={(event) =>
-                  setRatingFilter(
-                    event.target.value
-                  )
-                }
-                className="w-full border rounded-xl p-3 bg-white"
-              >
-                <option value="">
-                  すべて
-                </option>
+              <div>
+                <label className="block text-sm font-bold text-gray-800 mb-2">
+                  ジャンル
+                </label>
 
-                <option value="4">
-                  ★ 4.0以上
-                </option>
+                <select
+                  value={genreFilter}
+                  onChange={(event) =>
+                    setGenreFilter(
+                      event.target.value
+                    )
+                  }
+                  className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
+                >
+                  <option value="">
+                    すべて
+                  </option>
 
-                <option value="3">
-                  ★ 3.0以上
-                </option>
+                  {genres.map((genre) => (
+                    <option
+                      key={genre}
+                      value={genre}
+                    >
+                      {genre}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <option value="2">
-                  ★ 2.0以上
-                </option>
+              <div>
+                <label className="block text-sm font-bold text-gray-800 mb-2">
+                  最低評価
+                </label>
 
-                <option value="1">
-                  ★ 1.0以上
-                </option>
-              </select>
+                <select
+                  value={ratingFilter}
+                  onChange={(event) =>
+                    setRatingFilter(
+                      event.target.value
+                    )
+                  }
+                  className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
+                >
+                  <option value="">
+                    すべて
+                  </option>
+
+                  <option value="4">
+                    ★ 4.0以上
+                  </option>
+
+                  <option value="3">
+                    ★ 3.0以上
+                  </option>
+
+                  <option value="2">
+                    ★ 2.0以上
+                  </option>
+
+                  <option value="1">
+                    ★ 1.0以上
+                  </option>
+                </select>
+              </div>
+
             </div>
 
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="w-full border rounded-xl p-3 text-gray-700"
-            >
-              条件をクリア
-            </button>
           </div>
-        </div>
 
-        <div className="mb-4">
-          <p className="text-sm text-gray-600">
-            {filteredPerformers.length}
-            人の演奏者が見つかりました
+        </section>
+
+        {/* 件数 */}
+        <div className="flex items-center justify-between mt-5 mb-3">
+          <p className="text-sm font-bold text-gray-700">
+            検索結果
+          </p>
+
+          <p className="text-xs text-gray-400">
+            {filteredPerformers.length}人
           </p>
         </div>
 
+        {/* 検索結果 */}
         {filteredPerformers.length === 0 ? (
-          <div className="bg-white rounded-2xl p-6 text-center">
-            <p className="text-gray-500">
-              条件に一致する演奏者がいません。
+          <div className="bg-white border border-gray-200 rounded-2xl p-7 text-center">
+
+            <div className="text-4xl">
+              🔍
+            </div>
+
+            <h2 className="font-bold text-gray-900 mt-4">
+              条件に一致する演奏者がいません
+            </h2>
+
+            <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+              検索条件を変更すると、他の演奏者が見つかるかもしれません。
             </p>
 
             <button
               type="button"
               onClick={clearFilters}
-              className="mt-4 text-sm text-blue-600"
+              className="mt-5 bg-black text-white rounded-xl px-5 py-3 font-bold"
             >
-              条件をクリアしてすべて表示
+              条件をクリア
             </button>
+
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
+
             {filteredPerformers.map(
               (performer) => {
                 const user =
                   getUser(performer);
+
+                const favorite =
+                  isFavorite(
+                    performer
+                  );
 
                 return (
                   <button
@@ -655,8 +768,9 @@ export default function FacilityPerformersPage() {
                         performer
                       )
                     }
-                    className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border"
+                    className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
                   >
+
                     <div className="flex items-start gap-4">
 
                       {user?.picture_url ? (
@@ -665,26 +779,43 @@ export default function FacilityPerformersPage() {
                             user.picture_url
                           }
                           alt=""
-                          className="w-14 h-14 rounded-full object-cover"
+                          className="w-14 h-14 rounded-2xl object-cover shrink-0"
                         />
                       ) : (
-                        <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center text-2xl">
+                        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-2xl shrink-0">
                           🎹
                         </div>
                       )}
 
                       <div className="flex-1 min-w-0">
 
-                        <h2 className="text-lg font-bold">
-                          {performer.name}
-                        </h2>
+                        <div className="flex items-start justify-between gap-2">
 
-                        <p className="mt-1 text-sm text-gray-500">
+                          <h2 className="text-base font-bold text-gray-900 leading-snug">
+                            {performer.name}
+                          </h2>
+
+                          <span
+                            className={`shrink-0 text-lg ${
+                              favorite
+                                ? "text-yellow-500"
+                                : "text-gray-300"
+                            }`}
+                          >
+                            {favorite
+                              ? "♥"
+                              : "♡"}
+                          </span>
+
+                        </div>
+
+                        <p className="text-sm text-gray-500 mt-1">
                           📍 {performer.area}
                         </p>
 
-                        <div className="mt-2">
-                          <span className="text-sm">
+                        <div className="flex items-center gap-2 mt-2">
+
+                          <span className="text-sm font-bold text-gray-800">
                             ⭐{" "}
                             {performer.average_rating !==
                             null
@@ -694,66 +825,74 @@ export default function FacilityPerformersPage() {
                               : "未評価"}
                           </span>
 
-                          <span className="text-xs text-gray-500 ml-2">
-                            (
-                            {
-                              performer.review_count
-                            }
-                            件)
+                          <span className="text-xs text-gray-400">
+                            {performer.review_count}件のレビュー
                           </span>
+
                         </div>
 
                       </div>
+
                     </div>
 
-                    {performer.instruments?.length >
-                      0 && (
-                      <div className="mt-4 flex flex-wrap gap-2">
+                    {(performer.instruments?.length >
+                      0 ||
+                      performer.genres?.length >
+                        0) && (
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+
                         {performer.instruments.map(
                           (instrument) => (
                             <span
-                              key={instrument}
-                              className="text-xs bg-gray-100 rounded-full px-3 py-1"
+                              key={`instrument-${instrument}`}
+                              className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
                             >
                               🎹 {instrument}
                             </span>
                           )
                         )}
-                      </div>
-                    )}
 
-                    {performer.genres?.length >
-                      0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
                         {performer.genres.map(
                           (genre) => (
                             <span
-                              key={genre}
-                              className="text-xs bg-blue-50 rounded-full px-3 py-1"
+                              key={`genre-${genre}`}
+                              className="text-xs bg-blue-50 text-blue-700 rounded-full px-2.5 py-1"
                             >
                               🎵 {genre}
                             </span>
                           )
                         )}
+
                       </div>
                     )}
 
                     {performer.bio && (
-                      <p className="mt-3 text-sm text-gray-600 line-clamp-2">
+                      <p className="mt-3 text-sm text-gray-500 leading-relaxed line-clamp-2">
                         {performer.bio}
                       </p>
                     )}
 
-                    <p className="mt-4 text-right text-sm text-gray-400">
-                      プロフィールを見る →
-                    </p>
+                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+
+                      <span className="text-xs text-gray-400">
+                        タップしてプロフィールを確認
+                      </span>
+
+                      <span className="text-sm font-bold text-gray-700">
+                        詳細を見る →
+                      </span>
+
+                    </div>
+
                   </button>
                 );
               }
             )}
+
           </div>
         )}
 
+        {/* 戻る */}
         <button
           type="button"
           onClick={() =>
@@ -761,26 +900,42 @@ export default function FacilityPerformersPage() {
               "/facility/home"
             )
           }
-          className="w-full mt-6 bg-white border rounded-xl p-4"
+          className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-600"
         >
           ← 施設ホームへ戻る
         </button>
 
-        {selectedPerformer && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-6 z-50">
-            <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-y-auto p-6">
+        <p className="text-center text-xs text-gray-400 mt-6 pb-4">
+          演奏者と施設をつなぐ、演奏マッチング
+        </p>
 
-              <div className="flex items-start justify-between gap-4">
+        {/* プロフィールモーダル */}
+        {selectedPerformer && (
+          <div
+            className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center"
+            onClick={() =>
+              setSelectedPerformer(null)
+            }
+          >
+            <div
+              className="bg-white w-full max-w-md rounded-t-3xl max-h-[90vh] overflow-y-auto"
+              onClick={(event) =>
+                event.stopPropagation()
+              }
+            >
+
+              {/* モーダルヘッダー */}
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between z-10">
+
                 <div>
-                  <h2 className="text-xl font-bold">
+                  <p className="text-xs text-gray-400">
+                    演奏者プロフィール
+                  </p>
+
+                  <h2 className="text-lg font-bold text-gray-900 mt-0.5">
                     🎹{" "}
                     {selectedPerformer.name}
                   </h2>
-
-                  <p className="mt-1 text-sm text-gray-500">
-                    📍{" "}
-                    {selectedPerformer.area}
-                  </p>
                 </div>
 
                 <button
@@ -788,134 +943,212 @@ export default function FacilityPerformersPage() {
                   onClick={() =>
                     setSelectedPerformer(null)
                   }
-                  className="text-gray-500 text-xl"
+                  className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"
                 >
                   ✕
                 </button>
+
               </div>
 
-              <div className="mt-5 p-4 bg-gray-50 rounded-xl">
-                <p className="font-bold">
-                  ⭐ 評価
-                </p>
+              <div className="p-5">
 
-                <p className="mt-2 text-lg">
-                  {renderStars(
-                    selectedPerformer.average_rating
+                {/* プロフィール */}
+                <div className="flex items-center gap-4">
+
+                  {getUser(
+                    selectedPerformer
+                  )?.picture_url ? (
+                    <img
+                      src={
+                        getUser(
+                          selectedPerformer
+                        )?.picture_url || ""
+                      }
+                      alt=""
+                      className="w-16 h-16 rounded-2xl object-cover"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">
+                      🎹
+                    </div>
                   )}
-                </p>
 
-                <p className="text-sm text-gray-600 mt-1">
-                  {selectedPerformer.average_rating !==
-                  null
-                    ? selectedPerformer.average_rating.toFixed(
-                        1
-                      )
-                    : "未評価"}
-                  {" / "}
-                  {
-                    selectedPerformer.review_count
-                  }
-                  件
-                </p>
-              </div>
+                  <div className="min-w-0">
 
-              <div className="mt-5">
-                <h3 className="font-bold">
-                  🎹 楽器
-                </h3>
+                    <h3 className="text-xl font-bold text-gray-900">
+                      {selectedPerformer.name}
+                    </h3>
 
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedPerformer.instruments.map(
-                    (instrument) => (
-                      <span
-                        key={instrument}
-                        className="text-sm bg-gray-100 rounded-full px-3 py-1"
-                      >
-                        {instrument}
-                      </span>
-                    )
-                  )}
+                    <p className="text-sm text-gray-500 mt-1">
+                      📍{" "}
+                      {selectedPerformer.area}
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
 
-              <div className="mt-5">
-                <h3 className="font-bold">
-                  🎵 ジャンル
-                </h3>
+                {/* 評価 */}
+                <div className="mt-5 bg-gray-50 rounded-2xl p-4">
 
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedPerformer.genres.map(
-                    (genre) => (
-                      <span
-                        key={genre}
-                        className="text-sm bg-blue-50 rounded-full px-3 py-1"
-                      >
-                        {genre}
-                      </span>
-                    )
-                  )}
+                  <div className="flex items-center justify-between">
+
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">
+                        ⭐ 評価
+                      </p>
+
+                      <p className="text-xs text-gray-400 mt-1">
+                        {selectedPerformer.review_count}
+                        件のレビュー
+                      </p>
+                    </div>
+
+                    <div className="text-right">
+
+                      <p className="text-xl font-bold text-gray-900">
+                        {selectedPerformer.average_rating !==
+                        null
+                          ? selectedPerformer.average_rating.toFixed(
+                              1
+                            )
+                          : "—"}
+                      </p>
+
+                      <p className="text-sm text-yellow-500 tracking-tight">
+                        {renderStars(
+                          selectedPerformer.average_rating
+                        )}
+                      </p>
+
+                    </div>
+
+                  </div>
+
                 </div>
-              </div>
 
-              {selectedPerformer.bio && (
+                {/* 楽器 */}
                 <div className="mt-5">
-                  <h3 className="font-bold">
-                    📝 自己紹介
+
+                  <h3 className="text-sm font-bold text-gray-900">
+                    🎹 楽器
                   </h3>
 
-                  <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
-                    {selectedPerformer.bio}
-                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+
+                    {selectedPerformer.instruments.map(
+                      (instrument) => (
+                        <span
+                          key={instrument}
+                          className="text-sm bg-gray-100 text-gray-700 rounded-full px-3 py-1.5"
+                        >
+                          {instrument}
+                        </span>
+                      )
+                    )}
+
+                  </div>
+
                 </div>
-              )}
 
-              <button
-                type="button"
-                onClick={() =>
-                  handleFavoriteToggle(
-                    selectedPerformer
-                  )
-                }
-                disabled={favoriteLoading}
-                className={`w-full mt-6 rounded-xl p-4 font-bold ${
-                  isFavorite(
-                    selectedPerformer
-                  )
-                    ? "bg-yellow-50 border border-yellow-300 text-yellow-700"
-                    : "bg-white border border-gray-300 text-gray-700"
-                } disabled:opacity-50`}
-              >
-                {favoriteLoading
-                  ? "変更しています..."
-                  : isFavorite(
-                      selectedPerformer
-                    )
-                  ? "♥ お気に入り済み"
-                  : "♡ お気に入りに追加"}
-              </button>
+                {/* ジャンル */}
+                <div className="mt-5">
 
-              <button
-                type="button"
-                onClick={() => {
-                  router.push(
-                    `/facility/performers/${selectedPerformer.id}/invite`
-                  );
-                }}
-                className="w-full mt-3 bg-blue-600 text-white rounded-xl p-4 font-bold"
-              >
-                この演奏者に依頼する
-              </button>
+                  <h3 className="text-sm font-bold text-gray-900">
+                    🎵 ジャンル
+                  </h3>
 
-              <button
-                type="button"
-                onClick={() =>
-                  setSelectedPerformer(null)
-                }
-                className="w-full mt-3 bg-gray-100 text-gray-700 rounded-xl p-4"
-              >
-                閉じる
-              </button>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+
+                    {selectedPerformer.genres.map(
+                      (genre) => (
+                        <span
+                          key={genre}
+                          className="text-sm bg-blue-50 text-blue-700 rounded-full px-3 py-1.5"
+                        >
+                          {genre}
+                        </span>
+                      )
+                    )}
+
+                  </div>
+
+                </div>
+
+                {/* 自己紹介 */}
+                {selectedPerformer.bio && (
+                  <div className="mt-5">
+
+                    <h3 className="text-sm font-bold text-gray-900">
+                      📝 自己紹介
+                    </h3>
+
+                    <div className="mt-2 bg-gray-50 rounded-2xl p-4">
+                      <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">
+                        {selectedPerformer.bio}
+                      </p>
+                    </div>
+
+                  </div>
+                )}
+
+                {/* アクション */}
+                <div className="mt-6">
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleFavoriteToggle(
+                        selectedPerformer
+                      )
+                    }
+                    disabled={
+                      favoriteLoading
+                    }
+                    className={`w-full rounded-2xl p-4 font-bold border ${
+                      isFavorite(
+                        selectedPerformer
+                      )
+                        ? "bg-yellow-50 border-yellow-200 text-yellow-700"
+                        : "bg-white border-gray-200 text-gray-700"
+                    } disabled:opacity-50`}
+                  >
+                    {favoriteLoading
+                      ? "変更しています..."
+                      : isFavorite(
+                          selectedPerformer
+                        )
+                      ? "♥ お気に入り済み"
+                      : "♡ お気に入りに追加"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      router.push(
+                        `/facility/performers/${selectedPerformer.id}/invite`
+                      );
+                    }}
+                    className="w-full mt-3 bg-black text-white rounded-2xl p-4 font-bold active:scale-[0.99] transition"
+                  >
+                    🎵 この演奏者に依頼する
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedPerformer(null)
+                    }
+                    className="w-full mt-3 bg-gray-100 text-gray-700 rounded-2xl p-4 font-bold"
+                  >
+                    閉じる
+                  </button>
+
+                </div>
+
+              </div>
+
+              <div className="h-4" />
 
             </div>
           </div>

@@ -1,6 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
@@ -269,11 +274,26 @@ export default function PerformerMatchChatPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <p className="text-gray-600">
-            チャットを読み込み中...
-          </p>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen">
+          <div className="bg-black px-5 py-5">
+            <div className="h-4 w-32 bg-white/20 rounded animate-pulse" />
+            <div className="h-6 w-48 bg-white/20 rounded mt-4 animate-pulse" />
+          </div>
+
+          <div className="p-4 space-y-4">
+            <div className="flex justify-start">
+              <div className="w-48 h-16 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+            </div>
+
+            <div className="flex justify-end">
+              <div className="w-56 h-16 bg-gray-200 rounded-2xl animate-pulse" />
+            </div>
+
+            <div className="flex justify-start">
+              <div className="w-40 h-12 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+            </div>
+          </div>
         </div>
       </main>
     );
@@ -282,155 +302,196 @@ export default function PerformerMatchChatPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen flex flex-col">
-
         {/* ヘッダー */}
-        <header className="bg-white border-b p-4 sticky top-0 z-10">
+        <header className="bg-black text-white px-4 pt-4 pb-5 sticky top-0 z-10 shadow-sm">
           <button
+            type="button"
             onClick={() =>
               router.push(
                 `/performer/matches/${matchId}`
               )
             }
-            className="text-gray-600"
+            className="inline-flex items-center text-sm text-gray-300 py-2"
           >
             ← マッチング詳細に戻る
           </button>
 
-          <h1 className="text-xl font-bold mt-3">
-            💬 施設との連絡
-          </h1>
+          <div className="flex items-center gap-3 mt-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center text-xl">
+              💬
+            </div>
 
-          <p className="text-sm text-gray-500 mt-1">
+            <div>
+              <p className="text-xs text-gray-400 font-medium">
+                マッチング成立後の連絡
+              </p>
+
+              <h1 className="text-xl font-bold mt-0.5">
+                施設との連絡
+              </h1>
+            </div>
+          </div>
+
+          <p className="text-xs text-gray-400 mt-3 leading-5">
             演奏時間や当日の流れなどを確認できます。
           </p>
         </header>
 
         {/* エラー */}
         {error && (
-          <div className="mx-4 mt-4 bg-red-50 border border-red-200 rounded-xl p-4">
-            <p className="text-sm text-red-600">
-              {error}
-            </p>
+          <div className="mx-4 mt-4 bg-red-50 border border-red-100 rounded-2xl p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-lg">
+                ⚠️
+              </span>
+
+              <p className="text-sm text-red-700 leading-6">
+                {error}
+              </p>
+            </div>
           </div>
         )}
 
         {/* メッセージ */}
-        <div className="flex-1 p-4 space-y-3 overflow-y-auto">
-
+        <div className="flex-1 p-4 pb-28 overflow-y-auto">
           {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-4xl">
-                💬
+            <div className="min-h-[55vh] flex items-center justify-center">
+              <div className="text-center px-6">
+                <div className="w-16 h-16 rounded-3xl bg-white border border-gray-100 shadow-sm flex items-center justify-center text-3xl mx-auto">
+                  💬
+                </div>
+
+                <h2 className="font-bold text-gray-800 mt-4">
+                  まだメッセージはありません
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-2 leading-6">
+                  施設に確認したいことや、
+                  当日の演奏についての相談を送ってみましょう。
+                </p>
               </div>
-
-              <p className="mt-3 text-gray-600">
-                まだメッセージはありません。
-              </p>
-
-              <p className="mt-1 text-sm text-gray-400">
-                施設に確認したいことを送ってみましょう。
-              </p>
             </div>
           ) : (
-            messages.map((item) => {
-              const isMine =
-                item.sender_id ===
-                currentUserId;
+            <>
+              <div className="text-center mb-5">
+                <span className="inline-flex items-center bg-white border border-gray-100 rounded-full px-3 py-1 text-xs text-gray-400">
+                  💬 メッセージ
+                </span>
+              </div>
 
-              const user =
-                getUser(item.users);
+              <div className="space-y-4">
+                {messages.map((item) => {
+                  const isMine =
+                    item.sender_id ===
+                    currentUserId;
 
-              return (
-                <div
-                  key={item.id}
-                  className={`flex ${
-                    isMine
-                      ? "justify-end"
-                      : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[80%] ${
-                      isMine
-                        ? "items-end"
-                        : "items-start"
-                    } flex flex-col`}
-                  >
-                    {!isMine && (
-                      <p className="text-xs text-gray-500 mb-1 px-1">
-                        {user?.display_name ||
-                          "施設"}
-                      </p>
-                    )}
+                  const user =
+                    getUser(item.users);
 
+                  return (
                     <div
-                      className={`rounded-2xl px-4 py-3 ${
+                      key={item.id}
+                      className={`flex ${
                         isMine
-                          ? "bg-black text-white rounded-br-md"
-                          : "bg-white border text-gray-800 rounded-bl-md"
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap break-words">
-                        {item.message}
-                      </p>
-                    </div>
+                      <div
+                        className={`max-w-[82%] ${
+                          isMine
+                            ? "items-end"
+                            : "items-start"
+                        } flex flex-col`}
+                      >
+                        {!isMine && (
+                          <div className="flex items-center gap-2 mb-1 px-1">
+                            <div className="w-7 h-7 rounded-full bg-white border border-gray-100 flex items-center justify-center text-xs">
+                              🏢
+                            </div>
 
-                    <p className="text-xs text-gray-400 mt-1 px-1">
-                      {formatTime(
-                        item.created_at
-                      )}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
+                            <p className="text-xs font-medium text-gray-500">
+                              {user?.display_name ||
+                                "施設"}
+                            </p>
+                          </div>
+                        )}
+
+                        <div
+                          className={`px-4 py-3 rounded-2xl shadow-sm ${
+                            isMine
+                              ? "bg-black text-white rounded-br-md"
+                              : "bg-white border border-gray-100 text-gray-800 rounded-bl-md"
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap break-words text-sm leading-6">
+                            {item.message}
+                          </p>
+                        </div>
+
+                        <p className="text-[11px] text-gray-400 mt-1 px-1">
+                          {formatTime(
+                            item.created_at
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           <div ref={messagesEndRef} />
-
         </div>
 
         {/* 入力欄 */}
         <form
           onSubmit={handleSubmit}
-          className="bg-white border-t p-3 sticky bottom-0"
+          className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 backdrop-blur border-t border-gray-100"
         >
-          <div className="flex items-end gap-2">
+          <div className="max-w-md mx-auto px-3 pt-3 pb-3">
+            <div className="flex items-end gap-2">
+              <div className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2 focus-within:bg-white focus-within:border-black focus-within:ring-2 focus-within:ring-gray-100 transition">
+                <textarea
+                  value={messageText}
+                  onChange={(event) =>
+                    setMessageText(
+                      event.target.value
+                    )
+                  }
+                  placeholder="メッセージを入力..."
+                  rows={1}
+                  maxLength={1000}
+                  disabled={sending}
+                  className="w-full bg-transparent resize-none outline-none text-sm text-gray-900 placeholder:text-gray-400 leading-6 disabled:opacity-50"
+                />
 
-            <textarea
-              value={messageText}
-              onChange={(event) =>
-                setMessageText(
-                  event.target.value
-                )
-              }
-              placeholder="メッセージを入力..."
-              rows={1}
-              maxLength={1000}
-              disabled={sending}
-              className="flex-1 resize-none border rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-black disabled:bg-gray-100"
-            />
+                <p className="text-right text-[10px] text-gray-400 mt-1">
+                  {messageText.length}/1000
+                </p>
+              </div>
 
-            <button
-              type="submit"
-              disabled={
-                sending ||
-                !messageText.trim()
-              }
-              className="bg-black text-white rounded-2xl px-5 py-3 font-bold disabled:bg-gray-300"
-            >
-              {sending
-                ? "送信中..."
-                : "送信"}
-            </button>
-
+              <button
+                type="submit"
+                disabled={
+                  sending ||
+                  !messageText.trim()
+                }
+                className="shrink-0 w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center font-bold shadow-sm transition active:scale-95 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none"
+                aria-label="メッセージを送信"
+              >
+                {sending ? (
+                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <span className="text-lg">
+                    ↑
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
-
-          <p className="text-right text-xs text-gray-400 mt-1">
-            {messageText.length}/1000
-          </p>
         </form>
-
       </div>
     </main>
   );

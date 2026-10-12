@@ -21,29 +21,49 @@ type ReviewData = {
 export default function PerformerProfileEditPage() {
   const router = useRouter();
 
-  const [lineUserId, setLineUserId] = useState("");
+  const [lineUserId, setLineUserId] =
+    useState("");
 
-  const [name, setName] = useState("");
-  const [area, setArea] = useState("");
-  const [instruments, setInstruments] = useState("");
-  const [genres, setGenres] = useState("");
-  const [bio, setBio] = useState("");
+  const [name, setName] =
+    useState("");
 
-  const [performerId, setPerformerId] = useState("");
+  const [area, setArea] =
+    useState("");
+
+  const [instruments, setInstruments] =
+    useState("");
+
+  const [genres, setGenres] =
+    useState("");
+
+  const [bio, setBio] =
+    useState("");
+
+  const [performerId, setPerformerId] =
+    useState("");
 
   const [reviewData, setReviewData] =
     useState<ReviewData | null>(null);
+
   const [reviewLoading, setReviewLoading] =
     useState(false);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] =
+    useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
 
   // =========================
   // プロフィール取得
   // =========================
-  const loadProfile = async (userId: string) => {
+
+  const loadProfile = async (
+    userId: string
+  ) => {
     try {
       const response = await fetch(
         "/api/performers/profile",
@@ -55,7 +75,8 @@ export default function PerformerProfileEditPage() {
         }
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -64,29 +85,49 @@ export default function PerformerProfileEditPage() {
         );
       }
 
-      const performer = data.performer;
+      const performer =
+        data.performer;
 
-      setPerformerId(performer.id || "");
+      setPerformerId(
+        performer.id || ""
+      );
 
-      setName(performer.name || "");
-      setArea(performer.area || "");
+      setName(
+        performer.name || ""
+      );
+
+      setArea(
+        performer.area || ""
+      );
 
       setInstruments(
-        Array.isArray(performer.instruments)
-          ? performer.instruments.join(", ")
+        Array.isArray(
+          performer.instruments
+        )
+          ? performer.instruments.join(
+              ", "
+            )
           : ""
       );
 
       setGenres(
-        Array.isArray(performer.genres)
-          ? performer.genres.join(", ")
+        Array.isArray(
+          performer.genres
+        )
+          ? performer.genres.join(
+              ", "
+            )
           : ""
       );
 
-      setBio(performer.bio || "");
+      setBio(
+        performer.bio || ""
+      );
 
       if (performer.id) {
-        await loadReviews(performer.id);
+        await loadReviews(
+          performer.id
+        );
       }
     } catch (error) {
       console.error(
@@ -94,8 +135,12 @@ export default function PerformerProfileEditPage() {
         error
       );
 
-      if (error instanceof Error) {
-        setError(error.message);
+      if (
+        error instanceof Error
+      ) {
+        setError(
+          error.message
+        );
       } else {
         setError(
           "プロフィールの取得に失敗しました"
@@ -109,6 +154,7 @@ export default function PerformerProfileEditPage() {
   // =========================
   // 評価取得
   // =========================
+
   const loadReviews = async (
     performerId: string
   ) => {
@@ -121,7 +167,8 @@ export default function PerformerProfileEditPage() {
           "/reviews"
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -146,20 +193,31 @@ export default function PerformerProfileEditPage() {
   // =========================
   // 星表示
   // =========================
-  const renderStars = (rating: number) => {
-    return "★".repeat(rating) +
-      "☆".repeat(5 - rating);
+
+  const renderStars = (
+    rating: number
+  ) => {
+    return (
+      "★".repeat(rating) +
+      "☆".repeat(5 - rating)
+    );
   };
 
   // =========================
   // 評価日付
   // =========================
+
   const formatReviewDate = (
     dateString: string
   ) => {
-    const date = new Date(dateString);
+    const date =
+      new Date(dateString);
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
       return "";
     }
 
@@ -176,6 +234,7 @@ export default function PerformerProfileEditPage() {
   // =========================
   // LINE / LIFF 初期化
   // =========================
+
   useEffect(() => {
     async function initLiff() {
       try {
@@ -201,17 +260,25 @@ export default function PerformerProfileEditPage() {
         const profile =
           await liff.getProfile();
 
-        setLineUserId(profile.userId);
+        setLineUserId(
+          profile.userId
+        );
 
-        await loadProfile(profile.userId);
+        await loadProfile(
+          profile.userId
+        );
       } catch (error) {
         console.error(
           "LIFF初期化エラー:",
           error
         );
 
-        if (error instanceof Error) {
-          setError(error.message);
+        if (
+          error instanceof Error
+        ) {
+          setError(
+            error.message
+          );
         } else {
           setError(
             "LINE情報の取得に失敗しました"
@@ -228,6 +295,7 @@ export default function PerformerProfileEditPage() {
   // =========================
   // プロフィール更新
   // =========================
+
   const handleSubmit = async (
     event: React.FormEvent<HTMLFormElement>
   ) => {
@@ -256,31 +324,43 @@ export default function PerformerProfileEditPage() {
       setSaving(true);
       setError("");
 
-      const response = await fetch(
-        "/api/performers/profile",
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "x-line-user-id": lineUserId,
-          },
-          body: JSON.stringify({
-            name,
-            area,
-            instruments: instruments
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean),
-            genres: genres
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean),
-            bio,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          "/api/performers/profile",
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type":
+                "application/json",
+              "x-line-user-id":
+                lineUserId,
+            },
+            body: JSON.stringify({
+              name,
+              area,
+              instruments:
+                instruments
+                  .split(",")
+                  .map(
+                    (item) =>
+                      item.trim()
+                  )
+                  .filter(Boolean),
+              genres:
+                genres
+                  .split(",")
+                  .map(
+                    (item) =>
+                      item.trim()
+                  )
+                  .filter(Boolean),
+              bio,
+            }),
+          }
+        );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -293,16 +373,25 @@ export default function PerformerProfileEditPage() {
         "プロフィールを更新しました"
       );
 
-      router.push("/performer/home");
+      router.push(
+        "/performer/home"
+      );
     } catch (error) {
       console.error(
         "プロフィール更新エラー:",
         error
       );
 
-      if (error instanceof Error) {
-        setError(error.message);
-        alert(error.message);
+      if (
+        error instanceof Error
+      ) {
+        setError(
+          error.message
+        );
+
+        alert(
+          error.message
+        );
       } else {
         setError(
           "プロフィールの更新に失敗しました"
@@ -320,13 +409,32 @@ export default function PerformerProfileEditPage() {
   // =========================
   // 読み込み中
   // =========================
+
   if (loading) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <p className="text-center text-gray-600">
-            プロフィールを読み込み中...
-          </p>
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen px-5 py-6">
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
+
+          <div className="mt-8 bg-white rounded-3xl p-8 text-center shadow-sm">
+            <div className="text-4xl">
+              🎵
+            </div>
+
+            <p className="mt-4 text-gray-600">
+              プロフィールを読み込んでいます...
+            </p>
+          </div>
         </div>
       </main>
     );
@@ -335,16 +443,37 @@ export default function PerformerProfileEditPage() {
   // =========================
   // エラー
   // =========================
-  if (error && !name && !area) {
+
+  if (
+    error &&
+    !name &&
+    !area
+  ) {
     return (
-      <main className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl p-6 shadow-sm">
-            <h1 className="text-xl font-bold mb-4">
-              プロフィール編集
+      <main className="min-h-screen bg-gray-50">
+        <div className="max-w-md mx-auto min-h-screen px-5 py-6">
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
+
+          <div className="mt-8 bg-white rounded-3xl p-6 shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center text-2xl">
+              ⚠️
+            </div>
+
+            <h1 className="text-xl font-bold mt-5">
+              プロフィールを読み込めませんでした
             </h1>
 
-            <p className="text-red-600 whitespace-pre-wrap">
+            <p className="text-red-600 text-sm mt-3 whitespace-pre-wrap leading-6">
               {error}
             </p>
 
@@ -355,9 +484,9 @@ export default function PerformerProfileEditPage() {
                   "/performer/home"
                 )
               }
-              className="w-full mt-6 bg-black text-white rounded-xl p-4 font-bold"
+              className="w-full mt-6 bg-black text-white rounded-2xl p-4 font-bold"
             >
-              戻る
+              ホームへ戻る
             </button>
           </div>
         </div>
@@ -368,59 +497,103 @@ export default function PerformerProfileEditPage() {
   // =========================
   // 画面
   // =========================
+
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto min-h-screen px-5 py-6 pb-10">
 
-        <button
-          type="button"
-          onClick={() =>
-            router.push(
-              "/performer/home"
-            )
-          }
-          className="text-gray-600 mb-4"
-        >
-          ← 戻る
-        </button>
+        {/* ヘッダー */}
+        <header>
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
 
-        <h1 className="text-2xl font-bold mb-2">
-          🎵 プロフィール編集
-        </h1>
+          <div className="mt-6">
+            <p className="text-sm font-bold text-gray-500">
+              🎸 演奏者ホーム
+            </p>
 
-        <p className="text-gray-600 mb-6">
-          施設に表示されるプロフィールを編集できます。
-        </p>
+            <h1 className="text-2xl font-bold mt-1">
+              プロフィール編集
+            </h1>
 
-        {/* ========================= */}
+            <p className="text-sm text-gray-500 mt-2 leading-6">
+              施設に表示されるプロフィールを編集できます。
+            </p>
+          </div>
+        </header>
+
         {/* 評価 */}
-        {/* ========================= */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm mb-6">
+        <section className="mt-7 bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-gray-400">
+                REVIEWS
+              </p>
 
-          <h2 className="text-xl font-bold mb-4">
-            ⭐ 評価
-          </h2>
+              <h2 className="text-lg font-bold mt-1">
+                ⭐ 評価
+              </h2>
+            </div>
+
+            {reviewData &&
+              reviewData.review_count >
+                0 && (
+                <div className="bg-yellow-50 rounded-2xl px-4 py-2 text-center">
+                  <p className="text-lg font-bold text-yellow-700">
+                    {reviewData.average_rating.toFixed(
+                      1
+                    )}
+                  </p>
+
+                  <p className="text-[11px] text-yellow-600">
+                    平均評価
+                  </p>
+                </div>
+              )}
+          </div>
 
           {reviewLoading ? (
-            <p className="text-gray-500">
-              評価を読み込み中...
-            </p>
+            <div className="mt-5 bg-gray-50 rounded-2xl p-5 text-center">
+              <p className="text-sm text-gray-500">
+                評価を読み込んでいます...
+              </p>
+            </div>
           ) : !reviewData ||
-            reviewData.review_count === 0 ? (
-            <p className="text-gray-500">
-              まだ評価はありません。
-            </p>
+            reviewData.review_count ===
+              0 ? (
+            <div className="mt-5 bg-gray-50 rounded-2xl p-5 text-center">
+              <div className="text-3xl">
+                ⭐
+              </div>
+
+              <p className="text-sm text-gray-500 mt-2">
+                まだ評価はありません。
+              </p>
+
+              <p className="text-xs text-gray-400 mt-1">
+                演奏を重ねると施設から評価が届きます。
+              </p>
+            </div>
           ) : (
             <>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-3xl font-bold">
+              <div className="mt-5 flex items-center gap-4 bg-yellow-50 rounded-2xl p-4">
+                <div className="text-3xl font-bold text-gray-900">
                   {reviewData.average_rating.toFixed(
                     1
                   )}
                 </div>
 
                 <div>
-                  <div className="text-yellow-500 text-xl">
+                  <div className="text-yellow-500 text-xl tracking-wide">
                     {renderStars(
                       Math.round(
                         reviewData.average_rating
@@ -428,40 +601,42 @@ export default function PerformerProfileEditPage() {
                     )}
                   </div>
 
-                  <div className="text-sm text-gray-500">
+                  <div className="text-xs text-gray-500 mt-1">
                     {reviewData.review_count}
                     件の評価
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="mt-5 space-y-3">
                 {reviewData.reviews.map(
                   (review) => (
                     <div
                       key={review.id}
-                      className="border-t pt-4"
+                      className="rounded-2xl bg-gray-50 p-4"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="font-bold">
-                          {review.reviewer_name}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-bold truncate">
+                            {review.reviewer_name}
+                          </p>
+
+                          <div className="text-yellow-500 mt-1 tracking-wide">
+                            {renderStars(
+                              review.rating
+                            )}
+                          </div>
                         </div>
 
-                        <div className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-400 shrink-0">
                           {formatReviewDate(
                             review.created_at
                           )}
-                        </div>
-                      </div>
-
-                      <div className="text-yellow-500 mt-1">
-                        {renderStars(
-                          review.rating
-                        )}
+                        </p>
                       </div>
 
                       {review.comment && (
-                        <p className="text-gray-700 mt-2 whitespace-pre-wrap">
+                        <p className="text-sm text-gray-700 mt-3 leading-6 whitespace-pre-wrap">
                           {review.comment}
                         </p>
                       )}
@@ -471,131 +646,189 @@ export default function PerformerProfileEditPage() {
               </div>
             </>
           )}
-        </div>
+        </section>
 
-        {/* ========================= */}
-        {/* プロフィール編集 */}
-        {/* ========================= */}
+        {/* プロフィール編集フォーム */}
+        <section className="mt-5 bg-white rounded-3xl p-5 shadow-sm border border-gray-100">
+          <div className="mb-6">
+            <p className="text-xs font-bold text-gray-400">
+              PROFILE
+            </p>
 
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-4"
-        >
+            <h2 className="text-lg font-bold mt-1">
+              🎵 プロフィール情報
+            </h2>
 
-          {/* 名前 */}
-          <div>
-            <label className="block font-bold mb-1">
-              名前
-            </label>
-
-            <input
-              type="text"
-              value={name}
-              onChange={(event) =>
-                setName(event.target.value)
-              }
-              placeholder="例：山田太郎"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
+            <p className="text-sm text-gray-500 mt-2 leading-6">
+              演奏案件を探す施設に表示される情報です。
+            </p>
           </div>
 
-          {/* 活動エリア */}
-          <div>
-            <label className="block font-bold mb-1">
-              活動エリア
-            </label>
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-5"
+          >
 
-            <input
-              type="text"
-              value={area}
-              onChange={(event) =>
-                setArea(event.target.value)
-              }
-              placeholder="例：名古屋市"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
-          </div>
+            {/* 名前 */}
+            <div>
+              <label className="flex items-center gap-2 font-bold text-sm mb-2">
+                名前
+                <span className="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full">
+                  必須
+                </span>
+              </label>
 
-          {/* 楽器 */}
-          <div>
-            <label className="block font-bold mb-1">
-              楽器
-            </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(event) =>
+                  setName(
+                    event.target.value
+                  )
+                }
+                placeholder="例：山田太郎"
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 outline-none focus:bg-white focus:border-black focus:ring-1 focus:ring-black"
+              />
+            </div>
 
-            <input
-              type="text"
-              value={instruments}
-              onChange={(event) =>
-                setInstruments(
-                  event.target.value
+            {/* 活動エリア */}
+            <div>
+              <label className="flex items-center gap-2 font-bold text-sm mb-2">
+                活動エリア
+                <span className="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full">
+                  必須
+                </span>
+              </label>
+
+              <input
+                type="text"
+                value={area}
+                onChange={(event) =>
+                  setArea(
+                    event.target.value
+                  )
+                }
+                placeholder="例：名古屋市"
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 outline-none focus:bg-white focus:border-black focus:ring-1 focus:ring-black"
+              />
+            </div>
+
+            {/* 楽器 */}
+            <div>
+              <label className="flex items-center gap-2 font-bold text-sm mb-2">
+                楽器
+                <span className="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full">
+                  必須
+                </span>
+              </label>
+
+              <input
+                type="text"
+                value={instruments}
+                onChange={(event) =>
+                  setInstruments(
+                    event.target.value
+                  )
+                }
+                placeholder="例：ギター, ピアノ"
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 outline-none focus:bg-white focus:border-black focus:ring-1 focus:ring-black"
+              />
+
+              <p className="text-xs text-gray-400 mt-2">
+                複数ある場合は「,」で区切ってください。
+              </p>
+            </div>
+
+            {/* 音楽ジャンル */}
+            <div>
+              <label className="flex items-center gap-2 font-bold text-sm mb-2">
+                音楽ジャンル
+                <span className="text-[11px] bg-red-50 text-red-600 px-2 py-0.5 rounded-full">
+                  必須
+                </span>
+              </label>
+
+              <input
+                type="text"
+                value={genres}
+                onChange={(event) =>
+                  setGenres(
+                    event.target.value
+                  )
+                }
+                placeholder="例：J-POP, クラシック"
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 outline-none focus:bg-white focus:border-black focus:ring-1 focus:ring-black"
+              />
+
+              <p className="text-xs text-gray-400 mt-2">
+                複数ある場合は「,」で区切ってください。
+              </p>
+            </div>
+
+            {/* 自己紹介 */}
+            <div>
+              <label className="font-bold text-sm mb-2 block">
+                自己紹介
+              </label>
+
+              <textarea
+                value={bio}
+                onChange={(event) =>
+                  setBio(
+                    event.target.value
+                  )
+                }
+                placeholder="演奏経験や活動内容など"
+                rows={6}
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 outline-none focus:bg-white focus:border-black focus:ring-1 focus:ring-black resize-none"
+              />
+
+              <p className="text-xs text-gray-400 mt-2">
+                演奏経験、活動内容、得意な演奏などを入力できます。
+              </p>
+            </div>
+
+            {/* エラー */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">
+                    ⚠️
+                  </span>
+
+                  <p className="text-sm text-red-600 leading-6">
+                    {error}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 更新ボタン */}
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full bg-black text-white rounded-2xl p-4 font-bold disabled:opacity-50"
+            >
+              {saving
+                ? "更新しています..."
+                : "プロフィールを更新する"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  "/performer/home"
                 )
               }
-              placeholder="例：ギター, ピアノ"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
+              disabled={saving}
+              className="w-full border border-gray-200 text-gray-600 rounded-2xl p-4 font-bold bg-white disabled:opacity-50"
+            >
+              キャンセル
+            </button>
+          </form>
+        </section>
 
-            <p className="text-xs text-gray-500 mt-1">
-              複数ある場合は「,」で区切ってください。
-            </p>
-          </div>
-
-          {/* 音楽ジャンル */}
-          <div>
-            <label className="block font-bold mb-1">
-              音楽ジャンル
-            </label>
-
-            <input
-              type="text"
-              value={genres}
-              onChange={(event) =>
-                setGenres(event.target.value)
-              }
-              placeholder="例：J-POP, クラシック"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
-
-            <p className="text-xs text-gray-500 mt-1">
-              複数ある場合は「,」で区切ってください。
-            </p>
-          </div>
-
-          {/* 自己紹介 */}
-          <div>
-            <label className="block font-bold mb-1">
-              自己紹介
-            </label>
-
-            <textarea
-              value={bio}
-              onChange={(event) =>
-                setBio(event.target.value)
-              }
-              placeholder="演奏経験や活動内容など"
-              rows={5}
-              className="w-full border rounded-xl p-3 bg-white"
-            />
-          </div>
-
-          {/* エラー */}
-          {error && (
-            <div className="bg-red-50 text-red-600 rounded-xl p-4 text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* 更新ボタン */}
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full bg-black text-white rounded-xl p-4 font-bold disabled:opacity-50"
-          >
-            {saving
-              ? "更新中..."
-              : "プロフィールを更新する"}
-          </button>
-
-        </form>
       </div>
     </main>
   );

@@ -123,113 +123,228 @@ export default function PerformerPage() {
   // 画面
   // =========================
   return (
-    <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-2">
-          🎸 演奏者プロフィール
-        </h1>
+    <main className="min-h-screen bg-gray-50">
+      <div className="max-w-md mx-auto px-4 pt-6 pb-10">
+        {/* ヘッダー */}
+        <div className="mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-black text-white flex items-center justify-center text-3xl shadow-sm mb-4">
+            🎸
+          </div>
 
-        <p className="text-gray-600 mb-6">
-          演奏を依頼する施設に表示される情報です。
-        </p>
+          <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
+            演奏者として登録
+          </p>
 
+          <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+            演奏者プロフィール
+          </h1>
+
+          <p className="text-sm text-gray-500 mt-2 leading-6">
+            施設に表示されるプロフィールを登録しましょう。
+            あなたに演奏を依頼したい施設から見つけてもらいやすくなります。
+          </p>
+        </div>
+
+        {/* 登録フォーム */}
         <form
           onSubmit={handleSubmit}
-          className="space-y-4"
+          className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden"
         >
-          {/* 名前 */}
-          <div>
-            <label className="block font-bold mb-1">
-              名前
-            </label>
+          <div className="p-5 space-y-6">
+            {/* 基本情報 */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
+                  👤
+                </div>
 
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="例：山田太郎"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
+                <div>
+                  <p className="font-bold text-gray-900">
+                    基本情報
+                  </p>
+
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    施設に表示される名前と活動エリア
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* 名前 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
+                    名前
+                    <span className="text-red-500 ml-1">
+                      *
+                    </span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) =>
+                      setName(e.target.value)
+                    }
+                    placeholder="例：山田太郎"
+                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                  />
+                </div>
+
+                {/* 活動エリア */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
+                    活動エリア
+                    <span className="text-red-500 ml-1">
+                      *
+                    </span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={area}
+                    onChange={(e) =>
+                      setArea(e.target.value)
+                    }
+                    placeholder="例：名古屋市"
+                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100" />
+
+            {/* 演奏情報 */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
+                  🎵
+                </div>
+
+                <div>
+                  <p className="font-bold text-gray-900">
+                    演奏情報
+                  </p>
+
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    得意な楽器や音楽ジャンル
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* 楽器 */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
+                    楽器
+                    <span className="text-red-500 ml-1">
+                      *
+                    </span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={instruments}
+                    onChange={(e) =>
+                      setInstruments(e.target.value)
+                    }
+                    placeholder="例：ギター, ピアノ"
+                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                  />
+
+                  <p className="text-xs text-gray-400 mt-2">
+                    複数ある場合は「,」で区切ってください
+                  </p>
+                </div>
+
+                {/* ジャンル */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-2">
+                    音楽ジャンル
+                    <span className="text-red-500 ml-1">
+                      *
+                    </span>
+                  </label>
+
+                  <input
+                    type="text"
+                    value={genres}
+                    onChange={(e) =>
+                      setGenres(e.target.value)
+                    }
+                    placeholder="例：J-POP, クラシック"
+                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                  />
+
+                  <p className="text-xs text-gray-400 mt-2">
+                    複数ある場合は「,」で区切ってください
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100" />
+
+            {/* 自己紹介 */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
+                  💬
+                </div>
+
+                <div>
+                  <p className="font-bold text-gray-900">
+                    自己紹介
+                  </p>
+
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    演奏経験や活動内容など
+                  </p>
+                </div>
+              </div>
+
+              <textarea
+                value={bio}
+                onChange={(e) =>
+                  setBio(e.target.value)
+                }
+                placeholder="演奏経験や活動内容などを入力してください"
+                rows={5}
+                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none resize-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 leading-6"
+              />
+            </div>
           </div>
 
-          {/* 活動エリア */}
-          <div>
-            <label className="block font-bold mb-1">
-              活動エリア
-            </label>
+          {/* 登録エリア */}
+          <div className="bg-gray-50 border-t border-gray-100 p-5">
+            <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">
+                  💡
+                </span>
 
-            <input
-              type="text"
-              value={area}
-              onChange={(e) => setArea(e.target.value)}
-              placeholder="例：名古屋市"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
+                <p className="text-xs text-gray-500 leading-5">
+                  登録したプロフィールは、演奏を依頼したい施設から確認できます。
+                  名前・活動エリア・楽器・ジャンルは必須項目です。
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-black text-white rounded-2xl py-4 font-bold shadow-sm transition active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  登録中...
+                </span>
+              ) : (
+                "プロフィールを登録する"
+              )}
+            </button>
           </div>
-
-          {/* 楽器 */}
-          <div>
-            <label className="block font-bold mb-1">
-              楽器
-            </label>
-
-            <input
-              type="text"
-              value={instruments}
-              onChange={(e) => setInstruments(e.target.value)}
-              placeholder="例：ギター, ピアノ"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
-
-            <p className="text-xs text-gray-500 mt-1">
-              複数ある場合は「,」で区切ってください
-            </p>
-          </div>
-
-          {/* ジャンル */}
-          <div>
-            <label className="block font-bold mb-1">
-              音楽ジャンル
-            </label>
-
-            <input
-              type="text"
-              value={genres}
-              onChange={(e) => setGenres(e.target.value)}
-              placeholder="例：J-POP, クラシック"
-              className="w-full border rounded-xl p-3 bg-white"
-            />
-
-            <p className="text-xs text-gray-500 mt-1">
-              複数ある場合は「,」で区切ってください
-            </p>
-          </div>
-
-          {/* 自己紹介 */}
-          <div>
-            <label className="block font-bold mb-1">
-              自己紹介
-            </label>
-
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              placeholder="演奏経験や活動内容など"
-              rows={5}
-              className="w-full border rounded-xl p-3 bg-white"
-            />
-          </div>
-
-          {/* 登録ボタン */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-black text-white rounded-xl p-4 font-bold disabled:opacity-50"
-          >
-            {loading
-              ? "登録中..."
-              : "プロフィールを登録する"}
-          </button>
         </form>
       </div>
     </main>
