@@ -19,6 +19,7 @@ export async function GET() {
           genres,
           area,
           bio,
+          status_level,
           created_at,
           users (
             id,
@@ -38,7 +39,8 @@ export async function GET() {
 
       return NextResponse.json(
         {
-          error: "演奏者一覧の取得に失敗しました",
+          error:
+            "演奏者一覧の取得に失敗しました",
         },
         { status: 500 }
       );
@@ -54,11 +56,15 @@ export async function GET() {
     }[] = [];
 
     if (userIds.length > 0) {
-      const { data: reviewData, error: reviewError } =
-        await supabase
-          .from("reviews")
-          .select("reviewee_id, rating")
-          .in("reviewee_id", userIds);
+      const {
+        data: reviewData,
+        error: reviewError,
+      } = await supabase
+        .from("reviews")
+        .select(
+          "reviewee_id, rating"
+        )
+        .in("reviewee_id", userIds);
 
       if (reviewError) {
         console.error(
@@ -70,35 +76,41 @@ export async function GET() {
       }
     }
 
-    const performersWithReviews = (performers || []).map(
-      (performer) => {
-        const performerReviews = reviews.filter(
-          (review) =>
-            review.reviewee_id === performer.user_id
-        );
+    const performersWithReviews =
+      (performers || []).map(
+        (performer) => {
+          const performerReviews =
+            reviews.filter(
+              (review) =>
+                review.reviewee_id ===
+                performer.user_id
+            );
 
-        const reviewCount =
-          performerReviews.length;
+          const reviewCount =
+            performerReviews.length;
 
-        const averageRating =
-          reviewCount > 0
-            ? performerReviews.reduce(
-                (sum, review) =>
-                  sum + review.rating,
-                0
-              ) / reviewCount
-            : null;
+          const averageRating =
+            reviewCount > 0
+              ? performerReviews.reduce(
+                  (sum, review) =>
+                    sum + review.rating,
+                  0
+                ) / reviewCount
+              : null;
 
-        return {
-          ...performer,
-          review_count: reviewCount,
-          average_rating: averageRating,
-        };
-      }
-    );
+          return {
+            ...performer,
+            review_count:
+              reviewCount,
+            average_rating:
+              averageRating,
+          };
+        }
+      );
 
     return NextResponse.json({
-      performers: performersWithReviews,
+      performers:
+        performersWithReviews,
     });
   } catch (error) {
     console.error(
@@ -108,16 +120,20 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        error: "サーバーエラーが発生しました",
+        error:
+          "サーバーエラーが発生しました",
       },
       { status: 500 }
     );
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(
+  request: NextRequest
+) {
   try {
-    const body = await request.json();
+    const body =
+      await request.json();
 
     const {
       name,
@@ -125,9 +141,15 @@ export async function POST(request: NextRequest) {
       instruments,
       genres,
       bio,
+      status_level,
     } = body;
 
-    if (!name || !area || !instruments || !genres) {
+    if (
+      !name ||
+      !area ||
+      !instruments ||
+      !genres
+    ) {
       return NextResponse.json(
         {
           error:
@@ -137,9 +159,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const lineUserId = request.headers.get(
-      "x-line-user-id"
-    );
+    const validStatusLevels = [
+      "beginner",
+      "amateur",
+      "pro",
+    ];
+
+    if (
+      status_level &&
+      !validStatusLevels.includes(
+        status_level
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "演奏者レベルの値が正しくありません",
+        },
+        { status: 400 }
+      );
+    }
+
+    const lineUserId =
+      request.headers.get(
+        "x-line-user-id"
+      );
 
     if (!lineUserId) {
       return NextResponse.json(
@@ -151,12 +195,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+    const {
+      data: user,
+      error: userError,
+    } = await supabase
+      .from("users")
+      .select("id")
+      .eq(
+        "line_user_id",
+        lineUserId
+      )
+      .single();
 
     if (userError || !user) {
       console.error(
@@ -173,23 +222,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data, error } = await supabase
-      .from("performers")
-      .upsert(
-        {
-          user_id: user.id,
-          name,
-          area,
-          instruments,
-          genres,
-          bio,
-        },
-        {
-          onConflict: "user_id",
-        }
-      )
-      .select()
-      .single();
+    const { data, error } =
+      await supabase
+        .from("performers")
+        .upsert(
+          {
+            user_id: user.id,
+            name,
+            area,
+            instruments,
+            genres,
+            bio,
+            status_level:
+              status_level || null,
+          },
+          {
+            onConflict:
+              "user_id",
+          }
+        )
+        .select()
+        .single();
 
     if (error) {
       console.error(
@@ -199,7 +252,8 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error: error.message,
+          error:
+            error.message,
         },
         { status: 500 }
       );
