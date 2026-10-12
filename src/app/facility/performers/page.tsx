@@ -19,6 +19,7 @@ type Performer = {
   area: string;
   bio: string | null;
   created_at: string;
+  status_level: "beginner" | "amateur" | "pro" | null;
   users: User | User[] | null;
   review_count: number;
   average_rating: number | null;
@@ -197,8 +198,10 @@ export default function FacilityPerformersPage() {
 
         const displayName =
           Array.isArray(performer.users)
-            ? performer.users[0]?.display_name || ""
-            : performer.users?.display_name || "";
+            ? performer.users[0]?.display_name ||
+              ""
+            : performer.users?.display_name ||
+              "";
 
         const matchesKeyword =
           name
@@ -295,14 +298,57 @@ export default function FacilityPerformersPage() {
     return performer.users;
   };
 
-  const isFavorite = (
-    performer: Performer
+  const getStatusInfo = (
+    statusLevel: Performer["status_level"]
   ) => {
-    return favorites.some(
-      (favorite) =>
-        favorite.target_user_id ===
-        performer.user_id
-    );
+    switch (statusLevel) {
+      case "pro":
+        return {
+          stars: "★★★",
+          label: "プロ",
+          starClass:
+            "text-purple-700",
+          shadowClass:
+            "drop-shadow-[0_2px_1px_rgba(88,28,135,0.35)]",
+          badgeClass:
+            "bg-purple-100 border-purple-200",
+        };
+
+      case "amateur":
+        return {
+          stars: "★★",
+          label: "アマチュア",
+          starClass:
+            "text-blue-500",
+          shadowClass:
+            "drop-shadow-[0_2px_1px_rgba(37,99,235,0.25)]",
+          badgeClass:
+            "bg-blue-50 border-blue-100",
+        };
+
+      case "beginner":
+        return {
+          stars: "★",
+          label: "ビギナー",
+          starClass:
+            "text-emerald-400",
+          shadowClass:
+            "drop-shadow-[0_2px_1px_rgba(16,185,129,0.22)]",
+          badgeClass:
+            "bg-emerald-50 border-emerald-100",
+        };
+
+      default:
+        return {
+          stars: "",
+          label: "未設定",
+          starClass:
+            "text-gray-400",
+          shadowClass: "",
+          badgeClass:
+            "bg-gray-50 border-gray-200",
+        };
+    }
   };
 
   const handleFavoriteToggle = async (
@@ -331,24 +377,26 @@ export default function FacilityPerformersPage() {
       const currentlyFavorite =
         isFavorite(performer);
 
-      const response = await fetch(
-        "/api/favorites",
-        {
-          method: currentlyFavorite
-            ? "DELETE"
-            : "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-            "x-line-user-id":
-              profile.userId,
-          },
-          body: JSON.stringify({
-            targetUserId:
-              performer.user_id,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          "/api/favorites",
+          {
+            method:
+              currentlyFavorite
+                ? "DELETE"
+                : "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              "x-line-user-id":
+                profile.userId,
+            },
+            body: JSON.stringify({
+              targetUserId:
+                performer.user_id,
+            }),
+          }
+        );
 
       const data =
         await response.json();
@@ -397,6 +445,16 @@ export default function FacilityPerformersPage() {
     } finally {
       setFavoriteLoading(false);
     }
+  };
+
+  const isFavorite = (
+    performer: Performer
+  ) => {
+    return favorites.some(
+      (favorite) =>
+        favorite.target_user_id ===
+        performer.user_id
+    );
   };
 
   if (loading) {
@@ -759,6 +817,11 @@ export default function FacilityPerformersPage() {
                     performer
                   );
 
+                const status =
+                  getStatusInfo(
+                    performer.status_level
+                  );
+
                 return (
                   <button
                     key={performer.id}
@@ -813,7 +876,32 @@ export default function FacilityPerformersPage() {
                           📍 {performer.area}
                         </p>
 
-                        <div className="flex items-center gap-2 mt-2">
+                        {/* レベル */}
+                        <div className="mt-3">
+                          <span
+                            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 ${status.badgeClass}`}
+                          >
+                            {status.stars && (
+                              <span
+                                className={`text-xl leading-none tracking-[0.08em] font-black ${status.starClass} ${status.shadowClass}`}
+                              >
+                                {status.stars}
+                              </span>
+                            )}
+
+                            <span className="text-xs font-bold text-gray-700">
+                              {status.label}
+                            </span>
+                          </span>
+
+                          {performer.status_level && (
+                            <span className="ml-2 text-[10px] text-gray-400">
+                              自己申告
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-3">
 
                           <span className="text-sm font-bold text-gray-800">
                             ⭐{" "}
@@ -983,6 +1071,42 @@ export default function FacilityPerformersPage() {
                       📍{" "}
                       {selectedPerformer.area}
                     </p>
+
+                    {/* レベル */}
+                    {(() => {
+                      const status =
+                        getStatusInfo(
+                          selectedPerformer.status_level
+                        );
+
+                      return (
+                        <div className="mt-3 flex items-center flex-wrap gap-2">
+
+                          <span
+                            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 ${status.badgeClass}`}
+                          >
+                            {status.stars && (
+                              <span
+                                className={`text-2xl leading-none tracking-[0.08em] font-black ${status.starClass} ${status.shadowClass}`}
+                              >
+                                {status.stars}
+                              </span>
+                            )}
+
+                            <span className="text-xs font-bold text-gray-700">
+                              {status.label}
+                            </span>
+                          </span>
+
+                          {selectedPerformer.status_level && (
+                            <span className="text-[10px] text-gray-400">
+                              自己申告
+                            </span>
+                          )}
+
+                        </div>
+                      );
+                    })()}
 
                   </div>
 
