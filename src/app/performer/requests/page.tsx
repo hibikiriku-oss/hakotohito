@@ -199,22 +199,32 @@ export default function PerformerRequestsPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50">
-        <div className="max-w-md mx-auto min-h-screen px-4 py-6">
-          <header className="pt-2">
-            <p className="text-sm font-medium text-gray-500">
-              演奏マッチング
-            </p>
+        <div className="max-w-md mx-auto min-h-screen px-4 py-5">
+          <header>
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  "/performer/home"
+                )
+              }
+              className="inline-flex items-center text-sm text-gray-500 py-2"
+            >
+              ← ホームへ戻る
+            </button>
 
-            <h1 className="mt-1 text-2xl font-bold text-gray-900">
-              🎵 演奏案件を探す
-            </h1>
+            <div className="mt-4">
+              <h1 className="text-2xl font-bold text-gray-900">
+                🎵 演奏案件を探す
+              </h1>
 
-            <p className="mt-2 text-sm text-gray-500">
-              あなたに合った演奏依頼を探しましょう。
-            </p>
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                現在募集中の案件から、自分に合った演奏依頼を探せます。
+              </p>
+            </div>
           </header>
 
-          <div className="mt-8 rounded-2xl bg-white border border-gray-200 p-8 text-center shadow-sm">
+          <div className="mt-7 rounded-2xl bg-white border border-gray-200 p-8 text-center shadow-sm">
             <div className="text-3xl">
               🎵
             </div>
@@ -231,15 +241,29 @@ export default function PerformerRequestsPage() {
   if (error) {
     return (
       <main className="min-h-screen bg-gray-50">
-        <div className="max-w-md mx-auto min-h-screen px-4 py-6">
-          <header className="pt-2">
-            <p className="text-sm font-medium text-gray-500">
-              演奏マッチング
-            </p>
+        <div className="max-w-md mx-auto min-h-screen px-4 py-5">
+          <header>
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  "/performer/home"
+                )
+              }
+              className="inline-flex items-center text-sm text-gray-500 py-2"
+            >
+              ← ホームへ戻る
+            </button>
 
-            <h1 className="mt-1 text-2xl font-bold text-gray-900">
-              🎵 演奏案件を探す
-            </h1>
+            <div className="mt-4">
+              <h1 className="text-2xl font-bold text-gray-900">
+                🎵 演奏案件を探す
+              </h1>
+
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                現在募集中の案件から、自分に合った演奏依頼を探せます。
+              </p>
+            </div>
           </header>
 
           <div className="mt-6 rounded-2xl bg-red-50 border border-red-200 p-5">
@@ -249,6 +273,7 @@ export default function PerformerRequestsPage() {
           </div>
 
           <button
+            type="button"
             onClick={() =>
               router.push(
                 "/performer/home"
@@ -256,7 +281,7 @@ export default function PerformerRequestsPage() {
             }
             className="w-full mt-5 rounded-2xl bg-white border border-gray-200 px-5 py-4 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-50"
           >
-            ← 演奏者ホームへ戻る
+            ← ホームへ戻る
           </button>
         </div>
       </main>
@@ -265,34 +290,43 @@ export default function PerformerRequestsPage() {
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <div className="max-w-md mx-auto min-h-screen px-4 py-6">
+      <div className="max-w-md mx-auto min-h-screen px-4 py-5">
 
         {/* ヘッダー */}
-        <header className="pt-2">
-          <p className="text-sm font-medium text-gray-500">
-            演奏マッチング
-          </p>
+        <header>
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                "/performer/home"
+              )
+            }
+            className="inline-flex items-center text-sm text-gray-500 py-2"
+          >
+            ← ホームへ戻る
+          </button>
 
-          <div className="mt-1 flex items-end justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                🎵 演奏案件を探す
-              </h1>
+          <div className="mt-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  🎵 演奏案件を探す
+                </h1>
 
-              <p className="mt-2 text-sm leading-6 text-gray-500">
-                現在募集中の案件から、
-                自分に合った依頼を探せます。
-              </p>
-            </div>
+                <p className="mt-2 text-sm leading-6 text-gray-500">
+                  現在募集中の案件から、自分に合った演奏依頼を探せます。
+                </p>
+              </div>
 
-            <div className="shrink-0 rounded-full bg-white border border-gray-200 px-3 py-1.5 shadow-sm">
-              <span className="text-sm font-bold text-gray-900">
-                {filteredRequests.length}
-              </span>
+              <div className="shrink-0 rounded-full bg-white border border-gray-200 px-3 py-1.5 shadow-sm">
+                <span className="text-sm font-bold text-gray-900">
+                  {filteredRequests.length}
+                </span>
 
-              <span className="ml-1 text-xs text-gray-500">
-                件
-              </span>
+                <span className="ml-1 text-xs text-gray-500">
+                  件
+                </span>
+              </div>
             </div>
           </div>
         </header>
@@ -527,6 +561,7 @@ export default function PerformerRequestsPage() {
                 (request) => (
                   <button
                     key={request.id}
+                    type="button"
                     onClick={() =>
                       router.push(
                         `/performer/requests/${request.id}`
@@ -634,7 +669,8 @@ export default function PerformerRequestsPage() {
                     )}
 
                     {/* 謝礼 */}
-                    {request.reward !== null && (
+                    {request.reward !==
+                      null && (
                       <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
                         <span className="text-xs text-gray-500">
                           謝礼
@@ -664,6 +700,7 @@ export default function PerformerRequestsPage() {
 
         {/* ホームへ戻る */}
         <button
+          type="button"
           onClick={() =>
             router.push(
               "/performer/home"
@@ -671,7 +708,7 @@ export default function PerformerRequestsPage() {
           }
           className="mt-7 w-full rounded-2xl bg-white border border-gray-200 px-5 py-4 text-sm font-semibold text-gray-600 shadow-sm active:bg-gray-50"
         >
-          ← 演奏者ホームへ戻る
+          ← ホームへ戻る
         </button>
 
         <p className="pb-4 pt-6 text-center text-xs text-gray-400">

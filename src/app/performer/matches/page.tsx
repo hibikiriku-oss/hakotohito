@@ -88,6 +88,7 @@ export default function PerformerMatchesPage() {
               "x-line-user-id":
                 profile.userId,
             },
+            cache: "no-store",
           }
         );
 
@@ -283,11 +284,16 @@ export default function PerformerMatchesPage() {
         }
         className="w-full text-left bg-white rounded-2xl p-5 shadow-sm border border-gray-100 active:scale-[0.99] transition"
       >
-        {/* ステータス */}
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm font-bold text-gray-800">
-            🎉 マッチング成立
-          </span>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs text-gray-400 font-medium">
+              マッチング成立
+            </p>
+
+            <h2 className="text-xl font-bold text-gray-900 mt-1">
+              {performanceRequest.title}
+            </h2>
+          </div>
 
           {isCancelled ? (
             <span className="shrink-0 text-xs bg-red-50 text-red-600 rounded-full px-3 py-1 font-bold">
@@ -304,12 +310,6 @@ export default function PerformerMatchesPage() {
           )}
         </div>
 
-        {/* 案件タイトル */}
-        <h2 className="text-xl font-bold text-gray-900 mt-4">
-          {performanceRequest.title}
-        </h2>
-
-        {/* 施設 */}
         {facility && (
           <div className="mt-4">
             <p className="text-xs text-gray-400 font-medium">
@@ -337,7 +337,6 @@ export default function PerformerMatchesPage() {
           </div>
         )}
 
-        {/* 演奏日時 */}
         <div className="mt-4 bg-gray-50 rounded-xl p-4">
           <p className="text-xs text-gray-400 font-medium">
             演奏日時
@@ -362,7 +361,6 @@ export default function PerformerMatchesPage() {
           </p>
         </div>
 
-        {/* 場所 */}
         {(performanceRequest.area ||
           facility?.address) && (
           <div className="mt-4">
@@ -385,7 +383,6 @@ export default function PerformerMatchesPage() {
           </div>
         )}
 
-        {/* 報酬 */}
         {performanceRequest.reward !==
           null && (
           <div className="mt-4">
@@ -401,7 +398,6 @@ export default function PerformerMatchesPage() {
           </div>
         )}
 
-        {/* 履歴の補足 */}
         {isCancelled && (
           <div className="mt-4 bg-red-50 rounded-xl p-3">
             <p className="text-sm text-red-700">
@@ -451,20 +447,22 @@ export default function PerformerMatchesPage() {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="max-w-md mx-auto">
-          <header className="bg-black text-white px-5 pt-5 pb-6">
-            <div className="h-4 w-24 bg-white/20 rounded animate-pulse" />
+          <header className="bg-white border-b px-5 pt-5 pb-6">
+            <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
 
-            <div className="h-7 w-40 bg-white/20 rounded mt-5 animate-pulse" />
+            <div className="h-7 w-40 bg-gray-100 rounded mt-5 animate-pulse" />
+
+            <div className="h-4 w-64 bg-gray-100 rounded mt-3 animate-pulse" />
           </header>
 
           <div className="p-4 space-y-4">
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <div className="h-5 w-28 bg-gray-100 rounded animate-pulse" />
               <div className="h-7 w-52 bg-gray-100 rounded mt-4 animate-pulse" />
               <div className="h-20 bg-gray-100 rounded-xl mt-4 animate-pulse" />
             </div>
 
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <div className="h-5 w-28 bg-gray-100 rounded animate-pulse" />
               <div className="h-7 w-48 bg-gray-100 rounded mt-4 animate-pulse" />
               <div className="h-20 bg-gray-100 rounded-xl mt-4 animate-pulse" />
@@ -479,7 +477,7 @@ export default function PerformerMatchesPage() {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="max-w-md mx-auto">
-          <header className="bg-black text-white px-5 pt-5 pb-6">
+          <header className="bg-white border-b px-5 pt-5 pb-6">
             <button
               type="button"
               onClick={() =>
@@ -487,14 +485,18 @@ export default function PerformerMatchesPage() {
                   "/performer/home"
                 )
               }
-              className="text-sm text-gray-300"
+              className="inline-flex items-center text-sm text-gray-500 py-2"
             >
               ← ホームへ戻る
             </button>
 
-            <h1 className="text-xl font-bold mt-5">
+            <h1 className="text-2xl font-bold text-gray-900 mt-4">
               🎉 マッチング一覧
             </h1>
+
+            <p className="text-sm text-gray-500 mt-2 leading-6">
+              現在のマッチングと、これまでの演奏履歴を確認できます。
+            </p>
           </header>
 
           <div className="p-4">
@@ -524,8 +526,7 @@ export default function PerformerMatchesPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen">
-        {/* ヘッダー */}
-        <header className="bg-black text-white px-4 pt-4 pb-6">
+        <header className="bg-white border-b px-5 pt-5 pb-6">
           <button
             type="button"
             onClick={() =>
@@ -533,24 +534,24 @@ export default function PerformerMatchesPage() {
                 "/performer/home"
               )
             }
-            className="inline-flex items-center text-sm text-gray-300 py-2"
+            className="inline-flex items-center text-sm text-gray-500 py-2"
           >
             ← ホームへ戻る
           </button>
 
           <div className="flex items-center gap-3 mt-4">
-            <div className="w-11 h-11 rounded-2xl bg-white/10 flex items-center justify-center text-xl">
+            <div className="w-11 h-11 rounded-2xl bg-gray-100 flex items-center justify-center text-xl">
               🎉
             </div>
 
             <div>
-              <p className="text-xs text-gray-400">
-                マッチング状況
-              </p>
-
-              <h1 className="text-xl font-bold">
+              <h1 className="text-2xl font-bold text-gray-900">
                 マッチング一覧
               </h1>
+
+              <p className="text-sm text-gray-500 mt-1">
+                現在のマッチングと、これまでの演奏履歴を確認できます。
+              </p>
             </div>
           </div>
         </header>
@@ -563,7 +564,7 @@ export default function PerformerMatchesPage() {
               </div>
 
               <h2 className="font-bold text-gray-800 mt-4">
-                まだマッチングはありません
+                現在のマッチングはありません
               </h2>
 
               <p className="text-sm text-gray-500 mt-2 leading-6">
@@ -579,34 +580,27 @@ export default function PerformerMatchesPage() {
                 }
                 className="w-full mt-5 bg-black text-white rounded-2xl py-4 font-bold"
               >
-                📋 案件を探す
+                📋 演奏案件を探す
               </button>
             </div>
           ) : (
             <>
-              {/* 演奏予定 */}
               <section>
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs text-blue-600 font-bold">
-                      UPCOMING
-                    </p>
+                <div className="mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    🎵 現在のマッチング
+                  </h2>
 
-                    <h2 className="text-lg font-bold text-gray-900 mt-0.5">
-                      🎵 演奏予定
-                    </h2>
-                  </div>
-
-                  <span className="text-xs bg-blue-50 text-blue-700 rounded-full px-3 py-1 font-bold">
-                    {scheduledMatches.length}件
-                  </span>
+                  <p className="text-sm text-gray-500 mt-1 leading-6">
+                    これから演奏する予定のマッチングです。
+                  </p>
                 </div>
 
                 {scheduledMatches.length ===
                 0 ? (
                   <div className="bg-white rounded-2xl p-5 border border-gray-100 text-center">
                     <p className="text-sm text-gray-400">
-                      現在、演奏予定はありません。
+                      現在、演奏予定のマッチングはありません。
                     </p>
                   </div>
                 ) : (
@@ -618,29 +612,22 @@ export default function PerformerMatchesPage() {
                 )}
               </section>
 
-              {/* 演奏履歴 */}
-              <section className="mt-8">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs text-gray-400 font-bold">
-                      HISTORY
-                    </p>
+              <section className="mt-9">
+                <div className="mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">
+                    📋 過去のマッチング
+                  </h2>
 
-                    <h2 className="text-lg font-bold text-gray-900 mt-0.5">
-                      📋 演奏終了・キャンセル
-                    </h2>
-                  </div>
-
-                  <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-3 py-1 font-bold">
-                    {historyMatches.length}件
-                  </span>
+                  <p className="text-sm text-gray-500 mt-1 leading-6">
+                    演奏終了またはキャンセルされたマッチングです。
+                  </p>
                 </div>
 
                 {historyMatches.length ===
                 0 ? (
                   <div className="bg-white rounded-2xl p-5 border border-gray-100 text-center">
                     <p className="text-sm text-gray-400">
-                      演奏終了・キャンセルの履歴はありません。
+                      過去のマッチングはありません。
                     </p>
                   </div>
                 ) : (
