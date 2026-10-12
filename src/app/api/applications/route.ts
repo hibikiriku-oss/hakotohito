@@ -15,7 +15,9 @@ export async function POST(request: NextRequest) {
 
     if (!requestId) {
       return NextResponse.json(
-        { error: "案件IDがありません" },
+        {
+          error: "案件IDがありません",
+        },
         { status: 400 }
       );
     }
@@ -25,18 +27,25 @@ export async function POST(request: NextRequest) {
 
     if (!lineUserId) {
       return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
+        {
+          error: "LINEユーザー情報がありません",
+        },
         { status: 400 }
       );
     }
 
-    // LINEユーザーからusersを取得
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+    // ==============================
+    // LINEユーザー取得
+    // ==============================
+
+    const {
+      data: user,
+      error: userError,
+    } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", lineUserId)
+      .single();
 
     if (userError || !user) {
       console.error(
@@ -45,12 +54,17 @@ export async function POST(request: NextRequest) {
       );
 
       return NextResponse.json(
-        { error: "ユーザー情報が見つかりません" },
+        {
+          error: "ユーザー情報が見つかりません",
+        },
         { status: 404 }
       );
     }
 
-    // 演奏者情報を取得
+    // ==============================
+    // 演奏者情報取得
+    // ==============================
+
     const {
       data: performer,
       error: performerError,
@@ -75,7 +89,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 案件が存在するか確認
+    // ==============================
+    // 案件取得
+    // ==============================
+
     const {
       data: performanceRequest,
       error: requestError,
@@ -97,13 +114,18 @@ export async function POST(request: NextRequest) {
       );
 
       return NextResponse.json(
-        { error: "案件が見つかりません" },
+        {
+          error: "案件が見つかりません",
+        },
         { status: 404 }
       );
     }
 
     // 募集中の案件だけ応募可能
-    if (performanceRequest.status !== "open") {
+    if (
+      performanceRequest.status !==
+      "open"
+    ) {
       return NextResponse.json(
         {
           error:
@@ -114,7 +136,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ==============================
-    // 既存応募を確認
+    // 既存応募確認
     // ==============================
 
     const {
@@ -144,10 +166,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // すでに応募中の場合
+    // すでに応募中
     if (
       existingApplication &&
-      existingApplication.status === "pending"
+      existingApplication.status ===
+        "pending"
     ) {
       return NextResponse.json(
         {
@@ -158,10 +181,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // すでに採用されている場合
+    // すでに採用済み
     if (
       existingApplication &&
-      existingApplication.status === "accepted"
+      existingApplication.status ===
+        "accepted"
     ) {
       return NextResponse.json(
         {
@@ -173,16 +197,20 @@ export async function POST(request: NextRequest) {
     }
 
     // ==============================
-    // 再応募 / 新規応募
+    // 応募登録
     // ==============================
 
     let data;
+    let isReapply = false;
 
     if (
       existingApplication &&
-      existingApplication.status === "rejected"
+      existingApplication.status ===
+        "rejected"
     ) {
-      // 一度見送りになった応募を再応募状態に戻す
+      isReapply = true;
+
+      // 一度見送りになった応募を再応募
       const {
         data: updatedApplication,
         error: updateApplicationError,
@@ -193,9 +221,18 @@ export async function POST(request: NextRequest) {
           status: "pending",
           source: "performer_apply",
         })
-        .eq("id", existingApplication.id)
-        .eq("request_id", requestId)
-        .eq("performer_id", performer.id)
+        .eq(
+          "id",
+          existingApplication.id
+        )
+        .eq(
+          "request_id",
+          requestId
+        )
+        .eq(
+          "performer_id",
+          performer.id
+        )
         .select()
         .single();
 
@@ -235,14 +272,19 @@ export async function POST(request: NextRequest) {
         .select()
         .single();
 
-      if (insertError || !newApplication) {
+      if (
+        insertError ||
+        !newApplication
+      ) {
         console.error(
           "応募登録エラー:",
           insertError
         );
 
-        // 念のためunique制約違反も処理
-        if (insertError?.code === "23505") {
+        if (
+          insertError?.code ===
+          "23505"
+        ) {
           return NextResponse.json(
             {
               error:
@@ -266,19 +308,151 @@ export async function POST(request: NextRequest) {
     }
 
     // ==============================
+    // 10コイン消費
+    // ==============================
+
+    /*
+     * 応募1回につき10コイン。
+     *
+     * 新規応募・再応募のどちらも対象。
+     *
+     * idempotency_key は今回の応募処理単位で
+     * 一意にする。
+     */
+    const idempotencyKey =
+      `application_fee:${data.id}:${crypto.randomUUID()}`;
+
+    const {
+      data: coinResult,
+      error: coinError,
+    } = await supabase.rpc(
+      "spend_coins",
+      {
+        p_user_id: user.id,
+        p_amount: 10,
+        p_transaction_type:
+          "application_fee",
+        p_description:
+          "演奏案件への応募手数料",
+        p_idempotency_key:
+          idempotencyKey,
+        p_request_id:
+          requestId,
+        p_application_id:
+          data.id,
+      }
+    );
+
+    if (coinError) {
+      console.error(
+        "応募コイン消費RPCエラー:",
+        coinError
+      );
+
+      // 応募状態を元に戻す
+      if (isReapply) {
+        await supabase
+          .from("applications")
+          .update({
+            message:
+              existingApplication?.message ??
+              null,
+            status:
+              existingApplication?.status ??
+              "rejected",
+            source:
+              existingApplication?.source ??
+              "performer_apply",
+          })
+          .eq(
+            "id",
+            data.id
+          );
+      } else {
+        await supabase
+          .from("applications")
+          .delete()
+          .eq(
+            "id",
+            data.id
+          );
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            "応募コインの処理に失敗しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    const coin =
+      Array.isArray(coinResult)
+        ? coinResult[0]
+        : coinResult;
+
+    if (!coin?.success) {
+      console.error(
+        "応募コイン不足:",
+        coin
+      );
+
+      // 応募状態を元に戻す
+      if (isReapply) {
+        await supabase
+          .from("applications")
+          .update({
+            message:
+              existingApplication?.message ??
+              null,
+            status:
+              existingApplication?.status ??
+              "rejected",
+            source:
+              existingApplication?.source ??
+              "performer_apply",
+          })
+          .eq(
+            "id",
+            data.id
+          );
+      } else {
+        await supabase
+          .from("applications")
+          .delete()
+          .eq(
+            "id",
+            data.id
+          );
+      }
+
+      return NextResponse.json(
+        {
+          error:
+            coin?.error_message ||
+            "コインが不足しています。応募には10コイン必要です。",
+        },
+        { status: 400 }
+      );
+    }
+
+    // ==============================
     // 施設へのLINE通知
     // ==============================
 
-    let notificationSent = false;
+    let notificationSent =
+      false;
 
     try {
-      // 案件を登録した施設を取得
       const {
         data: facility,
         error: facilityError,
       } = await supabase
         .from("facilities")
-        .select("id, user_id, name")
+        .select(
+          "id, user_id, name"
+        )
         .eq(
           "id",
           performanceRequest.facility_id
@@ -294,7 +468,6 @@ export async function POST(request: NextRequest) {
           facilityError
         );
       } else {
-        // 施設のLINEユーザーIDを取得
         const {
           data: facilityUser,
           error:
@@ -328,12 +501,10 @@ export async function POST(request: NextRequest) {
             facilityUser.display_name ||
             "施設";
 
-          // LINE MINI Appの案件詳細ページURL
           const detailUrl =
             "https://miniapp.line.me/2011785379-l5XCTbIf/facility/requests/" +
             requestId;
 
-          // LINE Flex Message
           const messages = [
             {
               type: "flex",
@@ -349,7 +520,8 @@ export async function POST(request: NextRequest) {
                       type: "text",
                       text:
                         "🎵 新しい応募があります！",
-                      weight: "bold",
+                      weight:
+                        "bold",
                       size: "xl",
                       wrap: true,
                     },
@@ -360,7 +532,8 @@ export async function POST(request: NextRequest) {
                         "さんの案件に、" +
                         performerName +
                         "さんから応募がありました。",
-                      margin: "md",
+                      margin:
+                        "md",
                       wrap: true,
                     },
                     {
@@ -368,7 +541,8 @@ export async function POST(request: NextRequest) {
                       text:
                         "案件：" +
                         performanceRequest.title,
-                      margin: "md",
+                      margin:
+                        "md",
                       wrap: true,
                     },
                     {
@@ -385,17 +559,18 @@ export async function POST(request: NextRequest) {
                         "場所：" +
                         (performanceRequest.area ||
                           "未設定"),
-                      margin: "md",
+                      margin:
+                        "md",
                       wrap: true,
                     },
                     {
                       type: "text",
-                      text:
-                        message
-                          ? "応募メッセージ：\n" +
-                            message
-                          : "応募メッセージ：なし",
-                      margin: "md",
+                      text: message
+                        ? "応募メッセージ：\n" +
+                          message
+                        : "応募メッセージ：なし",
+                      margin:
+                        "md",
                       wrap: true,
                     },
                   ],
@@ -406,7 +581,8 @@ export async function POST(request: NextRequest) {
                   contents: [
                     {
                       type: "button",
-                      style: "primary",
+                      style:
+                        "primary",
                       action: {
                         type: "uri",
                         label:
@@ -426,8 +602,11 @@ export async function POST(request: NextRequest) {
               messages
             );
 
-          if (lineResult.success) {
-            notificationSent = true;
+          if (
+            lineResult.success
+          ) {
+            notificationSent =
+              true;
 
             console.log(
               "施設へのLINE通知送信成功"
@@ -440,7 +619,9 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-    } catch (notificationError) {
+    } catch (
+      notificationError
+    ) {
       console.error(
         "施設へのLINE通知処理エラー:",
         notificationError
@@ -450,6 +631,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       application: data,
+      coinBalance:
+        coin.balance_after,
       notificationSent,
     });
   } catch (error) {
