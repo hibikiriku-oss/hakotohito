@@ -118,6 +118,15 @@ export default function FacilityHomePage() {
           </div>
         </section>
 
+        <div className="mt-3">
+          <button
+            onClick={() => router.push("/coins/history")}
+           className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-left text-sm font-semibold text-amber-700 shadow-sm active:bg-amber-50"
+          >
+            🧾 コインの取引履歴を見る →
+          </button>
+        </div>
+
         {/* メインアクション */}
         <section>
           <p className="text-sm font-bold text-gray-700 mb-3">
