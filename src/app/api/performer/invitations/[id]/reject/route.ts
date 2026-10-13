@@ -21,7 +21,6 @@ export async function POST(
       );
     }
 
-    // LINEユーザーIDを取得
     const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
@@ -63,7 +62,7 @@ export async function POST(
       );
     }
 
-    // 施設から送られた未承諾の依頼を取得
+    // 辞退対象の直接依頼を取得
     const { data: application, error: applicationError } =
       await supabase
         .from("applications")
@@ -112,38 +111,42 @@ export async function POST(
       );
     }
 
-    // 案件がすでにマッチング済みの場合は辞退できない
     if (performanceRequest.status !== "open") {
       return NextResponse.json(
-        {
-          error: "この案件はすでに締め切られています",
-        },
+        { error: "この案件はすでに締め切られています" },
         { status: 409 }
       );
     }
 
-    // 依頼を辞退
-    const {
-      data: rejectedApplication,
-      error: rejectError,
-    } = await supabase
-      .from("applications")
-      .update({
-        status: "rejected",
-      })
-      .eq("id", application.id)
-      .eq("performer_id", performer.id)
-      .eq("source", "facility_invite")
-      .eq("status", "pending")
-      .select()
-      .single();
+    // 辞退と施設への100コイン返金をDB関数で実行
+    const { data: refundResult, error: refundError } =
+      await supabase.rpc(
+        "reject_direct_invitation_with_refund",
+        {
+          p_application_id: application.id,
+          p_performer_id: performer.id,
+        }
+      );
 
-    if (rejectError || !rejectedApplication) {
-      console.error("依頼辞退エラー:", rejectError);
+    if (refundError) {
+      console.error("依頼辞退・返金処理エラー:", refundError);
 
       return NextResponse.json(
-        { error: "依頼の辞退に失敗しました" },
+        { error: "依頼の辞退・返金処理に失敗しました" },
         { status: 500 }
+      );
+    }
+
+    const result = Array.isArray(refundResult)
+      ? refundResult[0]
+      : refundResult;
+
+    if (!result?.success) {
+      return NextResponse.json(
+        {
+          error: result?.error_message || "依頼を辞退できませんでした",
+        },
+        { status: 409 }
       );
     }
 
@@ -169,7 +172,6 @@ export async function POST(
 
     let notificationSent = false;
 
-    // 施設へLINE通知
     const facilityUser = facility?.users
       ? Array.isArray(facility.users)
         ? facility.users[0]
@@ -204,7 +206,7 @@ export async function POST(
                 },
                 {
                   type: "text",
-                  text: "演奏者が今回の依頼を辞退しました。",
+                  text: "演奏者が今回の依頼を辞退しました。消費した100コインは返金されました。",
                   wrap: true,
                 },
                 {
@@ -221,9 +223,7 @@ export async function POST(
                 {
                   type: "text",
                   text: `演奏者：${
-                    performer.name ||
-                    user.display_name ||
-                    "演奏者"
+                    performer.name || user.display_name || "演奏者"
                   }`,
                   wrap: true,
                 },
@@ -249,26 +249,26 @@ export async function POST(
         },
       ];
 
-      const lineResult =
-        await sendLinePushMessage(
-          facilityLineUserId,
-          messages
-        );
+      const lineResult = await sendLinePushMessage(
+        facilityLineUserId,
+        messages
+      );
 
       if (lineResult.success) {
         notificationSent = true;
       } else {
-        console.error(
-          "施設へのLINE通知エラー:",
-          lineResult.error
-        );
+        console.error("施設へのLINE通知エラー:", lineResult.error);
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: "依頼を辞退しました",
-      application: rejectedApplication,
+      message: "依頼を辞退しました。施設に100コインを返金しました。",
+      application: {
+        ...application,
+        status: "rejected",
+      },
+      balanceAfter: result.balance_after,
       notificationSent,
     });
   } catch (error) {
