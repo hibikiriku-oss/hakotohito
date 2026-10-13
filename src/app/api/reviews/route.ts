@@ -173,6 +173,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
+
 export async function POST(request: NextRequest) {
   try {
     const lineUserId = request.headers.get("x-line-user-id");
@@ -221,12 +222,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 評価対象と権限を確認
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
         id,
         request_id,
         performer_id,
+        performance_status,
+        completed_at,
         performers (
           user_id
         )
@@ -253,38 +257,16 @@ export async function POST(request: NextRequest) {
     }
 
     const performerUserId = performer.user_id;
-
-    let isParticipant = false;
     let revieweeId: string | null = null;
 
     if (user.user_type === "performer") {
-      if (performerUserId === user.id) {
-        const { data: requestData, error: requestError } =
-          await supabase
-            .from("performance_requests")
-            .select(`
-              facility_id,
-              facilities (
-                user_id
-              )
-            `)
-            .eq("id", match.request_id)
-            .single();
-
-        if (!requestError && requestData) {
-          const facility = Array.isArray(requestData.facilities)
-            ? requestData.facilities[0]
-            : requestData.facilities;
-
-          if (facility) {
-            isParticipant = true;
-            revieweeId = facility.user_id;
-          }
-        }
+      if (performerUserId !== user.id) {
+        return NextResponse.json(
+          { error: "このマッチングを評価する権限がありません" },
+          { status: 403 }
+        );
       }
-    }
 
-    if (user.user_type === "facility") {
       const { data: requestData, error: requestError } =
         await supabase
           .from("performance_requests")
@@ -292,66 +274,105 @@ export async function POST(request: NextRequest) {
           .eq("id", match.request_id)
           .single();
 
-      if (!requestError && requestData) {
-        const { data: facility, error: facilityError } =
-          await supabase
-            .from("facilities")
-            .select("user_id")
-            .eq("id", requestData.facility_id)
-            .single();
-
-        if (!facilityError && facility && facility.user_id === user.id) {
-          isParticipant = true;
-          revieweeId = performerUserId;
-        }
+      if (requestError || !requestData) {
+        return NextResponse.json(
+          { error: "依頼情報が見つかりません" },
+          { status: 404 }
+        );
       }
-    }
 
-    if (!isParticipant || !revieweeId) {
+      const { data: facility, error: facilityError } =
+        await supabase
+          .from("facilities")
+          .select("user_id")
+          .eq("id", requestData.facility_id)
+          .single();
+
+      if (facilityError || !facility) {
+        return NextResponse.json(
+          { error: "施設情報が見つかりません" },
+          { status: 404 }
+        );
+      }
+
+      revieweeId = facility.user_id;
+    } else if (user.user_type === "facility") {
+      const { data: requestData, error: requestError } =
+        await supabase
+          .from("performance_requests")
+          .select("facility_id")
+          .eq("id", match.request_id)
+          .single();
+
+      if (requestError || !requestData) {
+        return NextResponse.json(
+          { error: "依頼情報が見つかりません" },
+          { status: 404 }
+        );
+      }
+
+      const { data: facility, error: facilityError } =
+        await supabase
+          .from("facilities")
+          .select("user_id")
+          .eq("id", requestData.facility_id)
+          .single();
+
+      if (facilityError || !facility || facility.user_id !== user.id) {
+        return NextResponse.json(
+          { error: "このマッチングを評価する権限がありません" },
+          { status: 403 }
+        );
+      }
+
+      revieweeId = performerUserId;
+    } else {
       return NextResponse.json(
-        { error: "このマッチングを評価する権限がありません" },
+        { error: "このユーザー種別では評価できません" },
         { status: 403 }
       );
     }
 
-    const { data: existingReview, error: existingReviewError } =
-      await supabase
-        .from("reviews")
-        .select("id")
-        .eq("match_id", matchId)
-        .eq("reviewer_id", user.id)
-        .maybeSingle();
+    // SQL関数側でも完了状態・権限・二重評価を検証する
+    const { data: result, error: rpcError } = await supabase.rpc(
+      "create_review_with_reward",
+      {
+        p_match_id: matchId,
+        p_reviewer_id: user.id,
+        p_reviewee_id: revieweeId,
+        p_rating: rating,
+        p_comment: comment || null,
+      }
+    );
 
-    if (existingReviewError) {
-      console.error("既存評価確認エラー:", existingReviewError);
+    if (rpcError || !result?.success) {
+      console.error("評価登録・報酬付与エラー:", rpcError || result);
 
-      return NextResponse.json(
-        { error: "評価情報の確認に失敗しました" },
-        { status: 500 }
-      );
-    }
+      const message = rpcError?.message || "";
 
-    if (existingReview) {
-      return NextResponse.json(
-        { error: "このマッチングはすでに評価済みです" },
-        { status: 400 }
-      );
-    }
+      if (message.includes("演奏完了後に評価できます")) {
+        return NextResponse.json(
+          { error: "演奏完了後に評価できます" },
+          { status: 400 }
+        );
+      }
 
-    const { data: review, error: reviewError } = await supabase
-      .from("reviews")
-      .insert({
-        match_id: matchId,
-        reviewer_id: user.id,
-        reviewee_id: revieweeId,
-        rating,
-        comment: comment || null,
-      })
-      .select()
-      .single();
+      if (
+        message.includes("すでに評価済み") ||
+        message.includes("すでに付与")
+      ) {
+        return NextResponse.json(
+          { error: "このマッチングはすでに評価済みです" },
+          { status: 400 }
+        );
+      }
 
-    if (reviewError || !review) {
-      console.error("評価登録エラー:", reviewError);
+      if (message.includes("権限がありません")) {
+        return NextResponse.json(
+          { error: "このマッチングを評価する権限がありません" },
+          { status: 403 }
+        );
+      }
 
       return NextResponse.json(
         { error: "評価の登録に失敗しました" },
@@ -360,8 +381,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({
+      success: true,
       message: "評価を登録しました",
-      review,
+      review_id: result.reviewId,
+      rewardAmount: result.rewardAmount,
+      balanceAfter: result.balanceAfter,
     });
   } catch (error) {
     console.error("評価登録APIエラー:", error);
