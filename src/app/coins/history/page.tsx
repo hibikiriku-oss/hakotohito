@@ -97,6 +97,9 @@ export default function CoinHistoryPage() {
           <p className="mt-2 text-sm text-gray-600">
             コインの獲得・消費・返金の履歴を確認できます。
           </p>
+          <p className="mt-2 text-sm text-gray-600">
+            1コイン = 10円相当
+          </p>
         </header>
 
         <section className="mt-6">

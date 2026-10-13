@@ -72,60 +72,34 @@ export default function FacilityHomePage() {
 
         {/* ヘッダー */}
         <header className="pt-2 pb-6">
-          <p className="text-sm font-medium text-gray-500">
-            演奏マッチング
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-500">
+                演奏マッチング
+              </p>
 
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">
-            🏢 施設ホーム
-          </h1>
+              <h1 className="text-2xl font-bold text-gray-900 mt-1">
+                🏢 施設ホーム
+              </h1>
+            </div>
+
+            <button
+              onClick={() => router.push("/coins/history")}
+              className="shrink-0 rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
+              aria-label="コイン履歴を開く"
+            >
+              🪙{" "}
+              {coinLoading
+                ? "..."
+                : (coinBalance ?? 0).toLocaleString()}
+              コイン
+            </button>
+          </div>
 
           <p className="text-sm text-gray-600 mt-3 leading-relaxed">
             演奏者を探したり、演奏依頼やマッチングを管理できます。
           </p>
         </header>
-
-        {/* コイン残高 */}
-        <section className="mb-6">
-          <div className="rounded-2xl bg-white border border-amber-200 p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-500">
-                  現在のコイン
-                </p>
-
-                <p className="mt-1 text-xs text-gray-400">
-                  1コイン = 10円相当
-                </p>
-              </div>
-
-              <div className="text-right">
-                {coinLoading ? (
-                  <p className="text-sm text-gray-400">
-                    読み込み中...
-                  </p>
-                ) : (
-                  <p className="text-2xl font-bold text-amber-600">
-                    🪙{" "}
-                    {coinBalance?.toLocaleString() ?? 0}
-                    <span className="ml-1 text-sm font-medium text-gray-500">
-                      コイン
-                    </span>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <div className="mt-3">
-          <button
-            onClick={() => router.push("/coins/history")}
-           className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-left text-sm font-semibold text-amber-700 shadow-sm active:bg-amber-50"
-          >
-            🧾 コインの取引履歴を見る →
-          </button>
-        </div>
 
         {/* メインアクション */}
         <section>

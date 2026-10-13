@@ -72,51 +72,34 @@ export default function PerformerHomePage() {
 
         {/* ヘッダー */}
         <header className="pt-2">
-          <p className="text-sm font-medium text-gray-500">
-            演奏マッチング
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-500">
+                演奏マッチング
+              </p>
 
-          <h1 className="mt-1 text-2xl font-bold text-gray-900">
-            🎸 演奏者ホーム
-          </h1>
+              <h1 className="mt-1 text-2xl font-bold text-gray-900">
+                🎸 演奏者ホーム
+              </h1>
+            </div>
+
+            <button
+              onClick={() => router.push("/coins/history")}
+              className="shrink-0 rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
+              aria-label="コイン履歴を開く"
+            >
+              🪙{" "}
+              {coinLoading
+                ? "..."
+                : (coinBalance ?? 0).toLocaleString()}
+              コイン
+            </button>
+          </div>
 
           <p className="mt-3 text-sm leading-6 text-gray-600">
             演奏案件を探したり、施設からの依頼を確認できます。
           </p>
         </header>
-
-        {/* コイン残高 */}
-        <section className="mt-5">
-          <div className="rounded-2xl bg-white border border-amber-200 p-4 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-500">
-                  現在のコイン
-                </p>
-
-                <p className="mt-1 text-xs text-gray-400">
-                  1コイン = 10円相当
-                </p>
-              </div>
-
-              <div className="text-right">
-                {coinLoading ? (
-                  <p className="text-sm text-gray-400">
-                    読み込み中...
-                  </p>
-                ) : (
-                  <p className="text-2xl font-bold text-amber-600">
-                    🪙{" "}
-                    {coinBalance?.toLocaleString() ?? 0}
-                    <span className="ml-1 text-sm font-medium text-gray-500">
-                      コイン
-                    </span>
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* メインメニュー */}
         <section className="mt-7 space-y-3">
