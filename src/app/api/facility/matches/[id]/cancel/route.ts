@@ -16,122 +16,89 @@ export async function POST(
   }
 ) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
       return NextResponse.json(
-        {
-          error: "LINEユーザー情報がありません",
-        },
+        { error: "LINEユーザー情報がありません" },
         { status: 400 }
       );
     }
 
-    const { id: matchId } =
-      await context.params;
+    const { id: matchId } = await context.params;
 
     if (!matchId) {
       return NextResponse.json(
-        {
-          error:
-            "マッチングIDが指定されていません",
-        },
+        { error: "マッチングIDが指定されていません" },
         { status: 400 }
       );
     }
 
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select(
-          "id, line_user_id, display_name"
-        )
-        .eq("line_user_id", lineUserId)
-        .single();
-
-    if (userError || !user) {
-      console.error(
-        "ユーザー取得エラー:",
-        userError
-      );
-
-      return NextResponse.json(
-        {
-          error: "ユーザー情報が見つかりません",
-        },
-        { status: 404 }
-      );
-    }
-
-    const {
-      data: facility,
-      error: facilityError,
-    } = await supabase
-      .from("facilities")
-      .select("id, name")
-      .eq("user_id", user.id)
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id, line_user_id, display_name")
+      .eq("line_user_id", lineUserId)
       .single();
 
-    if (facilityError || !facility) {
-      console.error(
-        "施設取得エラー:",
-        facilityError
-      );
+    if (userError || !user) {
+      console.error("ユーザー取得エラー:", userError);
 
       return NextResponse.json(
-        {
-          error:
-            "施設プロフィールが見つかりません",
-        },
+        { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    // 自分の施設のマッチングか確認
-    // 通知に必要な案件・演奏者情報もここで取得
-    const { data: match, error: matchError } =
+    const { data: facility, error: facilityError } =
       await supabase
-        .from("matches")
-        .select(
-          `
-          id,
-          request_id,
-          performer_id,
-          status,
-          performance_status,
-          performance_requests!inner (
-            id,
-            title,
-            performance_date,
-            start_time,
-            end_time,
-            facility_id
-          ),
-          performers (
-            id,
-            name,
-            user_id,
-            users (
-              id,
-              line_user_id,
-              display_name
-            )
-          )
-          `
-        )
-        .eq("id", matchId)
-        .eq(
-          "performance_requests.facility_id",
-          facility.id
-        )
+        .from("facilities")
+        .select("id, name")
+        .eq("user_id", user.id)
         .single();
 
-    if (matchError || !match) {
-      console.error(
-        "マッチング取得エラー:",
-        matchError
+    if (facilityError || !facility) {
+      console.error("施設取得エラー:", facilityError);
+
+      return NextResponse.json(
+        { error: "施設プロフィールが見つかりません" },
+        { status: 404 }
       );
+    }
+
+    // 自分の施設のマッチングか確認し、通知に必要な情報を取得
+    const { data: match, error: matchError } = await supabase
+      .from("matches")
+      .select(`
+        id,
+        request_id,
+        performer_id,
+        status,
+        performance_status,
+        performance_requests!inner (
+          id,
+          title,
+          performance_date,
+          start_time,
+          end_time,
+          facility_id
+        ),
+        performers (
+          id,
+          name,
+          user_id,
+          users (
+            id,
+            line_user_id,
+            display_name
+          )
+        )
+      `)
+      .eq("id", matchId)
+      .eq("performance_requests.facility_id", facility.id)
+      .single();
+
+    if (matchError || !match) {
+      console.error("マッチング取得エラー:", matchError);
 
       return NextResponse.json(
         {
@@ -144,72 +111,48 @@ export async function POST(
 
     if (
       match.status === "cancelled" ||
-      match.performance_status ===
-        "cancelled"
+      match.performance_status === "cancelled"
     ) {
       return NextResponse.json(
-        {
-          error:
-            "このマッチングはすでにキャンセルされています",
-        },
+        { error: "このマッチングはすでにキャンセルされています" },
         { status: 400 }
       );
     }
 
-    if (
-      match.performance_status ===
-      "completed"
-    ) {
+    if (match.performance_status === "completed") {
       return NextResponse.json(
-        {
-          error:
-            "演奏完了後のマッチングはキャンセルできません",
-        },
+        { error: "演奏完了後のマッチングはキャンセルできません" },
         { status: 400 }
       );
     }
 
     if (match.status !== "active") {
       return NextResponse.json(
-        {
-          error:
-            "このマッチングは現在キャンセルできません",
-        },
+        { error: "このマッチングは現在キャンセルできません" },
         { status: 400 }
       );
     }
 
-    // 案件情報を取得
-    const performanceRequest =
-      Array.isArray(
-        match.performance_requests
-      )
-        ? match.performance_requests[0]
-        : match.performance_requests;
+    const performanceRequest = Array.isArray(
+      match.performance_requests
+    )
+      ? match.performance_requests[0]
+      : match.performance_requests;
 
     if (!performanceRequest) {
       return NextResponse.json(
-        {
-          error:
-            "案件情報が見つかりません",
-        },
+        { error: "案件情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    // 演奏者情報を取得
-    const performer = Array.isArray(
-      match.performers
-    )
+    const performer = Array.isArray(match.performers)
       ? match.performers[0]
       : match.performers;
 
     if (!performer) {
       return NextResponse.json(
-        {
-          error:
-            "演奏者情報が見つかりません",
-        },
+        { error: "演奏者情報が見つかりません" },
         { status: 404 }
       );
     }
@@ -220,73 +163,49 @@ export async function POST(
         : performer.users
       : null;
 
-    const performerLineUserId =
-      performerUser?.line_user_id;
+    const performerLineUserId = performerUser?.line_user_id;
 
-    // マッチングをキャンセル
-    const {
-      data: updatedMatch,
-      error: updateError,
-    } = await supabase
-      .from("matches")
-      .update({
-        status: "cancelled",
-        performance_status: "cancelled",
-      })
-      .eq("id", matchId)
-      .select(
-        `
-        id,
-        request_id,
-        performer_id,
-        matched_at,
-        status,
-        performance_status,
-        completed_at
-        `
-      )
-      .single();
-
-    if (updateError) {
-      console.error(
-        "マッチングキャンセル更新エラー:",
-        updateError
+    // DB関数でキャンセル・案件再募集・直接依頼の返金をまとめて処理
+    const { data: cancelResult, error: cancelError } =
+      await supabase.rpc(
+        "cancel_match_with_direct_invite_refund",
+        {
+          p_match_id: matchId,
+          p_facility_id: facility.id,
+        }
       );
 
+    if (cancelError) {
+      console.error("キャンセル処理RPCエラー:", cancelError);
+
       return NextResponse.json(
-        {
-          error:
-            "マッチングのキャンセルに失敗しました",
-        },
+        { error: "キャンセル処理に失敗しました" },
         { status: 500 }
       );
     }
 
-    // キャンセルされた案件を再募集状態に戻す
-    const {
-      error: requestUpdateError,
-    } = await supabase
-      .from("performance_requests")
-      .update({
-        status: "open",
-      })
-      .eq("id", performanceRequest.id);
+    const result = cancelResult as {
+      success?: boolean;
+      errorMessage?: string | null;
+      refundAmount?: number;
+      balanceAfter?: number | null;
+      matchId?: string;
+    } | null;
 
-    if (requestUpdateError) {
-      console.error(
-        "案件再募集状態への更新エラー:",
-        requestUpdateError
+    if (!result?.success) {
+      return NextResponse.json(
+        {
+          error:
+            result?.errorMessage ||
+            "マッチングをキャンセルできませんでした",
+        },
+        { status: 400 }
       );
-
-      // マッチングのキャンセル自体は完了しているため、
-      // ここではキャンセル処理を失敗扱いにせず、
-      // エラーをログに残す。
     }
 
     let notificationSent = false;
 
-    // 演奏者へLINE通知
-    // 通知に失敗してもキャンセル処理自体は成功とする
+    // 演奏者へLINE通知。通知に失敗してもキャンセルは取り消さない
     if (performerLineUserId) {
       const miniAppBaseUrl =
         "https://miniapp.line.me/2011785379-l5XCTbIf";
@@ -297,8 +216,7 @@ export async function POST(
       const messages = [
         {
           type: "flex",
-          altText:
-            "マッチングがキャンセルされました",
+          altText: "マッチングがキャンセルされました",
           contents: {
             type: "bubble",
             body: {
@@ -308,15 +226,13 @@ export async function POST(
               contents: [
                 {
                   type: "text",
-                  text:
-                    "⚠️ マッチングキャンセル",
+                  text: "⚠️ マッチングキャンセル",
                   weight: "bold",
                   size: "xl",
                 },
                 {
                   type: "text",
-                  text:
-                    "施設が今回のマッチングをキャンセルしました。",
+                  text: "施設が今回のマッチングをキャンセルしました。",
                   wrap: true,
                 },
                 {
@@ -325,20 +241,16 @@ export async function POST(
                 },
                 {
                   type: "text",
-                  text:
-                    performanceRequest.title,
+                  text: performanceRequest.title,
                   weight: "bold",
                   size: "lg",
                   wrap: true,
                 },
                 {
                   type: "text",
-                  text:
-                    `施設：${
-                      facility.name ||
-                      user.display_name ||
-                      "施設"
-                    }`,
+                  text: `施設：${
+                    facility.name || user.display_name || "施設"
+                  }`,
                   wrap: true,
                 },
               ],
@@ -353,8 +265,7 @@ export async function POST(
                   style: "primary",
                   action: {
                     type: "uri",
-                    label:
-                      "マッチングを確認する",
+                    label: "マッチングを確認する",
                     uri: matchUrl,
                   },
                 },
@@ -364,19 +275,22 @@ export async function POST(
         },
       ];
 
-      const lineResult =
-        await sendLinePushMessage(
+      try {
+        const lineResult = await sendLinePushMessage(
           performerLineUserId,
           messages
         );
 
-      if (lineResult.success) {
-        notificationSent = true;
-      } else {
-        console.error(
-          "演奏者へのLINE通知エラー:",
-          lineResult.error
-        );
+        if (lineResult.success) {
+          notificationSent = true;
+        } else {
+          console.error(
+            "演奏者へのLINE通知エラー:",
+            lineResult.error
+          );
+        }
+      } catch (lineError) {
+        console.error("演奏者へのLINE通知例外:", lineError);
       }
     } else {
       console.error(
@@ -387,20 +301,24 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message:
-        "マッチングをキャンセルし、案件を再募集状態にしました",
-      match: updatedMatch,
+        result.refundAmount === 100
+          ? "マッチングをキャンセルし、案件を再募集状態に戻しました。直接依頼の手数料100コインを返金しました。"
+          : "マッチングをキャンセルし、案件を再募集状態に戻しました。",
+      match: {
+        id: matchId,
+        status: "cancelled",
+        performance_status: "cancelled",
+      },
+      refundAmount: result.refundAmount ?? 0,
+      balanceAfter: result.balanceAfter ?? null,
       notificationSent,
     });
   } catch (error) {
-    console.error(
-      "施設側マッチングキャンセルAPIエラー:",
-      error
-    );
+    console.error("施設側マッチングキャンセルAPIエラー:", error);
 
     return NextResponse.json(
       {
-        error:
-          "マッチングのキャンセル中にエラーが発生しました",
+        error: "マッチングのキャンセル中にエラーが発生しました",
       },
       { status: 500 }
     );
