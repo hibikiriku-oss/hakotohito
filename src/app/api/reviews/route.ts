@@ -47,13 +47,15 @@ export async function GET(request: NextRequest) {
         { status: 404 }
       );
     }
-
+ 
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
         id,
         request_id,
         performer_id,
+        performance_status,
+        completed_at,
         performers (
           user_id
         )
@@ -162,7 +164,13 @@ export async function GET(request: NextRequest) {
       reviewed: !!review,
       review: review || null,
       reviewee_id: revieweeId,
+      performance_status: match.performance_status,
+      completed_at: match.completed_at,
+      can_review:
+        match.performance_status === "completed" &&
+        !!match.completed_at,
     });
+
   } catch (error) {
     console.error("評価確認APIエラー:", error);
 

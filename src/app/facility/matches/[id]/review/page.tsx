@@ -17,6 +17,10 @@ export default function FacilityReviewPage() {
     useState("");
   const [reviewed, setReviewed] =
     useState(false);
+
+  const [canReview, setCanReview] =
+    useState(false);
+
   const [loading, setLoading] =
     useState(true);
   const [submitting, setSubmitting] =
@@ -68,6 +72,8 @@ export default function FacilityReviewPage() {
         setReviewed(
           data.reviewed
         );
+
+        setCanReview(data.can_review === true);
 
         if (data.reviewed) {
           setRating(
@@ -291,9 +297,35 @@ export default function FacilityReviewPage() {
                 マッチング詳細へ戻る
               </button>
             </>
+
+          ) : !canReview ? (
+            <div className="py-6 text-center">
+              <div className="text-3xl">⏳</div>
+
+              <h2 className="mt-4 text-lg font-bold text-gray-900">
+                演奏完了後に評価できます
+              </h2>
+
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                演奏が完了すると、演奏者への評価を投稿できるようになります。
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    `/facility/matches/${matchId}`
+                  )
+                }
+                className="mt-6 w-full rounded-xl bg-black px-4 py-3.5 text-sm font-bold text-white"
+              >
+                マッチング詳細へ戻る
+              </button>
+            </div>
           ) : (
             <>
               {/* 評価入力 */}
+
               <div className="text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-2xl">
                   ⭐
