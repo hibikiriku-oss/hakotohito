@@ -25,14 +25,30 @@ type PerformanceRequest = {
   facilities: Facility | null;
 };
 
+type FilterOptions = {
+  areas: string[];
+  instruments: string[];
+  genres: string[];
+};
+
 const PAGE_SIZE = 10;
+
+const EMPTY_OPTIONS: FilterOptions = {
+  areas: [],
+  instruments: [],
+  genres: [],
+};
 
 export default function PerformerRequestsPage() {
   const router = useRouter();
 
   const [requests, setRequests] = useState<PerformanceRequest[]>([]);
+  const [filterOptions, setFilterOptions] =
+    useState<FilterOptions>(EMPTY_OPTIONS);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [keyword, setKeyword] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
@@ -46,6 +62,47 @@ export default function PerformerRequestsPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
+  // 全案件から絞り込み候補を取得します。
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchFilterOptions() {
+      try {
+        const response = await fetch(
+          "/api/performance-requests/options"
+        );
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "絞り込み候補の取得に失敗しました"
+          );
+        }
+
+        if (cancelled) return;
+
+        setFilterOptions({
+          areas: Array.isArray(data.areas) ? data.areas : [],
+          instruments: Array.isArray(data.instruments)
+            ? data.instruments
+            : [],
+          genres: Array.isArray(data.genres) ? data.genres : [],
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.error("絞り込み候補取得エラー:", error);
+        }
+      }
+    }
+
+    fetchFilterOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // ページ単位で案件を取得します。
   useEffect(() => {
     let cancelled = false;
 
@@ -80,7 +137,9 @@ export default function PerformerRequestsPage() {
 
         if (cancelled) return;
 
-        setRequests(data.requests || []);
+        setRequests(
+          Array.isArray(data.requests) ? data.requests : []
+        );
         setTotal(data.total || 0);
         setTotalPages(data.totalPages || 0);
       } catch (error) {
@@ -114,29 +173,32 @@ export default function PerformerRequestsPage() {
     genreFilter,
     dateFilter,
     rewardOnly,
+    reloadKey,
   ]);
 
-  // 現在取得している案件から選択肢を作成します。
-  // 全案件に存在する候補を網羅するには、別途候補取得APIが必要です。
+  // 候補APIに問題があった場合も、表示中の案件にある候補は使えます。
   const areas = Array.from(
-    new Set(
-      requests
+    new Set([
+      ...filterOptions.areas,
+      ...requests
         .map((request) => request.area)
-        .filter((area): area is string => Boolean(area))
-    )
-  ).sort();
+        .filter((value): value is string => Boolean(value)),
+    ])
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
   const instruments = Array.from(
-    new Set(
-      requests.flatMap((request) => request.instruments || [])
-    )
-  ).sort();
+    new Set([
+      ...filterOptions.instruments,
+      ...requests.flatMap((request) => request.instruments || []),
+    ])
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
   const genres = Array.from(
-    new Set(
-      requests.flatMap((request) => request.genres || [])
-    )
-  ).sort();
+    new Set([
+      ...filterOptions.genres,
+      ...requests.flatMap((request) => request.genres || []),
+    ])
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
   const clearFilters = () => {
     setKeyword("");
@@ -160,30 +222,28 @@ export default function PerformerRequestsPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const retry = () => {
+    setPage(1);
+    setReloadKey((current) => current + 1);
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="mx-auto min-h-screen max-w-md px-4 py-5">
-          <header>
-            <button
-              type="button"
-              onClick={() => router.push("/performer/home")}
-              className="inline-flex items-center py-2 text-sm text-gray-500"
-            >
-              ← ホームへ戻る
-            </button>
+          <button
+            type="button"
+            onClick={() => router.push("/performer/home")}
+            className="py-2 text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
 
-            <div className="mt-4">
-              <h1 className="text-2xl font-bold text-gray-900">
-                🎵 演奏案件を探す
-              </h1>
-              <p className="mt-2 text-sm leading-6 text-gray-500">
-                現在募集中の案件から、自分に合った演奏依頼を探せます。
-              </p>
-            </div>
-          </header>
+          <h1 className="mt-4 text-2xl font-bold text-gray-900">
+            🎵 演奏案件を探す
+          </h1>
 
-          <div className="mt-7 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+          <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
             <div className="text-3xl">🎵</div>
             <p className="mt-3 text-sm text-gray-500">
               案件を読み込んでいます…
@@ -198,52 +258,33 @@ export default function PerformerRequestsPage() {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="mx-auto min-h-screen max-w-md px-4 py-5">
-          <header>
-            <button
-              type="button"
-              onClick={() => router.push("/performer/home")}
-              className="inline-flex items-center py-2 text-sm text-gray-500"
-            >
-              ← ホームへ戻る
-            </button>
+          <button
+            type="button"
+            onClick={() => router.push("/performer/home")}
+            className="py-2 text-sm text-gray-500"
+          >
+            ← ホームへ戻る
+          </button>
 
-            <div className="mt-4">
-              <h1 className="text-2xl font-bold text-gray-900">
-                🎵 演奏案件を探す
-              </h1>
-            </div>
-          </header>
+          <h1 className="mt-4 text-2xl font-bold text-gray-900">
+            🎵 演奏案件を探す
+          </h1>
 
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
-            <p className="text-sm leading-6 text-red-600">{error}</p>
+            <p className="text-sm text-red-600">{error}</p>
           </div>
 
           <button
             type="button"
-            onClick={() => {
-              setPage(1);
-              setError("");
-              router.refresh();
-            }}
-            className="mt-5 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-semibold text-gray-700 shadow-sm"
+            onClick={retry}
+            className="mt-4 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-semibold text-gray-700"
           >
             再読み込み
-          </button>
-
-          <button
-            type="button"
-            onClick={() => router.push("/performer/home")}
-            className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-semibold text-gray-700 shadow-sm"
-          >
-            ← ホームへ戻る
           </button>
         </div>
       </main>
     );
   }
-
-  // API側で検索済みの10件を表示します。
-  const filteredRequests = requests;
 
   const firstItem = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const lastItem = Math.min(page * PAGE_SIZE, total);
@@ -256,28 +297,24 @@ export default function PerformerRequestsPage() {
           <button
             type="button"
             onClick={() => router.push("/performer/home")}
-            className="inline-flex items-center py-2 text-sm text-gray-500"
+            className="py-2 text-sm text-gray-500"
           >
             ← ホームへ戻る
           </button>
 
-          <div className="mt-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h1 className="text-2xl font-bold text-gray-900">
-                  🎵 演奏案件を探す
-                </h1>
-                <p className="mt-2 text-sm leading-6 text-gray-500">
-                  現在募集中の案件から、自分に合った演奏依頼を探せます。
-                </p>
-              </div>
+          <div className="mt-4 flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                🎵 演奏案件を探す
+              </h1>
+              <p className="mt-2 text-sm leading-6 text-gray-500">
+                自分に合った演奏依頼を探しましょう。
+              </p>
+            </div>
 
-              <div className="shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 shadow-sm">
-                <span className="text-sm font-bold text-gray-900">
-                  {total}
-                </span>
-                <span className="ml-1 text-xs text-gray-500">件</span>
-              </div>
+            <div className="shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5">
+              <span className="font-bold text-gray-900">{total}</span>
+              <span className="ml-1 text-xs text-gray-500">件</span>
             </div>
           </div>
         </header>
@@ -290,21 +327,20 @@ export default function PerformerRequestsPage() {
                 🔎 案件を絞り込む
               </h2>
               <p className="mt-1 text-xs text-gray-500">
-                条件を指定して探しやすくできます。
+                条件を指定して検索できます。
               </p>
             </div>
 
             <button
               type="button"
               onClick={clearFilters}
-              className="shrink-0 text-xs font-medium text-gray-500 underline underline-offset-2"
+              className="shrink-0 text-xs text-gray-500 underline underline-offset-2"
             >
               クリア
             </button>
           </div>
 
           <div className="mt-5 space-y-4">
-            {/* キーワード */}
             <div>
               <label className="mb-2 block text-xs font-semibold text-gray-600">
                 キーワード
@@ -316,11 +352,10 @@ export default function PerformerRequestsPage() {
                   updateFilter(() => setKeyword(event.target.value))
                 }
                 placeholder="案件名・説明から検索"
-                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-gray-400 focus:bg-white"
               />
             </div>
 
-            {/* 地域・楽器 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-2 block text-xs font-semibold text-gray-600">
@@ -331,7 +366,7 @@ export default function PerformerRequestsPage() {
                   onChange={(event) =>
                     updateFilter(() => setAreaFilter(event.target.value))
                   }
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
                 >
                   <option value="">すべて</option>
                   {areas.map((area) => (
@@ -353,7 +388,7 @@ export default function PerformerRequestsPage() {
                       setInstrumentFilter(event.target.value)
                     )
                   }
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
                 >
                   <option value="">すべて</option>
                   {instruments.map((instrument) => (
@@ -365,7 +400,6 @@ export default function PerformerRequestsPage() {
               </div>
             </div>
 
-            {/* ジャンル・演奏日 */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-2 block text-xs font-semibold text-gray-600">
@@ -376,7 +410,7 @@ export default function PerformerRequestsPage() {
                   onChange={(event) =>
                     updateFilter(() => setGenreFilter(event.target.value))
                   }
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
                 >
                   <option value="">すべて</option>
                   {genres.map((genre) => (
@@ -397,12 +431,11 @@ export default function PerformerRequestsPage() {
                   onChange={(event) =>
                     updateFilter(() => setDateFilter(event.target.value))
                   }
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
                 />
               </div>
             </div>
 
-            {/* 謝礼あり */}
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
               <input
                 type="checkbox"
@@ -424,7 +457,7 @@ export default function PerformerRequestsPage() {
           </div>
         </section>
 
-        {/* 検索結果 */}
+        {/* 案件一覧 */}
         <section className="mt-7">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
@@ -451,7 +484,7 @@ export default function PerformerRequestsPage() {
                 onChange={(event) =>
                   updateFilter(() => setSort(event.target.value))
                 }
-                className="max-w-[160px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-700"
+                className="max-w-[165px] rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm"
               >
                 <option value="newest">新着順</option>
                 <option value="date">開催日が近い順</option>
@@ -459,7 +492,7 @@ export default function PerformerRequestsPage() {
             </div>
           </div>
 
-          {filteredRequests.length === 0 ? (
+          {requests.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-7 text-center shadow-sm">
               <div className="text-3xl">🔍</div>
               <p className="mt-3 text-sm font-medium text-gray-700">
@@ -471,23 +504,22 @@ export default function PerformerRequestsPage() {
               <button
                 type="button"
                 onClick={clearFilters}
-                className="mt-4 rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700 active:bg-gray-200"
+                className="mt-4 rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700"
               >
-                条件をクリアしてすべて表示
+                条件をクリア
               </button>
             </div>
           ) : (
             <div className="space-y-3">
-              {filteredRequests.map((request) => (
+              {requests.map((request) => (
                 <button
                   key={request.id}
                   type="button"
                   onClick={() =>
                     router.push(`/performer/requests/${request.id}`)
                   }
-                  className="group w-full rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm transition active:bg-gray-50"
+                  className="group w-full rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm active:bg-gray-50"
                 >
-                  {/* タイトル */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="text-lg font-bold leading-7 text-gray-900">
@@ -499,12 +531,9 @@ export default function PerformerRequestsPage() {
                         </p>
                       )}
                     </div>
-                    <span className="shrink-0 text-lg text-gray-300 transition group-active:text-gray-500">
-                      →
-                    </span>
+                    <span className="shrink-0 text-lg text-gray-300">→</span>
                   </div>
 
-                  {/* 日時・場所 */}
                   <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
                       <span>📅</span>
@@ -526,39 +555,32 @@ export default function PerformerRequestsPage() {
                     )}
                   </div>
 
-                  {/* 楽器・ジャンル */}
-                  {((request.instruments || []).length > 0 ||
-                    (request.genres || []).length > 0) && (
-                    <div className="mt-4 space-y-2">
-                      {(request.instruments || []).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {request.instruments.map((instrument) => (
-                            <span
-                              key={instrument}
-                              className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
-                            >
-                              🎹 {instrument}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {(request.genres || []).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {request.genres.map((genre) => (
-                            <span
-                              key={genre}
-                              className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                            >
-                              🎵 {genre}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                  {(request.instruments || []).length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {request.instruments.map((instrument) => (
+                        <span
+                          key={instrument}
+                          className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
+                        >
+                          🎹 {instrument}
+                        </span>
+                      ))}
                     </div>
                   )}
 
-                  {/* 謝礼 */}
+                  {(request.genres || []).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {request.genres.map((genre) => (
+                        <span
+                          key={genre}
+                          className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                        >
+                          🎵 {genre}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   {request.reward !== null && (
                     <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
                       <span className="text-xs text-gray-500">謝礼</span>
@@ -568,7 +590,6 @@ export default function PerformerRequestsPage() {
                     </div>
                   )}
 
-                  {/* 詳細 */}
                   <div className="mt-4 flex items-center justify-end border-t border-gray-100 pt-3">
                     <span className="text-sm font-semibold text-gray-500">
                       詳細を見る →
@@ -607,11 +628,10 @@ export default function PerformerRequestsPage() {
           )}
         </section>
 
-        {/* ホームへ戻る */}
         <button
           type="button"
           onClick={() => router.push("/performer/home")}
-          className="mt-7 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-semibold text-gray-600 shadow-sm active:bg-gray-50"
+          className="mt-7 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-semibold text-gray-600 shadow-sm"
         >
           ← ホームへ戻る
         </button>
