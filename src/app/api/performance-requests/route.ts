@@ -7,61 +7,124 @@ const supabase = createClient(
 );
 
 // 演奏依頼一覧取得
-export async function GET() {
+
+
+export async function GET(request: NextRequest) {
   try {
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url);
+
+    const page = Math.max(
+      1,
+      Number.parseInt(searchParams.get("page") || "1", 10) || 1
+    );
+
+    const limit = Math.min(
+      10,
+      Math.max(
+        1,
+        Number.parseInt(searchParams.get("limit") || "10", 10) || 10
+      )
+    );
+
+    const keyword = (searchParams.get("keyword") || "").trim();
+    const area = searchParams.get("area") || "";
+    const instrument = searchParams.get("instrument") || "";
+    const genre = searchParams.get("genre") || "";
+    const date = searchParams.get("date") || "";
+    const rewardOnly = searchParams.get("rewardOnly") === "true";
+    const sort = searchParams.get("sort") || "newest";
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let query = supabase
       .from("performance_requests")
-      .select(`
-        id,
-        title,
-        description,
-        performance_date,
-        start_time,
-        end_time,
-        area,
-        instruments,
-        genres,
-        reward,
-        status,
-        created_at,
-        facilities (
-          name,
-          facility_type,
-          address
-        )
-      `)
-      .eq("status", "open")
-      .order("performance_date", {
-        ascending: true,
-      });
+      .select(
+        `
+          id,
+          title,
+          description,
+          performance_date,
+          start_time,
+          end_time,
+          area,
+          instruments,
+          genres,
+          reward,
+          status,
+          created_at,
+          facilities (
+            name,
+            facility_type,
+            address
+          )
+        `,
+        { count: "exact" }
+      )
+      .eq("status", "open");
+
+    if (keyword) {
+      const escapedKeyword = keyword.replace(/[,%()]/g, " ");
+      query = query.or(
+        `title.ilike.%${escapedKeyword}%,description.ilike.%${escapedKeyword}%`
+      );
+    }
+
+    if (area) {
+      query = query.eq("area", area);
+    }
+
+    if (instrument) {
+      query = query.contains("instruments", [instrument]);
+    }
+
+    if (genre) {
+      query = query.contains("genres", [genre]);
+    }
+
+    if (date) {
+      query = query.eq("performance_date", date);
+    }
+
+    if (rewardOnly) {
+      query = query.gt("reward", 0);
+    }
+
+    if (sort === "date") {
+      query = query
+        .order("performance_date", { ascending: true })
+        .order("created_at", { ascending: false });
+    } else {
+      query = query
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+    }
+
+    const { data, error, count } = await query.range(from, to);
 
     if (error) {
-      console.error(
-        "演奏依頼一覧取得エラー:",
-        error
-      );
+      console.error("演奏依頼一覧取得エラー:", error);
 
       return NextResponse.json(
-        {
-          error: error.message,
-        },
+        { error: error.message },
         { status: 500 }
       );
     }
 
+    const total = count || 0;
+
     return NextResponse.json({
-      requests: data,
+      requests: data || [],
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
     });
   } catch (error) {
-    console.error(
-      "演奏依頼一覧APIエラー:",
-      error
-    );
+    console.error("演奏依頼一覧APIエラー:", error);
 
     return NextResponse.json(
-      {
-        error: "サーバーエラーが発生しました",
-      },
+      { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
   }
