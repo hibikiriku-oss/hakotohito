@@ -48,11 +48,12 @@ export async function POST(
     }
 
     // 演奏者情報を取得
-    const { data: performer, error: performerError } = await supabase
-      .from("performers")
-      .select("id, user_id, name")
-      .eq("user_id", user.id)
-      .single();
+    const { data: performer, error: performerError } =
+      await supabase
+        .from("performers")
+        .select("id, user_id, name")
+        .eq("user_id", user.id)
+        .single();
 
     if (performerError || !performer) {
       console.error("演奏者取得エラー:", performerError);
@@ -63,7 +64,7 @@ export async function POST(
       );
     }
 
-    // 施設から送られた依頼を取得
+    // 承諾対象の直接依頼を確認
     const { data: application, error: applicationError } =
       await supabase
         .from("applications")
@@ -71,15 +72,11 @@ export async function POST(
           id,
           request_id,
           performer_id,
-          message,
-          status,
           source,
+          status,
           performance_requests (
             id,
             title,
-            performance_date,
-            start_time,
-            end_time,
             facility_id,
             status
           )
@@ -112,152 +109,73 @@ export async function POST(
       );
     }
 
-    // 案件がまだ募集中か確認
-    if (performanceRequest.status !== "open") {
-      return NextResponse.json(
-        {
-          error: "この案件はすでに締め切られています",
-        },
-        { status: 409 }
-      );
-    }
+    // DB関数で承諾・マッチング作成・案件更新を一括実行
+    const { data: result, error: rpcError } = await supabase
+      .rpc("accept_direct_invitation_atomic", {
+        p_application_id: application.id,
+        p_performer_id: performer.id,
+      });
 
-    // 現在有効なマッチングが存在するか確認
-    //
-    // 同じ案件に過去のキャンセル済みマッチングが
-    // 残っていても、それは再マッチングを妨げない。
-    const { data: existingMatch, error: existingMatchError } =
-      await supabase
-        .from("matches")
-        .select("id")
-        .eq("request_id", performanceRequest.id)
-        .eq("status", "active")
-        .maybeSingle();
-
-    if (existingMatchError) {
-      console.error(
-        "既存マッチング確認エラー:",
-        existingMatchError
-      );
+    if (rpcError) {
+      console.error("直接依頼の承諾処理エラー:", rpcError);
 
       return NextResponse.json(
-        { error: "マッチング状態の確認に失敗しました" },
+        { error: "依頼の承諾処理に失敗しました" },
         { status: 500 }
       );
     }
 
-    if (existingMatch) {
+    const rpcResult = Array.isArray(result) ? result[0] : result;
+
+    if (!rpcResult?.success || !rpcResult.match_id) {
+      const errorMessage =
+        rpcResult?.error_message ||
+        "この依頼を承諾できませんでした";
+
       return NextResponse.json(
-        {
-          error: "この案件はすでにマッチング成立しています",
-        },
+        { error: errorMessage },
         { status: 409 }
       );
     }
 
-    // 依頼を承諾
-    const {
-      data: acceptedApplication,
-      error: acceptError,
-    } = await supabase
-      .from("applications")
-      .update({
-        status: "accepted",
-      })
-      .eq("id", application.id)
-      .eq("performer_id", performer.id)
-      .eq("source", "facility_invite")
-      .eq("status", "pending")
-      .select()
-      .single();
-
-    if (acceptError || !acceptedApplication) {
-      console.error("依頼承諾エラー:", acceptError);
-
-      return NextResponse.json(
-        { error: "依頼の承諾に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    // 同じ案件の他の応募・依頼を辞退扱いにする
-    const { error: rejectOthersError } = await supabase
-      .from("applications")
-      .update({
-        status: "rejected",
-      })
-      .eq("request_id", performanceRequest.id)
-      .eq("status", "pending")
-      .neq("id", application.id);
-
-    if (rejectOthersError) {
-      console.error(
-        "他の応募・依頼の更新エラー:",
-        rejectOthersError
-      );
-
-      // ここではマッチング成立を優先する
-    }
-
-    // マッチングを作成
-    const { data: match, error: matchError } = await supabase
+    // 作成されたマッチング情報を取得
+    const { data: match, error: matchFetchError } = await supabase
       .from("matches")
-      .insert({
-        request_id: performanceRequest.id,
-        performer_id: performer.id,
-        status: "active",
-      })
-      .select()
+      .select("*")
+      .eq("id", rpcResult.match_id)
       .single();
 
-    if (matchError || !match) {
-      console.error("マッチング作成エラー:", matchError);
-
-      // マッチング作成に失敗した場合、承諾状態を戻す
-      await supabase
-        .from("applications")
-        .update({
-          status: "pending",
-        })
-        .eq("id", application.id);
-
-      return NextResponse.json(
-        { error: "マッチングの作成に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    // 案件をマッチング済みにする
-    const { error: requestUpdateError } = await supabase
-      .from("performance_requests")
-      .update({
-        status: "matched",
-      })
-      .eq("id", performanceRequest.id)
-      .eq("status", "open");
-
-    if (requestUpdateError) {
+    if (matchFetchError || !match) {
       console.error(
-        "案件ステータス更新エラー:",
-        requestUpdateError
+        "マッチング情報取得エラー:",
+        matchFetchError
       );
+
+      // DB処理自体は成功済みなので、ここで承諾を取り消さない
+      return NextResponse.json({
+        success: true,
+        message: "マッチングは成立しました",
+        match: { id: rpcResult.match_id },
+        notificationSent: false,
+      });
     }
 
     // 施設情報を取得
-    const { data: facility, error: facilityError } = await supabase
-      .from("facilities")
-      .select(`
-        id,
-        user_id,
-        name,
-        users (
+    const { data: facility, error: facilityError } =
+      await supabase
+        .from("facilities")
+        .select(`
           id,
-          line_user_id,
-          display_name
-        )
-      `)
-      .eq("id", performanceRequest.facility_id)
-      .single();
+          user_id,
+          name,
+          users (
+            id,
+            line_user_id,
+            display_name
+          )
+        `)
+        .eq("id", performanceRequest.facility_id)
+        .single();
 
     if (facilityError) {
       console.error("施設情報取得エラー:", facilityError);
@@ -347,40 +265,39 @@ export async function POST(
         },
       ];
 
-      const lineResult =
-        await sendLinePushMessage(
+      try {
+        const lineResult = await sendLinePushMessage(
           facilityLineUserId,
           messages
         );
 
-      if (lineResult.success) {
-        notificationSent = true;
-      } else {
+        if (lineResult.success) {
+          notificationSent = true;
+        } else {
+          console.error(
+            "施設へのLINE通知エラー:",
+            lineResult.error
+          );
+        }
+      } catch (notificationError) {
         console.error(
-          "施設へのLINE通知エラー:",
-          lineResult.error
+          "施設へのLINE通知送信エラー:",
+          notificationError
         );
       }
     }
 
     return NextResponse.json({
       success: true,
-      message:
-        "依頼を承諾し、マッチングが成立しました",
+      message: "依頼を承諾し、マッチングが成立しました",
       match,
       notificationSent,
     });
   } catch (error) {
-    console.error(
-      "依頼承諾APIエラー:",
-      error
-    );
+    console.error("依頼承諾APIエラー:", error);
 
     return NextResponse.json(
-      {
-        error:
-          "依頼の承諾中にエラーが発生しました",
-      },
+      { error: "依頼の承諾中にエラーが発生しました" },
       { status: 500 }
     );
   }
