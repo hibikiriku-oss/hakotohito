@@ -60,6 +60,9 @@ export default function FacilityPerformersPage() {
   const [ratingFilter, setRatingFilter] =
     useState("");
 
+  const [sortOrder, setSortOrder] =
+    useState("recommended");
+
   const [selectedPerformer, setSelectedPerformer] =
     useState<Performer | null>(null);
 
@@ -259,6 +262,30 @@ export default function FacilityPerformersPage() {
 
       return true;
     });
+
+const sortedPerformers = [...filteredPerformers].sort(
+  (a, b) => {
+    switch (sortOrder) {
+      case "rating":
+        return (
+          (b.average_rating ?? -1) -
+          (a.average_rating ?? -1)
+        );
+
+      case "reviews":
+        return b.review_count - a.review_count;
+
+      case "name":
+        return a.name.localeCompare(
+          b.name,
+          "ja"
+        );
+
+      default:
+        return 0;
+    }
+  }
+);
 
   const clearFilters = () => {
     setKeyword("");
@@ -768,6 +795,37 @@ export default function FacilityPerformersPage() {
 
         </section>
 
+        <section className="mt-4 bg-white border border-gray-200 rounded-2xl p-4">
+          <label
+            htmlFor="performer-sort"
+            className="block text-sm font-bold text-gray-800 mb-2"
+          >
+            並べ替え
+          </label>
+
+          <select
+            id="performer-sort"
+            value={sortOrder}
+            onChange={(event) =>
+              setSortOrder(event.target.value)
+            }
+            className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50"
+          >
+            <option value="recommended">
+              おすすめ順（現在の表示順）
+            </option>
+            <option value="rating">
+              評価が高い順
+            </option>
+            <option value="reviews">
+              レビューが多い順
+            </option>
+            <option value="name">
+              名前順
+            </option>
+          </select>
+        </section>
+
         {/* 件数 */}
         <div className="flex items-center justify-between mt-5 mb-3">
           <p className="text-sm font-bold text-gray-700">
@@ -807,7 +865,7 @@ export default function FacilityPerformersPage() {
         ) : (
           <div className="space-y-3">
 
-            {filteredPerformers.map(
+            {sortedPerformers.map(
               (performer) => {
                 const user =
                   getUser(performer);
