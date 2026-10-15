@@ -22,6 +22,9 @@ export default function ReviewPage() {
   const [reviewed, setReviewed] =
     useState(false);
 
+  const [canReview, setCanReview] =
+    useState(false);
+  
   const [loading, setLoading] =
     useState(true);
 
@@ -72,9 +75,8 @@ export default function ReviewPage() {
         const data =
           await response.json();
 
-        setReviewed(
-          data.reviewed
-        );
+        setReviewed(data.reviewed);
+        setCanReview(data.can_review === true);
 
         if (data.reviewed) {
           setRating(
@@ -338,9 +340,26 @@ export default function ReviewPage() {
                   マッチング詳細へ戻る
                 </button>
               </div>
-            ) : (
-              /* 評価入力 */
-              <div className="p-5">
+              ) : !canReview ? (
+                <div className="p-5 text-center">
+                  <div className="text-3xl">⏳</div>
+                  <h2 className="mt-4 text-lg font-bold text-gray-900">
+                    演奏完了後に評価できます
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-gray-500">
+                    演奏が完了すると、施設への評価を投稿できるようになります。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/performer/matches/${matchId}`)}
+                    className="mt-6 w-full rounded-2xl bg-black py-4 text-sm font-bold text-white"
+                  >
+                    マッチング詳細に戻る
+                  </button>
+                </div>
+              ) : (
+                /* 評価入力 */
+                <div className="p-5">
                 {/* 星評価 */}
                 <div className="text-center">
                   <p className="text-sm font-bold text-gray-700">
