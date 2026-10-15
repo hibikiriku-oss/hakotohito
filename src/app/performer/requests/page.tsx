@@ -55,6 +55,12 @@ export default function PerformerRequestsPage() {
   const [instrumentFilter, setInstrumentFilter] = useState("");
   const [genreFilter, setGenreFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
+  const [dateType, setDateType] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [timePreset, setTimePreset] = useState("");
+  const [timeStart, setTimeStart] = useState("");
+  const [timeEnd, setTimeEnd] = useState("");
   const [rewardOnly, setRewardOnly] = useState(false);
 
   const [page, setPage] = useState(1);
@@ -62,15 +68,12 @@ export default function PerformerRequestsPage() {
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
 
-  // 全案件から絞り込み候補を取得します。
   useEffect(() => {
     let cancelled = false;
 
     async function fetchFilterOptions() {
       try {
-        const response = await fetch(
-          "/api/performance-requests/options"
-        );
+        const response = await fetch("/api/performance-requests/options");
         const data = await response.json();
 
         if (!response.ok) {
@@ -102,7 +105,6 @@ export default function PerformerRequestsPage() {
     };
   }, [reloadKey]);
 
-  // ページ単位で案件を取得します。
   useEffect(() => {
     let cancelled = false;
 
@@ -120,6 +122,12 @@ export default function PerformerRequestsPage() {
           instrument: instrumentFilter,
           genre: genreFilter,
           date: dateFilter,
+          dateType,
+          dateFrom,
+          dateTo,
+          timePreset,
+          timeStart: timePreset ? "" : timeStart,
+          timeEnd: timePreset ? "" : timeEnd,
           rewardOnly: String(rewardOnly),
         });
 
@@ -130,16 +138,12 @@ export default function PerformerRequestsPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(
-            data.error || "案件の取得に失敗しました"
-          );
+          throw new Error(data.error || "案件の取得に失敗しました");
         }
 
         if (cancelled) return;
 
-        setRequests(
-          Array.isArray(data.requests) ? data.requests : []
-        );
+        setRequests(Array.isArray(data.requests) ? data.requests : []);
         setTotal(data.total || 0);
         setTotalPages(data.totalPages || 0);
       } catch (error) {
@@ -172,11 +176,16 @@ export default function PerformerRequestsPage() {
     instrumentFilter,
     genreFilter,
     dateFilter,
+    dateType,
+    dateFrom,
+    dateTo,
+    timePreset,
+    timeStart,
+    timeEnd,
     rewardOnly,
     reloadKey,
   ]);
 
-  // 候補APIに問題があった場合も、表示中の案件にある候補は使えます。
   const areas = Array.from(
     new Set([
       ...filterOptions.areas,
@@ -200,18 +209,24 @@ export default function PerformerRequestsPage() {
     ])
   ).sort((a, b) => a.localeCompare(b, "ja"));
 
+  const updateFilter = (callback: () => void) => {
+    callback();
+    setPage(1);
+  };
+
   const clearFilters = () => {
     setKeyword("");
     setAreaFilter("");
     setInstrumentFilter("");
     setGenreFilter("");
     setDateFilter("");
+    setDateType("");
+    setDateFrom("");
+    setDateTo("");
+    setTimePreset("");
+    setTimeStart("");
+    setTimeEnd("");
     setRewardOnly(false);
-    setPage(1);
-  };
-
-  const updateFilter = (callback: () => void) => {
-    callback();
     setPage(1);
   };
 
@@ -238,11 +253,9 @@ export default function PerformerRequestsPage() {
           >
             ← ホームへ戻る
           </button>
-
           <h1 className="mt-4 text-2xl font-bold text-gray-900">
             🎵 演奏案件を探す
           </h1>
-
           <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
             <div className="text-3xl">🎵</div>
             <p className="mt-3 text-sm text-gray-500">
@@ -265,15 +278,12 @@ export default function PerformerRequestsPage() {
           >
             ← ホームへ戻る
           </button>
-
           <h1 className="mt-4 text-2xl font-bold text-gray-900">
             🎵 演奏案件を探す
           </h1>
-
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
             <p className="text-sm text-red-600">{error}</p>
           </div>
-
           <button
             type="button"
             onClick={retry}
@@ -292,7 +302,6 @@ export default function PerformerRequestsPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="mx-auto min-h-screen max-w-md px-4 py-5">
-        {/* ヘッダー */}
         <header>
           <button
             type="button"
@@ -311,7 +320,6 @@ export default function PerformerRequestsPage() {
                 自分に合った演奏依頼を探しましょう。
               </p>
             </div>
-
             <div className="shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5">
               <span className="font-bold text-gray-900">{total}</span>
               <span className="ml-1 text-xs text-gray-500">件</span>
@@ -319,7 +327,6 @@ export default function PerformerRequestsPage() {
           </div>
         </header>
 
-        {/* 絞り込み */}
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -330,7 +337,6 @@ export default function PerformerRequestsPage() {
                 条件を指定して検索できます。
               </p>
             </div>
-
             <button
               type="button"
               onClick={clearFilters}
@@ -376,7 +382,6 @@ export default function PerformerRequestsPage() {
                   ))}
                 </select>
               </div>
-
               <div>
                 <label className="mb-2 block text-xs font-semibold text-gray-600">
                   楽器
@@ -400,30 +405,49 @@ export default function PerformerRequestsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-2 block text-xs font-semibold text-gray-600">
-                  ジャンル
-                </label>
-                <select
-                  value={genreFilter}
-                  onChange={(event) =>
-                    updateFilter(() => setGenreFilter(event.target.value))
-                  }
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
-                >
-                  <option value="">すべて</option>
-                  {genres.map((genre) => (
-                    <option key={genre} value={genre}>
-                      {genre}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className="mb-2 block text-xs font-semibold text-gray-600">
+                ジャンル
+              </label>
+              <select
+                value={genreFilter}
+                onChange={(event) =>
+                  updateFilter(() => setGenreFilter(event.target.value))
+                }
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
+              >
+                <option value="">すべて</option>
+                {genres.map((genre) => (
+                  <option key={genre} value={genre}>
+                    {genre}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div>
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-bold text-gray-800">
+                📅 開催日の条件
+              </h3>
+
+              <label className="mb-2 mt-3 block text-xs font-semibold text-gray-600">
+                曜日・祝日
+              </label>
+              <select
+                value={dateType}
+                onChange={(event) =>
+                  updateFilter(() => setDateType(event.target.value))
+                }
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
+              >
+                <option value="">指定なし</option>
+                <option value="weekday">平日（祝日を除く）</option>
+                <option value="weekendHoliday">土日・祝日</option>
+              </select>
+
+              <div className="mt-3">
                 <label className="mb-2 block text-xs font-semibold text-gray-600">
-                  演奏日
+                  特定の日
                 </label>
                 <input
                   type="date"
@@ -434,6 +458,98 @@ export default function PerformerRequestsPage() {
                   className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
                 />
               </div>
+
+              <div className="mt-3">
+                <label className="mb-2 block text-xs font-semibold text-gray-600">
+                  日付の範囲
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="mb-1 block text-xs text-gray-500">
+                      開始日
+                    </span>
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      max={dateTo || undefined}
+                      onChange={(event) =>
+                        updateFilter(() => setDateFrom(event.target.value))
+                      }
+                      className="w-full min-w-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-xs text-gray-500">
+                      終了日
+                    </span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      min={dateFrom || undefined}
+                      onChange={(event) =>
+                        updateFilter(() => setDateTo(event.target.value))
+                      }
+                      className="w-full min-w-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-3 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-100 pt-4">
+              <h3 className="text-sm font-bold text-gray-800">
+                🕐 演奏時間の条件
+              </h3>
+              <label className="mb-2 mt-3 block text-xs font-semibold text-gray-600">
+                時間帯
+              </label>
+              <select
+                value={timePreset}
+                onChange={(event) =>
+                  updateFilter(() => setTimePreset(event.target.value))
+                }
+                className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
+              >
+                <option value="">指定なし</option>
+                <option value="morning">午前（6:00〜12:00）</option>
+                <option value="afternoon">午後（12:00〜17:00）</option>
+                <option value="evening">夕方・夜（17:00〜23:59）</option>
+                <option value="custom">時刻を指定する</option>
+              </select>
+
+              {timePreset === "custom" && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-500">
+                      希望開始時刻
+                    </label>
+                    <input
+                      type="time"
+                      value={timeStart}
+                      onChange={(event) =>
+                        updateFilter(() => setTimeStart(event.target.value))
+                      }
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-gray-500">
+                      希望終了時刻
+                    </label>
+                    <input
+                      type="time"
+                      value={timeEnd}
+                      onChange={(event) =>
+                        updateFilter(() => setTimeEnd(event.target.value))
+                      }
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="mt-2 text-xs leading-5 text-gray-500">
+                指定した時間帯と演奏案件の時間が重なる案件を表示します。
+              </p>
             </div>
 
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
@@ -457,7 +573,6 @@ export default function PerformerRequestsPage() {
           </div>
         </section>
 
-        {/* 案件一覧 */}
         <section className="mt-7">
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
@@ -470,7 +585,6 @@ export default function PerformerRequestsPage() {
                   : `${firstItem}〜${lastItem}件 / 全${total}件`}
               </p>
             </div>
-
             <div className="shrink-0">
               <label
                 htmlFor="request-sort"
@@ -600,7 +714,6 @@ export default function PerformerRequestsPage() {
             </div>
           )}
 
-          {/* ページ切り替え */}
           {totalPages > 0 && (
             <div className="mt-5 flex items-center justify-between gap-3">
               <button
@@ -611,11 +724,9 @@ export default function PerformerRequestsPage() {
               >
                 ← 前へ
               </button>
-
               <span className="text-center text-sm text-gray-600">
                 {page} / {totalPages} ページ
               </span>
-
               <button
                 type="button"
                 disabled={page >= totalPages}
