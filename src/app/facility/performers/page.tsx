@@ -263,9 +263,34 @@ export default function FacilityPerformersPage() {
       return true;
     });
 
+
+
 const sortedPerformers = [...filteredPerformers].sort(
   (a, b) => {
+    const levelOrder: Record<string, number> = {
+      pro: 0,
+      amateur: 1,
+      beginner: 2,
+    };
+
     switch (sortOrder) {
+      case "level_pro": {
+        const aLevel = levelOrder[a.status_level ?? ""] ?? 99;
+        const bLevel = levelOrder[b.status_level ?? ""] ?? 99;
+        return aLevel - bLevel;
+      }
+
+      case "level_beginner": {
+        const reverseOrder: Record<string, number> = {
+          beginner: 0,
+          amateur: 1,
+          pro: 2,
+        };
+        const aLevel = reverseOrder[a.status_level ?? ""] ?? 99;
+        const bLevel = reverseOrder[b.status_level ?? ""] ?? 99;
+        return aLevel - bLevel;
+      }
+
       case "rating":
         return (
           (b.average_rating ?? -1) -
@@ -276,16 +301,15 @@ const sortedPerformers = [...filteredPerformers].sort(
         return b.review_count - a.review_count;
 
       case "name":
-        return a.name.localeCompare(
-          b.name,
-          "ja"
-        );
+        return a.name.localeCompare(b.name, "ja");
 
       default:
         return 0;
     }
   }
 );
+
+
 
   const clearFilters = () => {
     setKeyword("");
@@ -814,6 +838,12 @@ const sortedPerformers = [...filteredPerformers].sort(
             <option value="recommended">
               おすすめ順（現在の表示順）
             </option>
+            <option value="level_pro">
+              プロ → アマチュア → ビギナー
+            </option>
+            <option value="level_beginner">
+              ビギナー → アマチュア → プロ
+            </option>
             <option value="rating">
               評価が高い順
             </option>
@@ -866,7 +896,7 @@ const sortedPerformers = [...filteredPerformers].sort(
           <div className="space-y-3">
 
             {sortedPerformers.map(
-              (performer) => {
+            (performer) => {
                 const user =
                   getUser(performer);
 
