@@ -17,11 +17,7 @@ async function getFacilityByLineUserId(lineUserId: string) {
     .eq("line_user_id", lineUserId)
     .single();
 
-  if (userError || !user) {
-    return null;
-  }
-
-  if (user.user_type !== "facility") {
+  if (userError || !user || user.user_type !== "facility") {
     return null;
   }
 
@@ -48,20 +44,9 @@ export async function GET(
     const { data, error } = await supabase
       .from("performance_requests")
       .select(`
-        id,
-        title,
-        description,
-        performance_date,
-        start_time,
-        end_time,
-        area,
-        instruments,
-        genres,
-        reward,
-        status,
+        *,
         facilities (
           id,
-          user_id,
           name,
           facility_type,
           address,
@@ -72,17 +57,13 @@ export async function GET(
       .single();
 
     if (error || !data) {
-      console.error("案件詳細取得エラー:", error);
-
       return NextResponse.json(
         { error: "案件が見つかりません" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
-      request: data,
-    });
+    return NextResponse.json({ request: data });
   } catch (error) {
     console.error("案件詳細APIエラー:", error);
 
@@ -99,7 +80,6 @@ export async function PATCH(
 ) {
   try {
     const { id } = await context.params;
-
     const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
@@ -145,7 +125,7 @@ export async function PATCH(
           error:
             "募集終了またはマッチング済みの案件は編集できません",
         },
-        { status: 400 }
+        { status: 409 }
       );
     }
 
@@ -175,9 +155,7 @@ export async function PATCH(
         : "";
 
     const area =
-      typeof body.area === "string"
-        ? body.area.trim()
-        : "";
+      typeof body.area === "string" ? body.area.trim() : "";
 
     const instruments = Array.isArray(body.instruments)
       ? body.instruments
@@ -221,7 +199,7 @@ export async function PATCH(
       );
     }
 
-    if (Number.isNaN(reward)) {
+    if (reward !== null && !Number.isFinite(reward)) {
       return NextResponse.json(
         { error: "報酬は数値で入力してください" },
         { status: 400 }
@@ -243,15 +221,26 @@ export async function PATCH(
       })
       .eq("id", id)
       .eq("facility_id", facility.id)
+      .eq("status", "open")
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
       console.error("案件更新エラー:", error);
 
       return NextResponse.json(
         { error: "案件の更新に失敗しました" },
         { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        {
+          error:
+            "この案件は編集できません。マッチング済み、または募集終了している可能性があります。",
+        },
+        { status: 409 }
       );
     }
 
@@ -275,7 +264,6 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-
     const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
@@ -321,15 +309,18 @@ export async function DELETE(
           error:
             "募集終了またはマッチング済みの案件は削除できません",
         },
-        { status: 400 }
+        { status: 409 }
       );
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("performance_requests")
       .delete()
       .eq("id", id)
-      .eq("facility_id", facility.id);
+      .eq("facility_id", facility.id)
+      .eq("status", "open")
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       console.error("案件削除エラー:", error);
@@ -337,6 +328,16 @@ export async function DELETE(
       return NextResponse.json(
         { error: "案件の削除に失敗しました" },
         { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        {
+          error:
+            "この案件は削除できません。マッチング済み、または募集終了している可能性があります。",
+        },
+        { status: 409 }
       );
     }
 
