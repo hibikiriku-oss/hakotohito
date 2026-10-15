@@ -28,6 +28,9 @@ export default function FacilityReviewPage() {
   const [error, setError] =
     useState("");
 
+  const [rewardAmount, setRewardAmount] =
+    useState<number | null>(null);
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -143,13 +146,14 @@ export default function FacilityReviewPage() {
 
       setReviewed(true);
 
-      alert(
-        "評価を送信しました！"
+      setReviewed(true);
+      setRewardAmount(
+        typeof data.rewardAmount === "number"
+          ? data.rewardAmount
+          : 0
       );
 
-      router.push(
-        `/facility/matches/${matchId}`
-      );
+
     } catch (error) {
       console.error(error);
 
@@ -247,6 +251,23 @@ export default function FacilityReviewPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   このマッチングへの評価は送信済みです。
                 </p>
+
+                {rewardAmount !== null && (
+                  <div className="mt-5 rounded-2xl border border-yellow-200 bg-yellow-50 p-4">
+                    <p className="text-sm font-bold text-gray-700">
+                      演奏者への評価報酬
+                    </p>
+
+                    <p className="mt-2 text-2xl font-bold text-yellow-700">
+                      🪙 {rewardAmount} コイン
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      演奏者に評価報酬を付与しました。
+                    </p>
+                  </div>
+                )}
+
               </div>
 
               <div className="mt-7 rounded-2xl bg-gray-50 p-5 text-center">
