@@ -319,16 +319,23 @@ export async function GET(request: NextRequest) {
     // 活動エリアの自動絞り込み。
     // 活動エリアが登録されている場合だけ絞り込みます。
     // 未登録の場合は案件を除外せず、募集中の案件を表示します。
+
     if (performerAreas !== null && performerAreas.length > 0) {
       filteredRequests = filteredRequests.filter((item) => {
         const requestArea =
-          typeof item.area === "string" ? item.area : "";
+          typeof item.area === "string" ? item.area.trim() : "";
+
+        // 案件のエリアが未設定なら、エリア条件では除外しない。
+        if (!requestArea) {
+          return true;
+        }
 
         return performerAreas.some((performerArea) =>
           areaMatches(performerArea, requestArea)
         );
       });
     }
+
 
     if (dateType) {
       const years = filteredRequests.map((item) =>
