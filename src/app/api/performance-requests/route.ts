@@ -317,19 +317,17 @@ export async function GET(request: NextRequest) {
     let filteredRequests = allMatchingRequests;
 
     // 活動エリアの自動絞り込み。
-    // 複数の活動エリアのうち、どれか1つに一致すれば表示します。
-    if (performerAreas !== null) {
-      filteredRequests =
-        performerAreas.length === 0
-          ? []
-          : filteredRequests.filter((item) => {
-              const requestArea =
-                typeof item.area === "string" ? item.area : "";
+    // 活動エリアが登録されている場合だけ絞り込みます。
+    // 未登録の場合は案件を除外せず、募集中の案件を表示します。
+    if (performerAreas !== null && performerAreas.length > 0) {
+      filteredRequests = filteredRequests.filter((item) => {
+        const requestArea =
+          typeof item.area === "string" ? item.area : "";
 
-              return performerAreas.some((performerArea) =>
-                areaMatches(performerArea, requestArea)
-              );
-            });
+        return performerAreas.some((performerArea) =>
+          areaMatches(performerArea, requestArea)
+        );
+      });
     }
 
     if (dateType) {
