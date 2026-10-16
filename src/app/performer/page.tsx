@@ -148,15 +148,45 @@ export default function PerformerPage() {
         : []),
     ];
 
-    if (
-      !name.trim() ||
-      areas.length === 0 ||
-      finalInstruments.length === 0 ||
-      finalGenres.length === 0
-    ) {
-      alert("名前・活動エリア・楽器・音楽ジャンルを入力してください");
-      return;
-    }
+const missingFields = {
+  name: !name.trim(),
+  areas: areas.length === 0,
+  instruments: finalInstruments.length === 0,
+  genres: finalGenres.length === 0,
+};
+
+console.log("演奏者登録の入力チェック:", {
+  name,
+  areas,
+  instruments,
+  otherInstrument,
+  finalInstruments,
+  genres,
+  otherGenre,
+  finalGenres,
+  missingFields,
+});
+
+if (
+  missingFields.name ||
+  missingFields.areas ||
+  missingFields.instruments ||
+  missingFields.genres
+) {
+  alert(
+    `入力不足の項目：${
+      [
+        missingFields.name && "名前",
+        missingFields.areas && "活動エリア",
+        missingFields.instruments && "楽器",
+        missingFields.genres && "音楽ジャンル",
+      ]
+        .filter(Boolean)
+        .join("・")
+    }`
+  );
+  return;
+}
 
     if (!lineUserId) {
       alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
