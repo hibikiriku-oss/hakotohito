@@ -9,91 +9,71 @@ const supabase = createClient(
 // ========================================
 // 演奏者プロフィール取得
 // ========================================
-export async function GET(
-  request: NextRequest
-) {
+export async function GET(request: NextRequest) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
       return NextResponse.json(
-        {
-          error:
-            "LINEユーザー情報がありません",
-        },
+        { error: "LINEユーザー情報がありません" },
         { status: 400 }
       );
     }
 
     // LINEユーザー取得
-    const {
-      data: user,
-      error: userError,
-    } = await supabase
+    const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
       .single();
 
     if (userError || !user) {
-      console.error(
-        "ユーザー取得エラー:",
-        userError
-      );
+      console.error("ユーザー取得エラー:", userError);
 
       return NextResponse.json(
-        {
-          error:
-            "ユーザー情報が見つかりません",
-        },
+        { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
     // 演奏者プロフィール取得
-    const {
-      data: performer,
-      error: performerError,
-    } = await supabase
+    const { data: performer, error: performerError } = await supabase
       .from("performers")
       .select(
-        "id, user_id, name, instruments, genres, area, bio, status_level"
+        "id, user_id, name, instruments, genres, area, areas, bio, status_level"
       )
       .eq("user_id", user.id)
       .single();
 
     if (performerError || !performer) {
-      console.error(
-        "演奏者プロフィール取得エラー:",
-        performerError
-      );
+      console.error("演奏者プロフィール取得エラー:", performerError);
 
       return NextResponse.json(
-        {
-          error:
-            "演奏者プロフィールが見つかりません",
-        },
+        { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
     }
 
+    // 既存データで areas が空の場合は、従来の area を利用する
+    const areas =
+      Array.isArray(performer.areas) && performer.areas.length > 0
+        ? performer.areas
+        : performer.area
+          ? [performer.area]
+          : [];
+
     return NextResponse.json({
       success: true,
-      performer,
+      performer: {
+        ...performer,
+        areas,
+      },
     });
-
   } catch (error) {
-    console.error(
-      "プロフィール取得APIエラー:",
-      error
-    );
+    console.error("プロフィール取得APIエラー:", error);
 
     return NextResponse.json(
-      {
-        error:
-          "サーバーエラーが発生しました",
-      },
+      { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
   }
@@ -102,19 +82,13 @@ export async function GET(
 // ========================================
 // 演奏者プロフィール更新
 // ========================================
-export async function PATCH(
-  request: NextRequest
-) {
+export async function PATCH(request: NextRequest) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
       return NextResponse.json(
-        {
-          error:
-            "LINEユーザー情報がありません",
-        },
+        { error: "LINEユーザー情報がありません" },
         { status: 400 }
       );
     }
@@ -122,145 +96,106 @@ export async function PATCH(
     const body = await request.json();
 
     const name =
-      typeof body.name === "string"
-        ? body.name.trim()
-        : "";
+      typeof body.name === "string" ? body.name.trim() : "";
 
-    const area =
-      typeof body.area === "string"
-        ? body.area.trim()
-        : "";
+    // areas が送られた場合は複数エリアとして処理する。
+    // 旧バージョンから area だけ送られた場合にも対応する。
+    const rawAreas: unknown[] = Array.isArray(body.areas)
+      ? body.areas
+      : typeof body.area === "string"
+        ? body.area.split(",")
+        : [];
+
+    const areas = rawAreas
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item, index, array) => item.length > 0 && array.indexOf(item) === index);
+
+    // 従来の area カラムには先頭の活動エリアを保存する
+    const area = areas[0] ?? "";
 
     const bio =
-      typeof body.bio === "string"
-        ? body.bio.trim()
-        : "";
+      typeof body.bio === "string" ? body.bio.trim() : "";
 
     const statusLevel =
       typeof body.statusLevel === "string"
         ? body.statusLevel.trim()
         : "";
 
-    const instruments = Array.isArray(
-      body.instruments
-    )
+    const instruments = Array.isArray(body.instruments)
       ? body.instruments
-          .filter(
-            (item: unknown) =>
-              typeof item === "string"
-          )
-          .map((item: string) =>
-            item.trim()
-          )
+          .filter((item: unknown): item is string => typeof item === "string")
+          .map((item: string) => item.trim())
           .filter(Boolean)
       : [];
 
-    const genres = Array.isArray(
-      body.genres
-    )
+    const genres = Array.isArray(body.genres)
       ? body.genres
-          .filter(
-            (item: unknown) =>
-              typeof item === "string"
-          )
-          .map((item: string) =>
-            item.trim()
-          )
+          .filter((item: unknown): item is string => typeof item === "string")
+          .map((item: string) => item.trim())
           .filter(Boolean)
       : [];
 
     if (
       !name ||
-      !area ||
+      areas.length === 0 ||
       instruments.length === 0 ||
       genres.length === 0 ||
       !statusLevel
     ) {
       return NextResponse.json(
-        {
-          error:
-            "必須項目を入力してください",
-        },
+        { error: "必須項目を入力してください" },
         { status: 400 }
       );
     }
 
     // 演奏レベルの値を厳密にチェック
-    if (
-      ![
-        "beginner",
-        "amateur",
-        "pro",
-      ].includes(statusLevel)
-    ) {
+    if (!["beginner", "amateur", "pro"].includes(statusLevel)) {
       return NextResponse.json(
-        {
-          error:
-            "演奏レベルの指定が正しくありません",
-        },
+        { error: "演奏レベルの指定が正しくありません" },
         { status: 400 }
       );
     }
 
     // LINEユーザー取得
-    const {
-      data: user,
-      error: userError,
-    } = await supabase
+    const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
       .single();
 
     if (userError || !user) {
-      console.error(
-        "ユーザー取得エラー:",
-        userError
-      );
+      console.error("ユーザー取得エラー:", userError);
 
       return NextResponse.json(
-        {
-          error:
-            "ユーザー情報が見つかりません",
-        },
+        { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
     // このLINEユーザーの演奏者プロフィールを取得
-    const {
-      data: performer,
-      error: performerError,
-    } = await supabase
+    const { data: performer, error: performerError } = await supabase
       .from("performers")
       .select("id")
       .eq("user_id", user.id)
       .single();
 
     if (performerError || !performer) {
-      console.error(
-        "演奏者プロフィール取得エラー:",
-        performerError
-      );
+      console.error("演奏者プロフィール取得エラー:", performerError);
 
       return NextResponse.json(
-        {
-          error:
-            "演奏者プロフィールが見つかりません",
-        },
+        { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
     }
 
     // プロフィール更新
-    const {
-      data: updatedPerformer,
-      error: updateError,
-    } = await supabase
+    const { data: updatedPerformer, error: updateError } = await supabase
       .from("performers")
       .update({
         name,
         area,
+        areas,
         instruments,
         genres,
         bio,
@@ -268,21 +203,15 @@ export async function PATCH(
       })
       .eq("id", performer.id)
       .select(
-        "id, user_id, name, instruments, genres, area, bio, status_level"
+        "id, user_id, name, instruments, genres, area, areas, bio, status_level"
       )
       .single();
 
     if (updateError) {
-      console.error(
-        "プロフィール更新エラー:",
-        updateError
-      );
+      console.error("プロフィール更新エラー:", updateError);
 
       return NextResponse.json(
-        {
-          error:
-            "プロフィールの更新に失敗しました",
-        },
+        { error: "プロフィールの更新に失敗しました" },
         { status: 500 }
       );
     }
@@ -291,18 +220,11 @@ export async function PATCH(
       success: true,
       performer: updatedPerformer,
     });
-
   } catch (error) {
-    console.error(
-      "プロフィール更新APIエラー:",
-      error
-    );
+    console.error("プロフィール更新APIエラー:", error);
 
     return NextResponse.json(
-      {
-        error:
-          "サーバーエラーが発生しました",
-      },
+      { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
   }

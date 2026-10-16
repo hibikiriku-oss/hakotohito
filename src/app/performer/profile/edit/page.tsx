@@ -147,7 +147,10 @@ export default function PerformerProfileEditPage() {
       );
 
       setArea(
-        performer.area || ""
+        Array.isArray(performer.areas) &&
+          performer.areas.length > 0
+          ? performer.areas.join(", ")
+          : performer.area || ""
       );
 
       setInstruments(
@@ -403,23 +406,22 @@ export default function PerformerProfileEditPage() {
             },
             body: JSON.stringify({
               name,
-              area,
-              instruments:
-                instruments
-                  .split(",")
-                  .map(
-                    (item) =>
-                      item.trim()
-                  )
-                  .filter(Boolean),
-              genres:
-                genres
-                  .split(",")
-                  .map(
-                    (item) =>
-                      item.trim()
-                  )
-                  .filter(Boolean),
+              area: area
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean)[0] || "",
+              areas: area
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+              instruments: instruments
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+              genres: genres
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
               bio,
               statusLevel,
             }),
@@ -771,13 +773,16 @@ export default function PerformerProfileEditPage() {
                 type="text"
                 value={area}
                 onChange={(event) =>
-                  setArea(
-                    event.target.value
-                  )
+                  setArea(event.target.value)
                 }
-                placeholder="例：名古屋市"
+                placeholder="例：名古屋市千種区, 春日井市"
                 className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 outline-none focus:bg-white focus:border-black focus:ring-1 focus:ring-black"
               />
+
+              <p className="text-xs text-gray-400 mt-2">
+                複数の市区町村で活動できる場合は「,」で区切って入力してください。
+                例：名古屋市千種区, 春日井市
+              </p>
             </div>
 
             {/* 楽器 */}
