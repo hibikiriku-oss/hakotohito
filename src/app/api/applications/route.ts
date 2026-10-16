@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       error: performerError,
     } = await supabase
       .from("performers")
-      .select("id, name")
+      .select("id, name, status_level")
       .eq("user_id", user.id)
       .single();
 
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     } = await supabase
       .from("performance_requests")
       .select(
-        "id, status, title, performance_date, start_time, end_time, area, facility_id"
+        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels"
       )
       .eq("id", requestId)
       .single();
@@ -132,6 +132,42 @@ export async function POST(request: NextRequest) {
             "この案件は現在応募できません",
         },
         { status: 400 }
+      );
+    }
+
+    // ==============================
+    // 募集対象レベルの確認
+    // ==============================
+
+    // target_levels が NULL または空配列なら制限なし。
+    // 対象レベルが設定されている案件は、演奏者のレベルを照合する。
+    const targetLevels = performanceRequest.target_levels;
+
+    if (
+      Array.isArray(targetLevels) &&
+      targetLevels.length > 0 &&
+      (
+        !performer.status_level ||
+        !targetLevels.includes(performer.status_level)
+      )
+    ) {
+      const levelNames: Record<string, string> = {
+        beginner: "初心者",
+        amateur: "アマチュア",
+        pro: "プロ",
+      };
+
+      const targetLevelNames = targetLevels
+        .map((level: string) => levelNames[level] ?? level)
+        .join("・");
+
+      return NextResponse.json(
+        {
+          error:
+            `この案件の募集対象は「${targetLevelNames}」です。` +
+            "登録プロフィールの演奏者レベルが対象外のため応募できません。",
+        },
+        { status: 403 }
       );
     }
 

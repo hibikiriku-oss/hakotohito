@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Holidays from "date-holidays";
@@ -12,6 +11,9 @@ const supabase = createClient(
 const PAGE_SIZE_MAX = 10;
 const FETCH_BATCH_SIZE = 1000;
 
+const VALID_TARGET_LEVELS = ["beginner", "amateur", "pro"] as const;
+
+type TargetLevel = (typeof VALID_TARGET_LEVELS)[number];
 type DateType = "weekday" | "weekendHoliday" | "";
 
 function normalizeTime(value: string | null | undefined) {
@@ -246,6 +248,7 @@ export async function GET(request: NextRequest) {
           instruments,
           genres,
           reward,
+          target_levels,
           status,
           created_at,
           facilities (
@@ -400,7 +403,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 演奏依頼登録（従来の処理を維持）
+// 演奏依頼登録
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -415,6 +418,7 @@ export async function POST(request: NextRequest) {
       instruments,
       genres,
       reward,
+      targetLevels,
     } = body;
 
     if (!title || !performanceDate || !startTime || !endTime) {
@@ -430,6 +434,31 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // 募集対象レベルを検証します。
+    // 新規作成時は最低1つのレベル選択を必須とします。
+    if (
+      !Array.isArray(targetLevels) ||
+      targetLevels.length === 0 ||
+      !targetLevels.every(
+        (level: unknown): level is TargetLevel =>
+          typeof level === "string" &&
+          VALID_TARGET_LEVELS.includes(level as TargetLevel)
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "募集対象レベルを1つ以上選択してください。選択できるレベルは初心者・アマチュア・プロです。",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 重複した値を除いて保存します。
+    const normalizedTargetLevels = Array.from(
+      new Set<TargetLevel>(targetLevels)
+    );
 
     const lineUserId = request.headers.get("x-line-user-id");
 
@@ -481,7 +510,10 @@ export async function POST(request: NextRequest) {
         instruments: instruments || [],
         genres: genres || [],
         reward:
-          reward !== "" && reward !== null ? Number(reward) : null,
+          reward !== "" && reward !== null && reward !== undefined
+            ? Number(reward)
+            : null,
+        target_levels: normalizedTargetLevels,
         status: "open",
       })
       .select()

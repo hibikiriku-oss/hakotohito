@@ -43,6 +43,7 @@ export default function FacilityPerformersPage() {
   const [instrumentFilter, setInstrumentFilter] = useState("");
   const [genreFilter, setGenreFilter] = useState("");
   const [ratingFilter, setRatingFilter] = useState("");
+  const [statusLevelFilter, setStatusLevelFilter] = useState("");
   const [sortOrder, setSortOrder] = useState("recommended");
   const [selectedPerformer, setSelectedPerformer] =
     useState<Performer | null>(null);
@@ -179,6 +180,13 @@ export default function FacilityPerformersPage() {
       return false;
     }
 
+    if (
+      statusLevelFilter &&
+      performer.status_level !== statusLevelFilter
+    ) {
+      return false;
+    }
+
     if (ratingFilter) {
       const minimumRating = Number(ratingFilter);
 
@@ -242,6 +250,7 @@ export default function FacilityPerformersPage() {
     setInstrumentFilter("");
     setGenreFilter("");
     setRatingFilter("");
+    setStatusLevelFilter("");
   };
 
   const renderStars = (rating: number | null) => {
@@ -285,7 +294,7 @@ export default function FacilityPerformersPage() {
       case "beginner":
         return {
           stars: "★",
-          label: "ビギナー",
+          label: "初心者",
           starClass: "text-emerald-400",
           shadowClass:
             "drop-shadow-[0_2px_1px_rgba(16,185,129,0.22)]",
@@ -468,14 +477,15 @@ export default function FacilityPerformersPage() {
                 🔎 条件で絞り込む
               </h2>
               <p className="text-xs text-gray-400 mt-1">
-                名前・地域・楽器・ジャンル・評価から検索できます。
+                名前・地域・楽器・ジャンル・レベル・評価から検索できます。
               </p>
             </div>
             {(keyword ||
               areaFilter ||
               instrumentFilter ||
               genreFilter ||
-              ratingFilter) && (
+              ratingFilter ||
+              statusLevelFilter) && (
               <button
                 type="button"
                 onClick={clearFilters}
@@ -498,6 +508,22 @@ export default function FacilityPerformersPage() {
                 placeholder="名前・自己紹介から検索"
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-800 mb-2">
+                演奏者レベル
+              </label>
+              <select
+                value={statusLevelFilter}
+                onChange={(event) => setStatusLevelFilter(event.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
+              >
+                <option value="">すべて</option>
+                <option value="beginner">初心者</option>
+                <option value="amateur">アマチュア</option>
+                <option value="pro">プロ</option>
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -593,8 +619,8 @@ export default function FacilityPerformersPage() {
             className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50"
           >
             <option value="recommended">おすすめ順（現在の表示順）</option>
-            <option value="level_pro">プロ → アマチュア → ビギナー</option>
-            <option value="level_beginner">ビギナー → アマチュア → プロ</option>
+            <option value="level_pro">プロ → アマチュア → 初心者</option>
+            <option value="level_beginner">初心者 → アマチュア → プロ</option>
             <option value="rating">評価が高い順</option>
             <option value="reviews">レビューが多い順</option>
             <option value="name">名前順</option>
@@ -891,8 +917,9 @@ export default function FacilityPerformersPage() {
                         className="text-sm bg-blue-50 text-blue-700 rounded-full px-3 py-1.5"
                       >
                         {genre}
-                      </span>
-                    ))}
+                        </span>
+                      )
+                    )}
                   </div>
                 </div>
 

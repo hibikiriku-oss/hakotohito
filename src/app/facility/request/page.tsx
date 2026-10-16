@@ -30,6 +30,12 @@ const genreOptions = [
   "民謡", "邦楽", "ロック", "フォーク", "ゴスペル",
 ];
 
+const statusLevelOptions = [
+  { value: "beginner", label: "初心者", description: "演奏を始めたばかりの方" },
+  { value: "amateur", label: "アマチュア", description: "趣味や経験を活かして演奏する方" },
+  { value: "pro", label: "プロ", description: "演奏を仕事として活動している方" },
+];
+
 const inputClass =
   "w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 text-gray-900 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent";
 
@@ -60,6 +66,13 @@ export default function FacilityRequestPage() {
 
   const [genres, setGenres] = useState<string[]>([]);
   const [otherGenre, setOtherGenre] = useState("");
+
+  // 募集対象レベル。複数選択可能。
+  const [targetLevels, setTargetLevels] = useState<string[]>([
+    "beginner",
+    "amateur",
+    "pro",
+  ]);
 
   const [reward, setReward] = useState("");
   const [loading, setLoading] = useState(false);
@@ -126,6 +139,11 @@ export default function FacilityRequestPage() {
       return;
     }
 
+    if (targetLevels.length === 0) {
+      alert("募集する演奏者のレベルを1つ以上選択してください");
+      return;
+    }
+
     if (!lineUserId) {
       alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
       return;
@@ -168,6 +186,7 @@ export default function FacilityRequestPage() {
           instruments: finalInstruments,
           genres: finalGenres,
           reward,
+          targetLevels,
         }),
       });
 
@@ -307,6 +326,62 @@ export default function FacilityRequestPage() {
                   : "市区町村を入力すると表示されます"}
               </p>
             </div>
+          </section>
+
+          {/* 募集する演奏者のレベル */}
+          <section className="bg-white border border-gray-200 rounded-2xl p-5">
+            <div className="mb-4">
+              <h2 className="font-bold text-gray-900">
+                募集する演奏者のレベル
+                <span className="text-red-500 ml-1">＊必須</span>
+              </h2>
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                この依頼に応募できる演奏者のレベルを選択してください。
+                複数選択できます。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {statusLevelOptions.map((item) => (
+                <label
+                  key={item.value}
+                  className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition ${
+                    targetLevels.includes(item.value)
+                      ? "border-black bg-gray-100"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={targetLevels.includes(item.value)}
+                    onChange={() =>
+                      toggleChoice(
+                        item.value,
+                        targetLevels,
+                        setTargetLevels
+                      )
+                    }
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-gray-900">
+                      {item.label}
+                    </span>
+                    <span className="block text-xs text-gray-500 mt-1">
+                      {item.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <p className="text-xs text-gray-500 mt-3">
+              選択中：
+              {statusLevelOptions
+                .filter((item) => targetLevels.includes(item.value))
+                .map((item) => item.label)
+                .join("・") || "未選択"}
+            </p>
           </section>
 
           {/* 希望する演奏 */}
