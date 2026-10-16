@@ -133,13 +133,37 @@ export default function FacilityPerformersPage() {
     new Set(performers.flatMap(getPerformerAreas))
   ).sort((a, b) => a.localeCompare(b, "ja"));
 
-  const instruments = Array.from(
-    new Set(performers.flatMap((p) => p.instruments || []))
-  ).sort((a, b) => a.localeCompare(b, "ja"));
+  const instruments = [
+    "ピアノ",
+    "ギター",
+    "ベース",
+    "ウクレレ",
+    "ドラム",
+    "バイオリン",
+    "ビオラ",
+    "チェロ",
+    "フルート",
+    "クラリネット",
+    "サックス",
+    "トランペット",
+    "トロンボーン",
+    "箏",
+    "和太鼓",
+    "声楽・歌",
+  ];
 
-  const genres = Array.from(
-    new Set(performers.flatMap((p) => p.genres || []))
-  ).sort((a, b) => a.localeCompare(b, "ja"));
+  const genres = [
+    "クラシック",
+    "ポップス",
+    "ジャズ",
+    "ロック",
+    "演歌・歌謡曲",
+    "童謡・唱歌",
+    "アニメ・ゲーム音楽",
+    "映画音楽",
+    "邦楽",
+    "民謡",
+  ];
 
   const filteredPerformers = performers.filter((performer) => {
     const normalizedKeyword = keyword.trim().toLowerCase();
