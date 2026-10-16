@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import liff from "@line/liff";
 
 type Facility = {
   name: string;
@@ -49,6 +50,7 @@ export default function PerformerRequestsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [lineUserId, setLineUserId] = useState("");
 
   const [keyword, setKeyword] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
@@ -67,6 +69,44 @@ export default function PerformerRequestsPage() {
   const [sort, setSort] = useState("newest");
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function initializeLiff() {
+      try {
+        await liff.init({
+          liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
+        });
+
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+
+        const profile = await liff.getProfile();
+
+        if (!cancelled) {
+          setLineUserId(profile.userId);
+        }
+      } catch (error) {
+        console.error("LINEログイン情報の取得エラー:", error);
+
+        if (!cancelled) {
+          setError(
+            "LINEのログイン情報を取得できませんでした。LINEから開き直してください。"
+          );
+          setLoading(false);
+        }
+      }
+    }
+
+    initializeLiff();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +146,8 @@ export default function PerformerRequestsPage() {
   }, [reloadKey]);
 
   useEffect(() => {
+    if (!lineUserId) return;
+
     let cancelled = false;
 
     async function fetchRequests() {
@@ -132,7 +174,12 @@ export default function PerformerRequestsPage() {
         });
 
         const response = await fetch(
-          `/api/performance-requests?${params.toString()}`
+          `/api/performance-requests?${params.toString()}`,
+          {
+            headers: {
+              "x-line-user-id": lineUserId,
+            },
+          }
         );
 
         const data = await response.json();
@@ -169,6 +216,7 @@ export default function PerformerRequestsPage() {
       cancelled = true;
     };
   }, [
+    lineUserId,
     page,
     sort,
     keyword,

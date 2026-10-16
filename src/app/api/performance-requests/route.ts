@@ -1,6 +1,8 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Holidays from "date-holidays";
+import { areaMatches } from "@/lib/area-matching";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,10 +35,7 @@ function getJapanHolidayDates(years: number[]) {
       if (holiday.type !== "public") continue;
 
       const date = String(holiday.date).slice(0, 10);
-
-      if (isValidDate(date)) {
-        holidayDates.add(date);
-      }
+      if (isValidDate(date)) holidayDates.add(date);
     }
   }
 
@@ -50,18 +49,12 @@ function matchesDateType(
 ) {
   if (!dateType) return true;
 
-  // 正午の日本時間として日付を解釈し、曜日のずれを防ぎます。
   const day = new Date(`${date}T12:00:00+09:00`).getDay();
   const isWeekend = day === 0 || day === 6;
   const isHoliday = holidayDates.has(date);
 
-  if (dateType === "weekday") {
-    return !isWeekend && !isHoliday;
-  }
-
-  if (dateType === "weekendHoliday") {
-    return isWeekend || isHoliday;
-  }
+  if (dateType === "weekday") return !isWeekend && !isHoliday;
+  if (dateType === "weekendHoliday") return isWeekend || isHoliday;
 
   return true;
 }
@@ -74,7 +67,6 @@ function matchesTimeRange(
 ) {
   if (!filterStart && !filterEnd) return true;
 
-  // 指定時間と演奏案件の時間が重なっているか判定します。
   const start = normalizeTime(requestStart);
   const end = normalizeTime(requestEnd);
 
@@ -82,11 +74,54 @@ function matchesTimeRange(
     return start < filterEnd && end > filterStart;
   }
 
-  if (filterStart) {
-    return end > filterStart;
-  }
+  if (filterStart) return end > filterStart;
 
   return start < filterEnd;
+}
+
+/**
+ * LINEログイン中の演奏者の活動エリアを取得します。
+ * areas が未設定の旧データは、従来の area を使用します。
+ */
+async function getPerformerAreas(lineUserId: string): Promise<string[]> {
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("line_user_id", lineUserId)
+    .maybeSingle();
+
+  if (userError) {
+    throw new Error(`ユーザー取得エラー: ${userError.message}`);
+  }
+
+  if (!user) return [];
+
+  const { data: performer, error: performerError } = await supabase
+    .from("performers")
+    .select("area, areas")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (performerError) {
+    throw new Error(`演奏者プロフィール取得エラー: ${performerError.message}`);
+  }
+
+  if (!performer) return [];
+
+  const savedAreas = Array.isArray(performer.areas)
+    ? performer.areas
+    : [];
+
+  return Array.from(
+    new Set(
+      [...savedAreas, performer.area]
+        .filter(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0
+        )
+        .map((value) => value.trim())
+    )
+  );
 }
 
 // 演奏依頼一覧取得
@@ -180,46 +215,45 @@ export async function GET(request: NextRequest) {
       timeEnd = "23:59";
     }
 
-    if (
-      timeStart &&
-      timeEnd &&
-      timeStart >= timeEnd
-    ) {
+    if (timeStart && timeEnd && timeStart >= timeEnd) {
       return NextResponse.json(
         { error: "終了時刻は開始時刻より後にしてください" },
         { status: 400 }
       );
     }
 
+    // LINEユーザーIDが送信された場合は、活動エリアを自動適用します。
+    // LINEユーザーIDを送らない既存の呼び出しは従来どおり動作します。
+    const lineUserId = request.headers.get("x-line-user-id");
+    const performerAreas = lineUserId
+      ? await getPerformerAreas(lineUserId)
+      : null;
+
     const escapedKeyword = keyword.replace(/[,%()]/g, " ");
     const allMatchingRequests: Record<string, any>[] = [];
 
-    // 高度な日付・時間の絞り込みを正確に行うため、
-    // DB側の条件に一致する案件をまとめて取得してからページ分割します。
     for (let offset = 0; ; offset += FETCH_BATCH_SIZE) {
       let query = supabase
         .from("performance_requests")
-        .select(
-          `
-            id,
-            title,
-            description,
-            performance_date,
-            start_time,
-            end_time,
-            area,
-            instruments,
-            genres,
-            reward,
-            status,
-            created_at,
-            facilities (
-              name,
-              facility_type,
-              address
-            )
-          `
-        )
+        .select(`
+          id,
+          title,
+          description,
+          performance_date,
+          start_time,
+          end_time,
+          area,
+          instruments,
+          genres,
+          reward,
+          status,
+          created_at,
+          facilities (
+            name,
+            facility_type,
+            address
+          )
+        `)
         .eq("status", "open");
 
       if (escapedKeyword.trim()) {
@@ -228,6 +262,7 @@ export async function GET(request: NextRequest) {
         );
       }
 
+      // 手動のエリア検索条件は従来どおり維持します。
       if (area) {
         query = query.eq("area", area);
       }
@@ -264,7 +299,6 @@ export async function GET(request: NextRequest) {
 
       if (error) {
         console.error("演奏依頼一覧取得エラー:", error);
-
         return NextResponse.json(
           { error: error.message },
           { status: 500 }
@@ -274,12 +308,26 @@ export async function GET(request: NextRequest) {
       const batch = data || [];
       allMatchingRequests.push(...batch);
 
-      if (batch.length < FETCH_BATCH_SIZE) {
-        break;
-      }
+      if (batch.length < FETCH_BATCH_SIZE) break;
     }
 
     let filteredRequests = allMatchingRequests;
+
+    // 活動エリアの自動絞り込み。
+    // 複数の活動エリアのうち、どれか1つに一致すれば表示します。
+    if (performerAreas !== null) {
+      filteredRequests =
+        performerAreas.length === 0
+          ? []
+          : filteredRequests.filter((item) => {
+              const requestArea =
+                typeof item.area === "string" ? item.area : "";
+
+              return performerAreas.some((performerArea) =>
+                areaMatches(performerArea, requestArea)
+              );
+            });
+    }
 
     if (dateType) {
       const years = filteredRequests.map((item) =>
@@ -330,6 +378,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // すべての絞り込みを適用した後に件数とページを計算します。
     const total = filteredRequests.length;
     const from = (page - 1) * limit;
     const requests = filteredRequests.slice(from, from + limit);
@@ -351,7 +400,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 演奏依頼登録
+// 演奏依頼登録（従来の処理を維持）
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -399,7 +448,6 @@ export async function POST(request: NextRequest) {
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
-
       return NextResponse.json(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
@@ -414,7 +462,6 @@ export async function POST(request: NextRequest) {
 
     if (facilityError || !facility) {
       console.error("施設取得エラー:", facilityError);
-
       return NextResponse.json(
         { error: "施設プロフィールが見つかりません" },
         { status: 404 }
@@ -442,7 +489,6 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("演奏依頼登録エラー:", error);
-
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
@@ -455,7 +501,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("演奏依頼APIエラー:", error);
-
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
