@@ -3,28 +3,60 @@
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
 
+const prefectures = [
+  "北海道",
+  "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
+  "岐阜県", "静岡県", "愛知県", "三重県",
+  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+  "徳島県", "香川県", "愛媛県", "高知県",
+  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県",
+  "沖縄県",
+];
+
+const instrumentOptions = [
+  "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ",
+  "チェロ", "コントラバス", "フルート", "クラリネット",
+  "サックス", "トランペット", "トロンボーン", "リコーダー",
+  "ハーモニカ", "オカリナ", "箏", "尺八", "和太鼓",
+  "打楽器", "声楽・歌",
+];
+
+const genreOptions = [
+  "クラシック", "ポップス", "ジャズ", "演歌・歌謡曲",
+  "童謡・唱歌", "アニメ・ゲーム音楽", "映画音楽",
+  "民謡", "邦楽", "ロック", "フォーク", "ゴスペル",
+];
+
+const inputClass =
+  "w-full border border-gray-200 rounded-2xl px-4 py-3 bg-gray-50 text-gray-900 outline-none focus:bg-white focus:border-black";
+
 export default function PerformerPage() {
   const [lineUserId, setLineUserId] = useState("");
   const [name, setName] = useState("");
-  const [area, setArea] = useState("");
-  const [instruments, setInstruments] = useState("");
-  const [genres, setGenres] = useState("");
-  const [bio, setBio] = useState("");
 
+  const [prefecture, setPrefecture] = useState("愛知県");
+  const [municipality, setMunicipality] = useState("");
+  const [areas, setAreas] = useState<string[]>([]);
+
+  const [instruments, setInstruments] = useState<string[]>([]);
+  const [otherInstrument, setOtherInstrument] = useState("");
+
+  const [genres, setGenres] = useState<string[]>([]);
+  const [otherGenre, setOtherGenre] = useState("");
+
+  const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // =========================
-  // LINE / LIFF 初期化
-  // =========================
   useEffect(() => {
     async function initLiff() {
       try {
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
-          throw new Error(
-            "NEXT_PUBLIC_LIFF_IDが設定されていません"
-          );
+          throw new Error("NEXT_PUBLIC_LIFF_IDが設定されていません");
         }
 
         await liff.init({
@@ -38,9 +70,6 @@ export default function PerformerPage() {
         }
 
         const profile = await liff.getProfile();
-
-        console.log("LINEプロフィール:", profile);
-
         setLineUserId(profile.userId);
       } catch (error) {
         console.error("LIFF ERROR:", error);
@@ -51,30 +80,73 @@ export default function PerformerPage() {
     initLiff();
   }, []);
 
-  // =========================
-  // プロフィール登録
-  // =========================
+  const toggleChoice = (
+    value: string,
+    selected: string[],
+    setter: (values: string[]) => void
+  ) => {
+    setter(
+      selected.includes(value)
+        ? selected.filter((item) => item !== value)
+        : [...selected, value]
+    );
+  };
+
+  const addArea = () => {
+    const city = municipality.trim();
+
+    if (!city) {
+      alert("市区町村名を入力してください");
+      return;
+    }
+
+    const fullArea = `${prefecture}${city}`;
+
+    if (areas.includes(fullArea)) {
+      alert("この活動エリアはすでに追加されています");
+      return;
+    }
+
+    setAreas((current) => [...current, fullArea]);
+    setMunicipality("");
+  };
+
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
 
-    if (!name || !area || !instruments || !genres) {
-      alert("必須項目を入力してください");
+    const finalInstruments = [
+      ...instruments,
+      ...(otherInstrument.trim()
+        ? otherInstrument.split(/[,、]/).map((item) => item.trim()).filter(Boolean)
+        : []),
+    ];
+
+    const finalGenres = [
+      ...genres,
+      ...(otherGenre.trim()
+        ? otherGenre.split(/[,、]/).map((item) => item.trim()).filter(Boolean)
+        : []),
+    ];
+
+    if (
+      !name.trim() ||
+      areas.length === 0 ||
+      finalInstruments.length === 0 ||
+      finalGenres.length === 0
+    ) {
+      alert("名前・活動エリア・楽器・音楽ジャンルを入力してください");
       return;
     }
 
     if (!lineUserId) {
-      alert(
-        "LINEユーザー情報を取得中です。少し待ってから再度お試しください。"
-      );
+      alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
       return;
     }
 
     try {
       setLoading(true);
-
-      console.log("プロフィール登録開始");
 
       const response = await fetch("/api/performers", {
         method: "POST",
@@ -83,25 +155,17 @@ export default function PerformerPage() {
           "x-line-user-id": lineUserId,
         },
         body: JSON.stringify({
-          name,
-          area,
-          instruments: instruments
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
-          genres: genres
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
+          name: name.trim(),
+          areas,
+          // 既存機能との互換性のため、代表エリアも送信
+          area: areas[0],
+          instruments: [...new Set(finalInstruments)],
+          genres: [...new Set(finalGenres)],
           bio,
         }),
       });
 
-      console.log("APIステータス:", response.status);
-
       const data = await response.json();
-
-      console.log("API結果:", data);
 
       if (!response.ok) {
         alert(data.error || "登録に失敗しました");
@@ -109,7 +173,6 @@ export default function PerformerPage() {
       }
 
       alert("プロフィールを登録しました！");
-
       window.location.href = "/performer/home";
     } catch (error) {
       console.error("登録エラー:", error);
@@ -119,230 +182,223 @@ export default function PerformerPage() {
     }
   };
 
-  // =========================
-  // 画面
-  // =========================
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 pt-6 pb-10">
-        {/* ヘッダー */}
         <div className="mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-black text-white flex items-center justify-center text-3xl shadow-sm mb-4">
+          <div className="w-14 h-14 rounded-2xl bg-black text-white flex items-center justify-center text-3xl mb-4">
             🎸
           </div>
-
           <p className="text-xs font-bold tracking-wider text-gray-400 mb-2">
             演奏者として登録
           </p>
-
-          <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+          <h1 className="text-2xl font-bold text-gray-900">
             演奏者プロフィール
           </h1>
-
           <p className="text-sm text-gray-500 mt-2 leading-6">
-            施設に表示されるプロフィールを登録しましょう。
-            あなたに演奏を依頼したい施設から見つけてもらいやすくなります。
+            活動できる地域や得意な楽器を登録して、施設から演奏依頼を受けやすくしましょう。
           </p>
         </div>
 
-        {/* 登録フォーム */}
         <form
           onSubmit={handleSubmit}
           className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden"
         >
           <div className="p-5 space-y-6">
-            {/* 基本情報 */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
-                  👤
-                </div>
+            <section>
+              <h2 className="font-bold text-gray-900 mb-4">👤 基本情報</h2>
 
-                <div>
-                  <p className="font-bold text-gray-900">
-                    基本情報
-                  </p>
+              <label className="block text-sm font-bold text-gray-800 mb-2">
+                名前 <span className="text-red-500">*</span>
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="例：山田太郎"
+                className={inputClass}
+                required
+              />
 
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    施設に表示される名前と活動エリア
-                  </p>
-                </div>
-              </div>
+              <div className="mt-5">
+                <label className="block text-sm font-bold text-gray-800 mb-2">
+                  活動エリア（市区町村単位） <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  活動できる市区町村を複数追加できます。
+                </p>
 
-              <div className="space-y-4">
-                {/* 名前 */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-800 mb-2">
-                    名前
-                    <span className="text-red-500 ml-1">
-                      *
-                    </span>
-                  </label>
+                <select
+                  value={prefecture}
+                  onChange={(e) => setPrefecture(e.target.value)}
+                  className={inputClass}
+                >
+                  {prefectures.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
 
+                <div className="flex gap-2 mt-3">
                   <input
-                    type="text"
-                    value={name}
-                    onChange={(e) =>
-                      setName(e.target.value)
-                    }
-                    placeholder="例：山田太郎"
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                    value={municipality}
+                    onChange={(e) => setMunicipality(e.target.value)}
+                    placeholder="例：名古屋市千種区"
+                    className={inputClass}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addArea();
+                      }
+                    }}
                   />
+                  <button
+                    type="button"
+                    onClick={addArea}
+                    className="shrink-0 rounded-2xl bg-gray-900 text-white px-4 font-bold"
+                  >
+                    追加
+                  </button>
                 </div>
 
-                {/* 活動エリア */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-800 mb-2">
-                    活動エリア
-                    <span className="text-red-500 ml-1">
-                      *
-                    </span>
-                  </label>
+                <p className="text-xs text-gray-400 mt-2">
+                  例：愛知県を選び「名古屋市千種区」と入力して追加します。
+                </p>
 
-                  <input
-                    type="text"
-                    value={area}
-                    onChange={(e) =>
-                      setArea(e.target.value)
-                    }
-                    placeholder="例：名古屋市"
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
-                  />
-                </div>
+                {areas.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {areas.map((item) => (
+                      <div
+                        key={item}
+                        className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2"
+                      >
+                        <span className="text-sm text-gray-800">{item}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAreas((current) =>
+                              current.filter((area) => area !== item)
+                            )
+                          }
+                          className="text-sm text-red-600 font-bold"
+                          aria-label={`${item}を削除`}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            </section>
 
             <div className="border-t border-gray-100" />
 
-            {/* 演奏情報 */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
-                  🎵
-                </div>
-
-                <div>
-                  <p className="font-bold text-gray-900">
-                    演奏情報
-                  </p>
-
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    得意な楽器や音楽ジャンル
-                  </p>
-                </div>
+            <section>
+              <h2 className="font-bold text-gray-900 mb-2">🎵 楽器</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                該当する楽器をすべて選択してください。
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {instrumentOptions.map((item) => (
+                  <label
+                    key={item}
+                    className={`flex items-center gap-2 rounded-xl border p-3 text-sm ${
+                      instruments.includes(item)
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={instruments.includes(item)}
+                      onChange={() =>
+                        toggleChoice(item, instruments, setInstruments)
+                      }
+                    />
+                    {item}
+                  </label>
+                ))}
               </div>
 
-              <div className="space-y-4">
-                {/* 楽器 */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-800 mb-2">
-                    楽器
-                    <span className="text-red-500 ml-1">
-                      *
-                    </span>
-                  </label>
-
-                  <input
-                    type="text"
-                    value={instruments}
-                    onChange={(e) =>
-                      setInstruments(e.target.value)
-                    }
-                    placeholder="例：ギター, ピアノ"
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
-                  />
-
-                  <p className="text-xs text-gray-400 mt-2">
-                    複数ある場合は「,」で区切ってください
-                  </p>
-                </div>
-
-                {/* ジャンル */}
-                <div>
-                  <label className="block text-sm font-bold text-gray-800 mb-2">
-                    音楽ジャンル
-                    <span className="text-red-500 ml-1">
-                      *
-                    </span>
-                  </label>
-
-                  <input
-                    type="text"
-                    value={genres}
-                    onChange={(e) =>
-                      setGenres(e.target.value)
-                    }
-                    placeholder="例：J-POP, クラシック"
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
-                  />
-
-                  <p className="text-xs text-gray-400 mt-2">
-                    複数ある場合は「,」で区切ってください
-                  </p>
-                </div>
-              </div>
-            </div>
+              <label className="block text-sm font-bold text-gray-800 mt-4 mb-2">
+                その他の楽器（任意）
+              </label>
+              <input
+                value={otherInstrument}
+                onChange={(e) => setOtherInstrument(e.target.value)}
+                placeholder="例：二胡、バンドネオン"
+                className={inputClass}
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                複数ある場合は「,」または「、」で区切れます。
+              </p>
+            </section>
 
             <div className="border-t border-gray-100" />
 
-            {/* 自己紹介 */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
-                  💬
-                </div>
-
-                <div>
-                  <p className="font-bold text-gray-900">
-                    自己紹介
-                  </p>
-
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    演奏経験や活動内容など
-                  </p>
-                </div>
+            <section>
+              <h2 className="font-bold text-gray-900 mb-2">🎼 音楽ジャンル</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                得意なジャンルをすべて選択してください。
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {genreOptions.map((item) => (
+                  <label
+                    key={item}
+                    className={`flex items-center gap-2 rounded-xl border p-3 text-sm ${
+                      genres.includes(item)
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={genres.includes(item)}
+                      onChange={() =>
+                        toggleChoice(item, genres, setGenres)
+                      }
+                    />
+                    {item}
+                  </label>
+                ))}
               </div>
 
+              <label className="block text-sm font-bold text-gray-800 mt-4 mb-2">
+                その他のジャンル（任意）
+              </label>
+              <input
+                value={otherGenre}
+                onChange={(e) => setOtherGenre(e.target.value)}
+                placeholder="例：ボサノバ、タンゴ"
+                className={inputClass}
+              />
+            </section>
+
+            <div className="border-t border-gray-100" />
+
+            <section>
+              <h2 className="font-bold text-gray-900 mb-3">💬 自己紹介</h2>
               <textarea
                 value={bio}
-                onChange={(e) =>
-                  setBio(e.target.value)
-                }
+                onChange={(e) => setBio(e.target.value)}
                 placeholder="演奏経験や活動内容などを入力してください"
                 rows={5}
-                className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none resize-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 leading-6"
+                className={`${inputClass} resize-none leading-6`}
               />
-            </div>
+            </section>
           </div>
 
-          {/* 登録エリア */}
           <div className="bg-gray-50 border-t border-gray-100 p-5">
             <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4">
-              <div className="flex items-start gap-3">
-                <span className="text-lg">
-                  💡
-                </span>
-
-                <p className="text-xs text-gray-500 leading-5">
-                  登録したプロフィールは、演奏を依頼したい施設から確認できます。
-                  名前・活動エリア・楽器・ジャンルは必須項目です。
-                </p>
-              </div>
+              <p className="text-xs text-gray-500 leading-5">
+                活動エリア・楽器・音楽ジャンルは、施設が演奏者を探す際の条件として利用できるようにします。
+              </p>
             </div>
-
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-black text-white rounded-2xl py-4 font-bold shadow-sm transition active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-black text-white rounded-2xl py-4 font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  登録中...
-                </span>
-              ) : (
-                "プロフィールを登録する"
-              )}
+              {loading ? "登録中..." : "プロフィールを登録する"}
             </button>
           </div>
         </form>

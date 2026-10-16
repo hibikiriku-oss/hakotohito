@@ -17,6 +17,7 @@ type Performer = {
   instruments: string[];
   genres: string[];
   area: string;
+  areas?: string[];
   bio: string | null;
   created_at: string;
   status_level: "beginner" | "amateur" | "pro" | null;
@@ -33,52 +34,27 @@ type Favorite = {
 export default function FacilityPerformersPage() {
   const router = useRouter();
 
-  const [performers, setPerformers] =
-    useState<Performer[]>([]);
-
-  const [favorites, setFavorites] =
-    useState<Favorite[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
-
-  const [keyword, setKeyword] =
-    useState("");
-
-  const [areaFilter, setAreaFilter] =
-    useState("");
-
-  const [instrumentFilter, setInstrumentFilter] =
-    useState("");
-
-  const [genreFilter, setGenreFilter] =
-    useState("");
-
-  const [ratingFilter, setRatingFilter] =
-    useState("");
-
-  const [sortOrder, setSortOrder] =
-    useState("recommended");
-
+  const [performers, setPerformers] = useState<Performer[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [keyword, setKeyword] = useState("");
+  const [areaFilter, setAreaFilter] = useState("");
+  const [instrumentFilter, setInstrumentFilter] = useState("");
+  const [genreFilter, setGenreFilter] = useState("");
+  const [ratingFilter, setRatingFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState("recommended");
   const [selectedPerformer, setSelectedPerformer] =
     useState<Performer | null>(null);
-
-  const [favoriteLoading, setFavoriteLoading] =
-    useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const liffId =
-          process.env.NEXT_PUBLIC_LIFF_ID;
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
-          throw new Error(
-            "NEXT_PUBLIC_LIFF_IDが設定されていません"
-          );
+          throw new Error("NEXT_PUBLIC_LIFF_IDが設定されていません");
         }
 
         await liff.init({
@@ -91,64 +67,46 @@ export default function FacilityPerformersPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const profile = await liff.getProfile();
 
-        const [
-          performersResponse,
-          favoritesResponse,
-        ] = await Promise.all([
-          fetch("/api/performers"),
-          fetch("/api/favorites", {
-            headers: {
-              "x-line-user-id":
-                profile.userId,
-            },
-          }),
-        ]);
+        const [performersResponse, favoritesResponse] =
+          await Promise.all([
+            fetch("/api/performers"),
+            fetch("/api/favorites", {
+              headers: { "x-line-user-id": profile.userId },
+            }),
+          ]);
 
-        const performersData =
-          await performersResponse.json();
+        const performersData = await performersResponse.json();
 
         if (!performersResponse.ok) {
           throw new Error(
-            performersData.error ||
-              "演奏者の取得に失敗しました"
+            performersData.error || "演奏者の取得に失敗しました"
           );
         }
 
-        const favoritesData =
-          await favoritesResponse.json();
+        const favoritesData = await favoritesResponse.json();
 
         if (!favoritesResponse.ok) {
           throw new Error(
-            favoritesData.error ||
-              "お気に入りの取得に失敗しました"
+            favoritesData.error || "お気に入りの取得に失敗しました"
           );
         }
 
-        setPerformers(
-          performersData.performers || []
-        );
-
+        setPerformers(performersData.performers || []);
         setFavorites(
           (favoritesData.favorites || []).map(
             (favorite: Favorite) => ({
               id: favorite.id,
-              target_user_id:
-                favorite.target_user_id,
+              target_user_id: favorite.target_user_id,
             })
           )
         );
-      } catch (error) {
-        console.error(
-          "演奏者取得エラー:",
-          error
-        );
-
+      } catch (err) {
+        console.error("演奏者取得エラー:", err);
         setError(
-          error instanceof Error
-            ? error.message
+          err instanceof Error
+            ? err.message
             : "演奏者の取得に失敗しました"
         );
       } finally {
@@ -159,114 +117,83 @@ export default function FacilityPerformersPage() {
     fetchData();
   }, []);
 
+  // 新しい複数エリアを優先し、旧データのareaにも対応
+  const getPerformerAreas = (performer: Performer): string[] => {
+    const savedAreas = (performer.areas || []).filter(Boolean);
+
+    if (savedAreas.length > 0) {
+      return [...new Set(savedAreas)];
+    }
+
+    return performer.area ? [performer.area] : [];
+  };
+
   const areas = Array.from(
-    new Set(
-      performers
-        .map((performer) => performer.area)
-        .filter(Boolean)
-    )
-  ).sort();
+    new Set(performers.flatMap(getPerformerAreas))
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
   const instruments = Array.from(
-    new Set(
-      performers.flatMap(
-        (performer) =>
-          performer.instruments || []
-      )
-    )
-  ).sort();
+    new Set(performers.flatMap((p) => p.instruments || []))
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
   const genres = Array.from(
-    new Set(
-      performers.flatMap(
-        (performer) =>
-          performer.genres || []
-      )
-    )
-  ).sort();
+    new Set(performers.flatMap((p) => p.genres || []))
+  ).sort((a, b) => a.localeCompare(b, "ja"));
 
-  const filteredPerformers =
-    performers.filter((performer) => {
-      const normalizedKeyword =
-        keyword
-          .trim()
-          .toLowerCase();
+  const filteredPerformers = performers.filter((performer) => {
+    const normalizedKeyword = keyword.trim().toLowerCase();
 
-      if (normalizedKeyword) {
-        const name =
-          performer.name || "";
+    if (normalizedKeyword) {
+      const name = performer.name || "";
+      const bio = performer.bio || "";
+      const displayName = Array.isArray(performer.users)
+        ? performer.users[0]?.display_name || ""
+        : performer.users?.display_name || "";
 
-        const bio =
-          performer.bio || "";
+      const matchesKeyword =
+        name.toLowerCase().includes(normalizedKeyword) ||
+        bio.toLowerCase().includes(normalizedKeyword) ||
+        displayName.toLowerCase().includes(normalizedKeyword);
 
-        const displayName =
-          Array.isArray(performer.users)
-            ? performer.users[0]?.display_name ||
-              ""
-            : performer.users?.display_name ||
-              "";
+      if (!matchesKeyword) return false;
+    }
 
-        const matchesKeyword =
-          name
-            .toLowerCase()
-            .includes(normalizedKeyword) ||
-          bio
-            .toLowerCase()
-            .includes(normalizedKeyword) ||
-          displayName
-            .toLowerCase()
-            .includes(normalizedKeyword);
+    if (
+      areaFilter &&
+      !getPerformerAreas(performer).includes(areaFilter)
+    ) {
+      return false;
+    }
 
-        if (!matchesKeyword) {
-          return false;
-        }
-      }
+    if (
+      instrumentFilter &&
+      !(performer.instruments || []).includes(instrumentFilter)
+    ) {
+      return false;
+    }
+
+    if (
+      genreFilter &&
+      !(performer.genres || []).includes(genreFilter)
+    ) {
+      return false;
+    }
+
+    if (ratingFilter) {
+      const minimumRating = Number(ratingFilter);
 
       if (
-        areaFilter &&
-        performer.area !== areaFilter
+        performer.average_rating === null ||
+        performer.average_rating < minimumRating
       ) {
         return false;
       }
+    }
 
-      if (
-        instrumentFilter &&
-        !(performer.instruments || []).includes(
-          instrumentFilter
-        )
-      ) {
-        return false;
-      }
+    return true;
+  });
 
-      if (
-        genreFilter &&
-        !(performer.genres || []).includes(
-          genreFilter
-        )
-      ) {
-        return false;
-      }
-
-      if (ratingFilter) {
-        const minimumRating =
-          Number(ratingFilter);
-
-        if (
-          performer.average_rating === null ||
-          performer.average_rating <
-            minimumRating
-        ) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-
-
-
-const sortedPerformers = [...filteredPerformers].sort(
-  (a, b) => {
+  const sortedPerformers = [...filteredPerformers].sort((a, b) => {
     const levelOrder: Record<string, number> = {
       pro: 0,
       amateur: 1,
@@ -274,11 +201,11 @@ const sortedPerformers = [...filteredPerformers].sort(
     };
 
     switch (sortOrder) {
-      case "level_pro": {
-        const aLevel = levelOrder[a.status_level ?? ""] ?? 99;
-        const bLevel = levelOrder[b.status_level ?? ""] ?? 99;
-        return aLevel - bLevel;
-      }
+      case "level_pro":
+        return (
+          (levelOrder[a.status_level ?? ""] ?? 99) -
+          (levelOrder[b.status_level ?? ""] ?? 99)
+        );
 
       case "level_beginner": {
         const reverseOrder: Record<string, number> = {
@@ -286,15 +213,16 @@ const sortedPerformers = [...filteredPerformers].sort(
           amateur: 1,
           pro: 2,
         };
-        const aLevel = reverseOrder[a.status_level ?? ""] ?? 99;
-        const bLevel = reverseOrder[b.status_level ?? ""] ?? 99;
-        return aLevel - bLevel;
+
+        return (
+          (reverseOrder[a.status_level ?? ""] ?? 99) -
+          (reverseOrder[b.status_level ?? ""] ?? 99)
+        );
       }
 
       case "rating":
         return (
-          (b.average_rating ?? -1) -
-          (a.average_rating ?? -1)
+          (b.average_rating ?? -1) - (a.average_rating ?? -1)
         );
 
       case "reviews":
@@ -306,10 +234,7 @@ const sortedPerformers = [...filteredPerformers].sort(
       default:
         return 0;
     }
-  }
-);
-
-
+  });
 
   const clearFilters = () => {
     setKeyword("");
@@ -319,29 +244,15 @@ const sortedPerformers = [...filteredPerformers].sort(
     setRatingFilter("");
   };
 
-  const renderStars = (
-    rating: number | null
-  ) => {
-    if (rating === null) {
-      return "☆☆☆☆☆";
-    }
+  const renderStars = (rating: number | null) => {
+    if (rating === null) return "☆☆☆☆☆";
 
-    const roundedRating =
-      Math.round(rating);
+    const roundedRating = Math.max(0, Math.min(5, Math.round(rating)));
 
-    return (
-      "★".repeat(
-        roundedRating
-      ) +
-      "☆".repeat(
-        5 - roundedRating
-      )
-    );
+    return "★".repeat(roundedRating) + "☆".repeat(5 - roundedRating);
   };
 
-  const getUser = (
-    performer: Performer
-  ) => {
+  const getUser = (performer: Performer) => {
     if (Array.isArray(performer.users)) {
       return performer.users[0] || null;
     }
@@ -349,72 +260,62 @@ const sortedPerformers = [...filteredPerformers].sort(
     return performer.users;
   };
 
-  const getStatusInfo = (
-    statusLevel: Performer["status_level"]
-  ) => {
+  const getStatusInfo = (statusLevel: Performer["status_level"]) => {
     switch (statusLevel) {
       case "pro":
         return {
           stars: "★★★",
           label: "プロ",
-          starClass:
-            "text-purple-700",
+          starClass: "text-purple-700",
           shadowClass:
             "drop-shadow-[0_2px_1px_rgba(88,28,135,0.35)]",
-          badgeClass:
-            "bg-purple-100 border-purple-200",
+          badgeClass: "bg-purple-100 border-purple-200",
         };
 
       case "amateur":
         return {
           stars: "★★",
           label: "アマチュア",
-          starClass:
-            "text-blue-500",
+          starClass: "text-blue-500",
           shadowClass:
             "drop-shadow-[0_2px_1px_rgba(37,99,235,0.25)]",
-          badgeClass:
-            "bg-blue-50 border-blue-100",
+          badgeClass: "bg-blue-50 border-blue-100",
         };
 
       case "beginner":
         return {
           stars: "★",
           label: "ビギナー",
-          starClass:
-            "text-emerald-400",
+          starClass: "text-emerald-400",
           shadowClass:
             "drop-shadow-[0_2px_1px_rgba(16,185,129,0.22)]",
-          badgeClass:
-            "bg-emerald-50 border-emerald-100",
+          badgeClass: "bg-emerald-50 border-emerald-100",
         };
 
       default:
         return {
           stars: "",
           label: "未設定",
-          starClass:
-            "text-gray-400",
+          starClass: "text-gray-400",
           shadowClass: "",
-          badgeClass:
-            "bg-gray-50 border-gray-200",
+          badgeClass: "bg-gray-50 border-gray-200",
         };
     }
   };
 
-  const handleFavoriteToggle = async (
-    performer: Performer
-  ) => {
+  const isFavorite = (performer: Performer) =>
+    favorites.some(
+      (favorite) => favorite.target_user_id === performer.user_id
+    );
+
+  const handleFavoriteToggle = async (performer: Performer) => {
     try {
       setFavoriteLoading(true);
 
-      const liffId =
-        process.env.NEXT_PUBLIC_LIFF_ID;
+      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
       if (!liffId) {
-        throw new Error(
-          "NEXT_PUBLIC_LIFF_IDが設定されていません"
-        );
+        throw new Error("NEXT_PUBLIC_LIFF_IDが設定されていません");
       }
 
       if (!liff.isLoggedIn()) {
@@ -422,75 +323,49 @@ const sortedPerformers = [...filteredPerformers].sort(
         return;
       }
 
-      const profile =
-        await liff.getProfile();
+      const profile = await liff.getProfile();
+      const currentlyFavorite = isFavorite(performer);
 
-      const currentlyFavorite =
-        isFavorite(performer);
+      const response = await fetch("/api/favorites", {
+        method: currentlyFavorite ? "DELETE" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-line-user-id": profile.userId,
+        },
+        body: JSON.stringify({
+          targetUserId: performer.user_id,
+        }),
+      });
 
-      const response =
-        await fetch(
-          "/api/favorites",
-          {
-            method:
-              currentlyFavorite
-                ? "DELETE"
-                : "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              "x-line-user-id":
-                profile.userId,
-            },
-            body: JSON.stringify({
-              targetUserId:
-                performer.user_id,
-            }),
-          }
-        );
-
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error ||
-            "お気に入りの変更に失敗しました"
+          data.error || "お気に入りの変更に失敗しました"
         );
       }
 
       if (currentlyFavorite) {
-        setFavorites(
-          (currentFavorites) =>
-            currentFavorites.filter(
-              (favorite) =>
-                favorite.target_user_id !==
-                performer.user_id
-            )
+        setFavorites((current) =>
+          current.filter(
+            (favorite) =>
+              favorite.target_user_id !== performer.user_id
+          )
         );
       } else {
-        setFavorites(
-          (currentFavorites) => [
-            ...currentFavorites,
-            {
-              id:
-                data.favorite?.id ||
-                `temporary-${performer.user_id}`,
-              target_user_id:
-                performer.user_id,
-            },
-          ]
-        );
+        setFavorites((current) => [
+          ...current,
+          {
+            id: data.favorite?.id || `temporary-${performer.user_id}`,
+            target_user_id: performer.user_id,
+          },
+        ]);
       }
-    } catch (error) {
-      console.error(
-        "お気に入り変更エラー:",
-        error
-      );
-
+    } catch (err) {
+      console.error("お気に入り変更エラー:", err);
       alert(
-        error instanceof Error
-          ? error.message
+        err instanceof Error
+          ? err.message
           : "お気に入りの変更中にエラーが発生しました"
       );
     } finally {
@@ -498,45 +373,28 @@ const sortedPerformers = [...filteredPerformers].sort(
     }
   };
 
-  const isFavorite = (
-    performer: Performer
-  ) => {
-    return favorites.some(
-      (favorite) =>
-        favorite.target_user_id ===
-        performer.user_id
-    );
-  };
+  const areaText = (performer: Performer) =>
+    getPerformerAreas(performer).join("、") || "未登録";
 
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="max-w-md mx-auto px-4 py-6">
-
           <header className="pb-6">
-            <p className="text-sm font-medium text-gray-500">
-              演奏マッチング
-            </p>
-
+            <p className="text-sm font-medium text-gray-500">演奏マッチング</p>
             <h1 className="text-2xl font-bold text-gray-900 mt-1">
               🎹 演奏者を探す
             </h1>
-
             <p className="text-sm text-gray-500 mt-2">
-              登録されている演奏者から、条件に合う方を探せます。
+              登録されている演奏者を読み込んでいます。
             </p>
           </header>
-
           <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
-            <div className="text-3xl">
-              🎹
-            </div>
-
+            <div className="text-3xl">🎹</div>
             <p className="text-sm text-gray-500 mt-3">
               演奏者を読み込んでいます…
             </p>
           </div>
-
         </div>
       </main>
     );
@@ -546,42 +404,27 @@ const sortedPerformers = [...filteredPerformers].sort(
     return (
       <main className="min-h-screen bg-gray-50">
         <div className="max-w-md mx-auto px-4 py-6">
-
           <header className="pb-6">
-            <p className="text-sm font-medium text-gray-500">
-              演奏マッチング
-            </p>
-
+            <p className="text-sm font-medium text-gray-500">演奏マッチング</p>
             <h1 className="text-2xl font-bold text-gray-900 mt-1">
               🎹 演奏者を探す
             </h1>
           </header>
-
           <div className="bg-red-50 border border-red-100 rounded-2xl p-5">
-            <div className="text-2xl">
-              ⚠️
-            </div>
-
+            <div className="text-2xl">⚠️</div>
             <p className="text-sm font-bold text-red-700 mt-2">
               演奏者を取得できませんでした
             </p>
-
             <p className="text-sm text-red-600 mt-1 leading-relaxed">
               {error}
             </p>
           </div>
-
           <button
-            onClick={() =>
-              router.push(
-                "/facility/home"
-              )
-            }
+            onClick={() => router.push("/facility/home")}
             className="w-full mt-5 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-700"
           >
             ← 施設ホームへ戻る
           </button>
-
         </div>
       </main>
     );
@@ -590,60 +433,44 @@ const sortedPerformers = [...filteredPerformers].sort(
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 py-6">
-
-        {/* ヘッダー */}
         <header className="pb-5">
-
           <button
             type="button"
-            onClick={() =>
-              router.push(
-                "/facility/home"
-              )
-            }
+            onClick={() => router.push("/facility/home")}
             className="text-sm text-gray-500 mb-4"
           >
             ← 施設ホーム
           </button>
 
-          <p className="text-sm font-medium text-gray-500">
-            演奏者検索
-          </p>
+          <p className="text-sm font-medium text-gray-500">演奏者検索</p>
 
           <div className="flex items-end justify-between gap-3 mt-1">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
                 🎹 演奏者を探す
               </h1>
-
               <p className="text-sm text-gray-500 mt-2">
                 条件から演奏者を検索できます。
               </p>
             </div>
-
             <div className="shrink-0 bg-white border border-gray-200 rounded-full px-3 py-1">
               <span className="text-sm font-bold text-gray-700">
                 {filteredPerformers.length}人
               </span>
             </div>
           </div>
-
         </header>
 
-        {/* 検索条件 */}
         <section className="bg-white border border-gray-200 rounded-2xl p-5">
-
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="font-bold text-gray-900">
                 🔎 条件で絞り込む
               </h2>
-
               <p className="text-xs text-gray-400 mt-1">
                 名前・地域・楽器・ジャンル・評価から検索できます。
               </p>
             </div>
-
             {(keyword ||
               areaFilter ||
               instrumentFilter ||
@@ -660,52 +487,32 @@ const sortedPerformers = [...filteredPerformers].sort(
           </div>
 
           <div className="space-y-4 mt-5">
-
-            {/* キーワード */}
             <div>
               <label className="block text-sm font-bold text-gray-800 mb-2">
                 キーワード
               </label>
-
               <input
                 type="text"
                 value={keyword}
-                onChange={(event) =>
-                  setKeyword(
-                    event.target.value
-                  )
-                }
+                onChange={(event) => setKeyword(event.target.value)}
                 placeholder="名前・自己紹介から検索"
                 className="w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
               />
             </div>
 
-            {/* 地域・楽器 */}
             <div className="grid grid-cols-2 gap-3">
-
               <div>
                 <label className="block text-sm font-bold text-gray-800 mb-2">
-                  地域
+                  活動地域
                 </label>
-
                 <select
                   value={areaFilter}
-                  onChange={(event) =>
-                    setAreaFilter(
-                      event.target.value
-                    )
-                  }
+                  onChange={(event) => setAreaFilter(event.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
                 >
-                  <option value="">
-                    すべて
-                  </option>
-
+                  <option value="">すべて</option>
                   {areas.map((area) => (
-                    <option
-                      key={area}
-                      value={area}
-                    >
+                    <option key={area} value={area}>
                       {area}
                     </option>
                   ))}
@@ -716,61 +523,36 @@ const sortedPerformers = [...filteredPerformers].sort(
                 <label className="block text-sm font-bold text-gray-800 mb-2">
                   楽器
                 </label>
-
                 <select
                   value={instrumentFilter}
                   onChange={(event) =>
-                    setInstrumentFilter(
-                      event.target.value
-                    )
+                    setInstrumentFilter(event.target.value)
                   }
                   className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
                 >
-                  <option value="">
-                    すべて
-                  </option>
-
-                  {instruments.map(
-                    (instrument) => (
-                      <option
-                        key={instrument}
-                        value={instrument}
-                      >
-                        {instrument}
-                      </option>
-                    )
-                  )}
+                  <option value="">すべて</option>
+                  {instruments.map((instrument) => (
+                    <option key={instrument} value={instrument}>
+                      {instrument}
+                    </option>
+                  ))}
                 </select>
               </div>
-
             </div>
 
-            {/* ジャンル・評価 */}
             <div className="grid grid-cols-2 gap-3">
-
               <div>
                 <label className="block text-sm font-bold text-gray-800 mb-2">
                   ジャンル
                 </label>
-
                 <select
                   value={genreFilter}
-                  onChange={(event) =>
-                    setGenreFilter(
-                      event.target.value
-                    )
-                  }
+                  onChange={(event) => setGenreFilter(event.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
                 >
-                  <option value="">
-                    すべて
-                  </option>
-
+                  <option value="">すべて</option>
                   {genres.map((genre) => (
-                    <option
-                      key={genre}
-                      value={genre}
-                    >
+                    <option key={genre} value={genre}>
                       {genre}
                     </option>
                   ))}
@@ -781,42 +563,20 @@ const sortedPerformers = [...filteredPerformers].sort(
                 <label className="block text-sm font-bold text-gray-800 mb-2">
                   最低評価
                 </label>
-
                 <select
                   value={ratingFilter}
-                  onChange={(event) =>
-                    setRatingFilter(
-                      event.target.value
-                    )
-                  }
+                  onChange={(event) => setRatingFilter(event.target.value)}
                   className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50 outline-none focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent"
                 >
-                  <option value="">
-                    すべて
-                  </option>
-
-                  <option value="4">
-                    ★ 4.0以上
-                  </option>
-
-                  <option value="3">
-                    ★ 3.0以上
-                  </option>
-
-                  <option value="2">
-                    ★ 2.0以上
-                  </option>
-
-                  <option value="1">
-                    ★ 1.0以上
-                  </option>
+                  <option value="">すべて</option>
+                  <option value="4">★ 4.0以上</option>
+                  <option value="3">★ 3.0以上</option>
+                  <option value="2">★ 2.0以上</option>
+                  <option value="1">★ 1.0以上</option>
                 </select>
               </div>
-
             </div>
-
           </div>
-
         </section>
 
         <section className="mt-4 bg-white border border-gray-200 rounded-2xl p-4">
@@ -826,63 +586,37 @@ const sortedPerformers = [...filteredPerformers].sort(
           >
             並べ替え
           </label>
-
           <select
             id="performer-sort"
             value={sortOrder}
-            onChange={(event) =>
-              setSortOrder(event.target.value)
-            }
+            onChange={(event) => setSortOrder(event.target.value)}
             className="w-full border border-gray-200 rounded-xl px-3 py-3 bg-gray-50"
           >
-            <option value="recommended">
-              おすすめ順（現在の表示順）
-            </option>
-            <option value="level_pro">
-              プロ → アマチュア → ビギナー
-            </option>
-            <option value="level_beginner">
-              ビギナー → アマチュア → プロ
-            </option>
-            <option value="rating">
-              評価が高い順
-            </option>
-            <option value="reviews">
-              レビューが多い順
-            </option>
-            <option value="name">
-              名前順
-            </option>
+            <option value="recommended">おすすめ順（現在の表示順）</option>
+            <option value="level_pro">プロ → アマチュア → ビギナー</option>
+            <option value="level_beginner">ビギナー → アマチュア → プロ</option>
+            <option value="rating">評価が高い順</option>
+            <option value="reviews">レビューが多い順</option>
+            <option value="name">名前順</option>
           </select>
         </section>
 
-        {/* 件数 */}
         <div className="flex items-center justify-between mt-5 mb-3">
-          <p className="text-sm font-bold text-gray-700">
-            検索結果
-          </p>
-
+          <p className="text-sm font-bold text-gray-700">検索結果</p>
           <p className="text-xs text-gray-400">
             {filteredPerformers.length}人
           </p>
         </div>
 
-        {/* 検索結果 */}
         {filteredPerformers.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-7 text-center">
-
-            <div className="text-4xl">
-              🔍
-            </div>
-
+            <div className="text-4xl">🔍</div>
             <h2 className="font-bold text-gray-900 mt-4">
               条件に一致する演奏者がいません
             </h2>
-
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">
               検索条件を変更すると、他の演奏者が見つかるかもしれません。
             </p>
-
             <button
               type="button"
               onClick={clearFilters}
@@ -890,192 +624,133 @@ const sortedPerformers = [...filteredPerformers].sort(
             >
               条件をクリア
             </button>
-
           </div>
         ) : (
           <div className="space-y-3">
+            {sortedPerformers.map((performer) => {
+              const user = getUser(performer);
+              const favorite = isFavorite(performer);
+              const status = getStatusInfo(performer.status_level);
 
-            {sortedPerformers.map(
-            (performer) => {
-                const user =
-                  getUser(performer);
+              return (
+                <button
+                  key={performer.id}
+                  type="button"
+                  onClick={() => setSelectedPerformer(performer)}
+                  className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
+                >
+                  <div className="flex items-start gap-4">
+                    {user?.picture_url ? (
+                      <img
+                        src={user.picture_url}
+                        alt=""
+                        className="w-14 h-14 rounded-2xl object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-2xl shrink-0">
+                        🎹
+                      </div>
+                    )}
 
-                const favorite =
-                  isFavorite(
-                    performer
-                  );
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <h2 className="text-base font-bold text-gray-900 leading-snug">
+                          {performer.name}
+                        </h2>
+                        <span
+                          className={`shrink-0 text-lg ${
+                            favorite ? "text-yellow-500" : "text-gray-300"
+                          }`}
+                        >
+                          {favorite ? "♥" : "♡"}
+                        </span>
+                      </div>
 
-                const status =
-                  getStatusInfo(
-                    performer.status_level
-                  );
+                      <p className="text-sm text-gray-500 mt-1">
+                        📍 {areaText(performer)}
+                      </p>
 
-                return (
-                  <button
-                    key={performer.id}
-                    type="button"
-                    onClick={() =>
-                      setSelectedPerformer(
-                        performer
-                      )
-                    }
-                    className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
-                  >
-
-                    <div className="flex items-start gap-4">
-
-                      {user?.picture_url ? (
-                        <img
-                          src={
-                            user.picture_url
-                          }
-                          alt=""
-                          className="w-14 h-14 rounded-2xl object-cover shrink-0"
-                        />
-                      ) : (
-                        <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-2xl shrink-0">
-                          🎹
-                        </div>
-                      )}
-
-                      <div className="flex-1 min-w-0">
-
-                        <div className="flex items-start justify-between gap-2">
-
-                          <h2 className="text-base font-bold text-gray-900 leading-snug">
-                            {performer.name}
-                          </h2>
-
-                          <span
-                            className={`shrink-0 text-lg ${
-                              favorite
-                                ? "text-yellow-500"
-                                : "text-gray-300"
-                            }`}
-                          >
-                            {favorite
-                              ? "♥"
-                              : "♡"}
-                          </span>
-
-                        </div>
-
-                        <p className="text-sm text-gray-500 mt-1">
-                          📍 {performer.area}
-                        </p>
-
-                        {/* レベル */}
-                        <div className="mt-3">
-                          <span
-                            className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 ${status.badgeClass}`}
-                          >
-                            {status.stars && (
-                              <span
-                                className={`text-xl leading-none tracking-[0.08em] font-black ${status.starClass} ${status.shadowClass}`}
-                              >
-                                {status.stars}
-                              </span>
-                            )}
-
-                            <span className="text-xs font-bold text-gray-700">
-                              {status.label}
-                            </span>
-                          </span>
-
-                          {performer.status_level && (
-                            <span className="ml-2 text-[10px] text-gray-400">
-                              自己申告
+                      <div className="mt-3">
+                        <span
+                          className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 ${status.badgeClass}`}
+                        >
+                          {status.stars && (
+                            <span
+                              className={`text-xl leading-none tracking-[0.08em] font-black ${status.starClass} ${status.shadowClass}`}
+                            >
+                              {status.stars}
                             </span>
                           )}
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-3">
-
-                          <span className="text-sm font-bold text-gray-800">
-                            ⭐{" "}
-                            {performer.average_rating !==
-                            null
-                              ? performer.average_rating.toFixed(
-                                  1
-                                )
-                              : "未評価"}
+                          <span className="text-xs font-bold text-gray-700">
+                            {status.label}
                           </span>
-
-                          <span className="text-xs text-gray-400">
-                            {performer.review_count}件のレビュー
+                        </span>
+                        {performer.status_level && (
+                          <span className="ml-2 text-[10px] text-gray-400">
+                            自己申告
                           </span>
-
-                        </div>
-
+                        )}
                       </div>
 
-                    </div>
-
-                    {(performer.instruments?.length >
-                      0 ||
-                      performer.genres?.length >
-                        0) && (
-                      <div className="mt-4 flex flex-wrap gap-1.5">
-
-                        {performer.instruments.map(
-                          (instrument) => (
-                            <span
-                              key={`instrument-${instrument}`}
-                              className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
-                            >
-                              🎹 {instrument}
-                            </span>
-                          )
-                        )}
-
-                        {performer.genres.map(
-                          (genre) => (
-                            <span
-                              key={`genre-${genre}`}
-                              className="text-xs bg-blue-50 text-blue-700 rounded-full px-2.5 py-1"
-                            >
-                              🎵 {genre}
-                            </span>
-                          )
-                        )}
-
+                      <div className="flex items-center gap-2 mt-3">
+                        <span className="text-sm font-bold text-gray-800">
+                          ⭐{" "}
+                          {performer.average_rating !== null
+                            ? performer.average_rating.toFixed(1)
+                            : "未評価"}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {performer.review_count}件のレビュー
+                        </span>
                       </div>
-                    )}
-
-                    {performer.bio && (
-                      <p className="mt-3 text-sm text-gray-500 leading-relaxed line-clamp-2">
-                        {performer.bio}
-                      </p>
-                    )}
-
-                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-
-                      <span className="text-xs text-gray-400">
-                        タップしてプロフィールを確認
-                      </span>
-
-                      <span className="text-sm font-bold text-gray-700">
-                        詳細を見る →
-                      </span>
-
                     </div>
+                  </div>
 
-                  </button>
-                );
-              }
-            )}
+                  {(performer.instruments?.length > 0 ||
+                    performer.genres?.length > 0) && (
+                    <div className="mt-4 flex flex-wrap gap-1.5">
+                      {(performer.instruments || []).map((instrument) => (
+                        <span
+                          key={`instrument-${instrument}`}
+                          className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
+                        >
+                          🎹 {instrument}
+                        </span>
+                      ))}
+                      {(performer.genres || []).map((genre) => (
+                        <span
+                          key={`genre-${genre}`}
+                          className="text-xs bg-blue-50 text-blue-700 rounded-full px-2.5 py-1"
+                        >
+                          🎵 {genre}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
+                  {performer.bio && (
+                    <p className="mt-3 text-sm text-gray-500 leading-relaxed line-clamp-2">
+                      {performer.bio}
+                    </p>
+                  )}
+
+                  <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-xs text-gray-400">
+                      タップしてプロフィールを確認
+                    </span>
+                    <span className="text-sm font-bold text-gray-700">
+                      詳細を見る →
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        {/* 戻る */}
         <button
           type="button"
-          onClick={() =>
-            router.push(
-              "/facility/home"
-            )
-          }
+          onClick={() => router.push("/facility/home")}
           className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-600"
         >
           ← 施設ホームへ戻る
@@ -1085,61 +760,36 @@ const sortedPerformers = [...filteredPerformers].sort(
           演奏者と施設をつなぐ、演奏マッチング
         </p>
 
-        {/* プロフィールモーダル */}
         {selectedPerformer && (
           <div
             className="fixed inset-0 bg-black/40 z-50 flex items-end justify-center"
-            onClick={() =>
-              setSelectedPerformer(null)
-            }
+            onClick={() => setSelectedPerformer(null)}
           >
             <div
               className="bg-white w-full max-w-md rounded-t-3xl max-h-[90vh] overflow-y-auto"
-              onClick={(event) =>
-                event.stopPropagation()
-              }
+              onClick={(event) => event.stopPropagation()}
             >
-
-              {/* モーダルヘッダー */}
               <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between z-10">
-
                 <div>
-                  <p className="text-xs text-gray-400">
-                    演奏者プロフィール
-                  </p>
-
+                  <p className="text-xs text-gray-400">演奏者プロフィール</p>
                   <h2 className="text-lg font-bold text-gray-900 mt-0.5">
-                    🎹{" "}
-                    {selectedPerformer.name}
+                    🎹 {selectedPerformer.name}
                   </h2>
                 </div>
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setSelectedPerformer(null)
-                  }
+                  onClick={() => setSelectedPerformer(null)}
                   className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"
                 >
                   ✕
                 </button>
-
               </div>
 
               <div className="p-5">
-
-                {/* プロフィール */}
                 <div className="flex items-center gap-4">
-
-                  {getUser(
-                    selectedPerformer
-                  )?.picture_url ? (
+                  {getUser(selectedPerformer)?.picture_url ? (
                     <img
-                      src={
-                        getUser(
-                          selectedPerformer
-                        )?.picture_url || ""
-                      }
+                      src={getUser(selectedPerformer)?.picture_url || ""}
                       alt=""
                       className="w-16 h-16 rounded-2xl object-cover"
                     />
@@ -1150,26 +800,20 @@ const sortedPerformers = [...filteredPerformers].sort(
                   )}
 
                   <div className="min-w-0">
-
                     <h3 className="text-xl font-bold text-gray-900">
                       {selectedPerformer.name}
                     </h3>
-
                     <p className="text-sm text-gray-500 mt-1">
-                      📍{" "}
-                      {selectedPerformer.area}
+                      📍 {areaText(selectedPerformer)}
                     </p>
 
-                    {/* レベル */}
                     {(() => {
-                      const status =
-                        getStatusInfo(
-                          selectedPerformer.status_level
-                        );
+                      const status = getStatusInfo(
+                        selectedPerformer.status_level
+                      );
 
                       return (
                         <div className="mt-3 flex items-center flex-wrap gap-2">
-
                           <span
                             className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 ${status.badgeClass}`}
                           >
@@ -1180,75 +824,50 @@ const sortedPerformers = [...filteredPerformers].sort(
                                 {status.stars}
                               </span>
                             )}
-
                             <span className="text-xs font-bold text-gray-700">
                               {status.label}
                             </span>
                           </span>
-
                           {selectedPerformer.status_level && (
                             <span className="text-[10px] text-gray-400">
                               自己申告
                             </span>
                           )}
-
                         </div>
                       );
                     })()}
-
                   </div>
-
                 </div>
 
-                {/* 評価 */}
                 <div className="mt-5 bg-gray-50 rounded-2xl p-4">
-
                   <div className="flex items-center justify-between">
-
                     <div>
                       <p className="text-sm font-bold text-gray-800">
                         ⭐ 評価
                       </p>
-
                       <p className="text-xs text-gray-400 mt-1">
-                        {selectedPerformer.review_count}
-                        件のレビュー
+                        {selectedPerformer.review_count}件のレビュー
                       </p>
                     </div>
-
                     <div className="text-right">
-
                       <p className="text-xl font-bold text-gray-900">
-                        {selectedPerformer.average_rating !==
-                        null
-                          ? selectedPerformer.average_rating.toFixed(
-                              1
-                            )
+                        {selectedPerformer.average_rating !== null
+                          ? selectedPerformer.average_rating.toFixed(1)
                           : "—"}
                       </p>
-
                       <p className="text-sm text-yellow-500 tracking-tight">
-                        {renderStars(
-                          selectedPerformer.average_rating
-                        )}
+                        {renderStars(selectedPerformer.average_rating)}
                       </p>
-
                     </div>
-
                   </div>
-
                 </div>
 
-                {/* 楽器 */}
                 <div className="mt-5">
-
                   <h3 className="text-sm font-bold text-gray-900">
                     🎹 楽器
                   </h3>
-
                   <div className="mt-2 flex flex-wrap gap-1.5">
-
-                    {selectedPerformer.instruments.map(
+                    {(selectedPerformer.instruments || []).map(
                       (instrument) => (
                         <span
                           key={instrument}
@@ -1258,89 +877,63 @@ const sortedPerformers = [...filteredPerformers].sort(
                         </span>
                       )
                     )}
-
                   </div>
-
                 </div>
 
-                {/* ジャンル */}
                 <div className="mt-5">
-
                   <h3 className="text-sm font-bold text-gray-900">
                     🎵 ジャンル
                   </h3>
-
                   <div className="mt-2 flex flex-wrap gap-1.5">
-
-                    {selectedPerformer.genres.map(
-                      (genre) => (
-                        <span
-                          key={genre}
-                          className="text-sm bg-blue-50 text-blue-700 rounded-full px-3 py-1.5"
-                        >
-                          {genre}
-                        </span>
-                      )
-                    )}
-
+                    {(selectedPerformer.genres || []).map((genre) => (
+                      <span
+                        key={genre}
+                        className="text-sm bg-blue-50 text-blue-700 rounded-full px-3 py-1.5"
+                      >
+                        {genre}
+                      </span>
+                    ))}
                   </div>
-
                 </div>
 
-                {/* 自己紹介 */}
                 {selectedPerformer.bio && (
                   <div className="mt-5">
-
                     <h3 className="text-sm font-bold text-gray-900">
                       📝 自己紹介
                     </h3>
-
                     <div className="mt-2 bg-gray-50 rounded-2xl p-4">
                       <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">
                         {selectedPerformer.bio}
                       </p>
                     </div>
-
                   </div>
                 )}
 
-                {/* アクション */}
                 <div className="mt-6">
-
                   <button
                     type="button"
-                    onClick={() =>
-                      handleFavoriteToggle(
-                        selectedPerformer
-                      )
-                    }
-                    disabled={
-                      favoriteLoading
-                    }
+                    onClick={() => handleFavoriteToggle(selectedPerformer)}
+                    disabled={favoriteLoading}
                     className={`w-full rounded-2xl p-4 font-bold border ${
-                      isFavorite(
-                        selectedPerformer
-                      )
+                      isFavorite(selectedPerformer)
                         ? "bg-yellow-50 border-yellow-200 text-yellow-700"
                         : "bg-white border-gray-200 text-gray-700"
                     } disabled:opacity-50`}
                   >
                     {favoriteLoading
                       ? "変更しています..."
-                      : isFavorite(
-                          selectedPerformer
-                        )
-                      ? "♥ お気に入り済み"
-                      : "♡ お気に入りに追加"}
+                      : isFavorite(selectedPerformer)
+                        ? "♥ お気に入り済み"
+                        : "♡ お気に入りに追加"}
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={() =>
                       router.push(
                         `/facility/performers/${selectedPerformer.id}/invite`
-                      );
-                    }}
+                      )
+                    }
                     className="w-full mt-3 bg-black text-white rounded-2xl p-4 font-bold active:scale-[0.99] transition"
                   >
                     🎵 この演奏者に依頼する
@@ -1348,24 +941,18 @@ const sortedPerformers = [...filteredPerformers].sort(
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setSelectedPerformer(null)
-                    }
+                    onClick={() => setSelectedPerformer(null)}
                     className="w-full mt-3 bg-gray-100 text-gray-700 rounded-2xl p-4 font-bold"
                   >
                     閉じる
                   </button>
-
                 </div>
-
               </div>
 
               <div className="h-4" />
-
             </div>
           </div>
         )}
-
       </div>
     </main>
   );
