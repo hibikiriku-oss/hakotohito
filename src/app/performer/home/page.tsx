@@ -7,18 +7,14 @@ import liff from "@line/liff";
 export default function PerformerHomePage() {
   const router = useRouter();
 
-  const [coinBalance, setCoinBalance] =
-    useState<number | null>(null);
-
-  const [coinLoading, setCoinLoading] =
-    useState(true);
+  const [coinBalance, setCoinBalance] = useState<number | null>(null);
+  const [coinLoading, setCoinLoading] = useState(true);
 
   useEffect(() => {
     async function loadCoinBalance() {
       try {
         await liff.init({
-          liffId:
-            process.env.NEXT_PUBLIC_LIFF_ID!,
+          liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
         });
 
         if (!liff.isLoggedIn()) {
@@ -26,38 +22,26 @@ export default function PerformerHomePage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const profile = await liff.getProfile();
 
-        const response = await fetch(
-          "/api/coins/balance",
-          {
-            headers: {
-              "x-line-user-id":
-                profile.userId,
-            },
-            cache: "no-store",
-          }
-        );
+        const response = await fetch("/api/coins/balance", {
+          headers: {
+            "x-line-user-id": profile.userId,
+          },
+          cache: "no-store",
+        });
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
         if (!response.ok) {
           throw new Error(
-            data.error ||
-              "コイン残高の取得に失敗しました"
+            data.error || "コイン残高の取得に失敗しました"
           );
         }
 
-        setCoinBalance(
-          data.coinBalance ?? 0
-        );
+        setCoinBalance(data.coinBalance ?? 0);
       } catch (error) {
-        console.error(
-          "コイン残高取得エラー:",
-          error
-        );
+        console.error("コイン残高取得エラー:", error);
       } finally {
         setCoinLoading(false);
       }
@@ -69,7 +53,6 @@ export default function PerformerHomePage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen px-4 py-6">
-
         {/* ヘッダー */}
         <header className="pt-2">
           <div className="flex items-start justify-between gap-3">
@@ -103,12 +86,9 @@ export default function PerformerHomePage() {
 
         {/* メインメニュー */}
         <section className="mt-7 space-y-3">
-
           {/* 演奏案件を探す */}
           <button
-            onClick={() =>
-              router.push("/performer/requests")
-            }
+            onClick={() => router.push("/performer/requests")}
             className="w-full rounded-2xl bg-black px-5 py-5 text-left text-white shadow-sm active:scale-[0.99]"
           >
             <div className="flex items-center justify-between">
@@ -122,17 +102,33 @@ export default function PerformerHomePage() {
                 </p>
               </div>
 
-              <span className="text-2xl">
-                →
-              </span>
+              <span className="text-2xl">→</span>
+            </div>
+          </button>
+
+          {/* 施設からの演奏依頼を確認する */}
+          <button
+            onClick={() => router.push("/performer/invitations")}
+            className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-5 py-5 text-left shadow-sm active:bg-blue-100"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold text-gray-900">
+                  ✉️ 演奏依頼を確認する
+                </p>
+
+                <p className="mt-1 text-sm text-gray-600">
+                  施設から届いた直接依頼を確認
+                </p>
+              </div>
+
+              <span className="text-2xl text-gray-400">→</span>
             </div>
           </button>
 
           {/* マッチング */}
           <button
-            onClick={() =>
-              router.push("/performer/matches")
-            }
+            onClick={() => router.push("/performer/matches")}
             className="w-full rounded-2xl bg-white border border-gray-200 px-5 py-5 text-left shadow-sm active:bg-gray-50"
           >
             <div className="flex items-center justify-between">
@@ -146,33 +142,24 @@ export default function PerformerHomePage() {
                 </p>
               </div>
 
-              <span className="text-xl text-gray-400">
-                →
-              </span>
+              <span className="text-xl text-gray-400">→</span>
             </div>
           </button>
-
         </section>
 
         {/* その他のメニュー */}
         <section className="mt-8">
-
           <p className="mb-3 px-1 text-sm font-semibold text-gray-500">
             その他
           </p>
 
           <div className="grid grid-cols-2 gap-3">
-
             {/* お気に入り */}
             <button
-              onClick={() =>
-                router.push("/performer/favorites")
-              }
+              onClick={() => router.push("/performer/favorites")}
               className="rounded-2xl bg-white border border-gray-200 p-5 text-left shadow-sm active:bg-gray-50"
             >
-              <div className="text-2xl">
-                ⭐
-              </div>
+              <div className="text-2xl">⭐</div>
 
               <p className="mt-3 font-bold text-gray-900">
                 お気に入り
@@ -185,16 +172,10 @@ export default function PerformerHomePage() {
 
             {/* プロフィール */}
             <button
-              onClick={() =>
-                router.push(
-                  "/performer/profile/edit"
-                )
-              }
+              onClick={() => router.push("/performer/profile/edit")}
               className="rounded-2xl bg-white border border-gray-200 p-5 text-left shadow-sm active:bg-gray-50"
             >
-              <div className="text-2xl">
-                👤
-              </div>
+              <div className="text-2xl">👤</div>
 
               <p className="mt-3 font-bold text-gray-900">
                 演奏者情報を編集
@@ -204,7 +185,6 @@ export default function PerformerHomePage() {
                 プロフィールを編集
               </p>
             </button>
-
           </div>
         </section>
 
@@ -212,7 +192,6 @@ export default function PerformerHomePage() {
         <p className="mt-10 pb-4 text-center text-xs text-gray-400">
           あなたの演奏を、必要としている場所へ。
         </p>
-
       </div>
     </main>
   );
