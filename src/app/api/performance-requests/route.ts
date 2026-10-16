@@ -20,12 +20,42 @@ function normalizeTime(value: string | null | undefined) {
   return value ? value.slice(0, 5) : "";
 }
 
+// 日本時間で今日の日付を YYYY-MM-DD 形式で取得
+function getJapanToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+// 実在する日付かどうかも検証
 function isValidDate(value: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
 }
 
 function isValidTime(value: string) {
-  return /^\d{2}:\d{2}$/.test(value);
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+
+  const [hours, minutes] = value.split(":").map(Number);
+
+  return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
 }
 
 function getJapanHolidayDates(years: number[]) {
@@ -130,6 +160,7 @@ async function getPerformerAreas(lineUserId: string): Promise<string[]> {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const today = getJapanToday();
 
     const page = Math.max(
       1,
@@ -225,7 +256,6 @@ export async function GET(request: NextRequest) {
     }
 
     // LINEユーザーIDが送信された場合は、活動エリアを自動適用します。
-    // LINEユーザーIDを送らない既存の呼び出しは従来どおり動作します。
     const lineUserId = request.headers.get("x-line-user-id");
     const performerAreas = lineUserId
       ? await getPerformerAreas(lineUserId)
@@ -242,6 +272,7 @@ export async function GET(request: NextRequest) {
           title,
           description,
           performance_date,
+          application_deadline,
           start_time,
           end_time,
           area,
@@ -257,7 +288,9 @@ export async function GET(request: NextRequest) {
             address
           )
         `)
-        .eq("status", "open");
+        .eq("status", "open")
+        // 応募期限当日は表示。日本時間で翌日になったら除外。
+        .gte("application_deadline", today);
 
       if (escapedKeyword.trim()) {
         query = query.or(
@@ -265,7 +298,6 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      // 手動のエリア検索条件は従来どおり維持します。
       if (area) {
         query = query.eq("area", area);
       }
@@ -316,26 +348,19 @@ export async function GET(request: NextRequest) {
 
     let filteredRequests = allMatchingRequests;
 
-    // 活動エリアの自動絞り込み。
-    // 活動エリアが登録されている場合だけ絞り込みます。
-    // 未登録の場合は案件を除外せず、募集中の案件を表示します。
-
+    // 活動エリアの自動絞り込み。エリア未設定の案件は除外しません。
     if (performerAreas !== null && performerAreas.length > 0) {
       filteredRequests = filteredRequests.filter((item) => {
         const requestArea =
           typeof item.area === "string" ? item.area.trim() : "";
 
-        // 案件のエリアが未設定なら、エリア条件では除外しない。
-        if (!requestArea) {
-          return true;
-        }
+        if (!requestArea) return true;
 
         return performerAreas.some((performerArea) =>
           areaMatches(performerArea, requestArea)
         );
       });
     }
-
 
     if (dateType) {
       const years = filteredRequests.map((item) =>
@@ -386,7 +411,6 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // すべての絞り込みを適用した後に件数とページを計算します。
     const total = filteredRequests.length;
     const from = (page - 1) * limit;
     const requests = filteredRequests.slice(from, from + limit);
@@ -417,6 +441,7 @@ export async function POST(request: NextRequest) {
       title,
       description,
       performanceDate,
+      applicationDeadline,
       startTime,
       endTime,
       area,
@@ -426,9 +451,62 @@ export async function POST(request: NextRequest) {
       targetLevels,
     } = body;
 
-    if (!title || !performanceDate || !startTime || !endTime) {
+    if (
+      !title ||
+      !performanceDate ||
+      !applicationDeadline ||
+      !startTime ||
+      !endTime
+    ) {
       return NextResponse.json(
         { error: "必須項目が入力されていません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof performanceDate !== "string" ||
+      !isValidDate(performanceDate) ||
+      typeof applicationDeadline !== "string" ||
+      !isValidDate(applicationDeadline)
+    ) {
+      return NextResponse.json(
+        { error: "演奏日または応募期限の日付が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const today = getJapanToday();
+
+    if (performanceDate <= today) {
+      return NextResponse.json(
+        { error: "演奏日は日本時間で明日以降の日付を選択してください" },
+        { status: 400 }
+      );
+    }
+
+    if (applicationDeadline < today) {
+      return NextResponse.json(
+        { error: "応募期限は日本時間で今日以降の日付を選択してください" },
+        { status: 400 }
+      );
+    }
+
+    if (applicationDeadline >= performanceDate) {
+      return NextResponse.json(
+        { error: "応募期限は演奏日の前日までに設定してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof startTime !== "string" ||
+      !isValidTime(startTime) ||
+      typeof endTime !== "string" ||
+      !isValidTime(endTime)
+    ) {
+      return NextResponse.json(
+        { error: "演奏時間の形式が正しくありません" },
         { status: 400 }
       );
     }
@@ -440,8 +518,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 募集対象レベルを検証します。
-    // 新規作成時は最低1つのレベル選択を必須とします。
     if (
       !Array.isArray(targetLevels) ||
       targetLevels.length === 0 ||
@@ -460,7 +536,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 重複した値を除いて保存します。
     const normalizedTargetLevels = Array.from(
       new Set<TargetLevel>(targetLevels)
     );
@@ -506,14 +581,15 @@ export async function POST(request: NextRequest) {
       .from("performance_requests")
       .insert({
         facility_id: facility.id,
-        title,
+        title: title.trim(),
         description: description || null,
         performance_date: performanceDate,
+        application_deadline: applicationDeadline,
         start_time: startTime,
         end_time: endTime,
         area: area || null,
-        instruments: instruments || [],
-        genres: genres || [],
+        instruments: Array.isArray(instruments) ? instruments : [],
+        genres: Array.isArray(genres) ? genres : [],
         reward:
           reward !== "" && reward !== null && reward !== undefined
             ? Number(reward)

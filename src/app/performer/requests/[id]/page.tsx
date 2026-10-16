@@ -24,6 +24,7 @@ type PerformanceRequest = {
   title: string;
   description: string | null;
   performance_date: string;
+  application_deadline: string;
   start_time: string;
   end_time: string;
   area: string | null;
@@ -34,6 +35,33 @@ type PerformanceRequest = {
   facilities: Facility | null;
 };
 
+// 日本時間の今日を YYYY-MM-DD 形式で取得
+function getJapanToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+// YYYY-MM-DD を日本語の日付表示に変換
+function formatJapaneseDate(dateString: string): string {
+  const match = dateString.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return dateString;
+  }
+
+  return `${Number(match[1])}年${Number(match[2])}月${Number(match[3])}日`;
+}
+
 export default function PerformerRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -43,20 +71,11 @@ export default function PerformerRequestDetailPage() {
   const [request, setRequest] =
     useState<PerformanceRequest | null>(null);
 
-  const [lineUserId, setLineUserId] =
-    useState("");
-
-  const [message, setMessage] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [applying, setApplying] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
+  const [lineUserId, setLineUserId] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState("");
 
   const [showFacilityProfile, setShowFacilityProfile] =
     useState(false);
@@ -73,17 +92,13 @@ export default function PerformerRequestDetailPage() {
   const [facilityReviewsLoading, setFacilityReviewsLoading] =
     useState(false);
 
-  const [isFavorite, setIsFavorite] =
-    useState(false);
-
-  const [favoriteLoading, setFavoriteLoading] =
-    useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     async function initialize() {
       try {
-        const liffId =
-          process.env.NEXT_PUBLIC_LIFF_ID;
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
           throw new Error(
@@ -101,22 +116,18 @@ export default function PerformerRequestDetailPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
-
+        const profile = await liff.getProfile();
         setLineUserId(profile.userId);
 
         const response = await fetch(
           `/api/performance-requests/${requestId}`
         );
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
         if (!response.ok) {
           throw new Error(
-            data.error ||
-              "案件の取得に失敗しました"
+            data.error || "案件の取得に失敗しました"
           );
         }
 
@@ -130,21 +141,14 @@ export default function PerformerRequestDetailPage() {
               `/api/facilities/${data.request.facilities.id}`
             );
 
-            const facilityData =
-              await facilityResponse.json();
+            const facilityData = await facilityResponse.json();
 
             if (facilityResponse.ok) {
-              setFacilityRating(
-                facilityData.rating ?? null
-              );
-
+              setFacilityRating(facilityData.rating ?? null);
               setFacilityReviewCount(
                 facilityData.review_count ?? 0
               );
-
-              setFacilityReviews(
-                facilityData.reviews ?? []
-              );
+              setFacilityReviews(facilityData.reviews ?? []);
             }
           } catch (facilityError) {
             console.error(
@@ -156,13 +160,14 @@ export default function PerformerRequestDetailPage() {
           }
 
           try {
-            const favoritesResponse =
-              await fetch("/api/favorites", {
+            const favoritesResponse = await fetch(
+              "/api/favorites",
+              {
                 headers: {
-                  "x-line-user-id":
-                    profile.userId,
+                  "x-line-user-id": profile.userId,
                 },
-              });
+              }
+            );
 
             const favoritesData =
               await favoritesResponse.json();
@@ -177,9 +182,7 @@ export default function PerformerRequestDetailPage() {
                     data.request.facilities.user_id
                 );
 
-              setIsFavorite(
-                favoriteExists ?? false
-              );
+              setIsFavorite(favoriteExists ?? false);
             }
           } catch (favoriteError) {
             console.error(
@@ -204,12 +207,15 @@ export default function PerformerRequestDetailPage() {
     initialize();
   }, [requestId]);
 
+  // 期限日当日は応募可能。翌日から期限切れ。
+  const isExpired = request
+    ? getJapanToday() >
+      String(request.application_deadline || "").slice(0, 10)
+    : false;
+
   const handleFavoriteToggle = async () => {
     if (!lineUserId) {
-      alert(
-        "LINEユーザー情報を取得できていません"
-      );
-
+      alert("LINEユーザー情報を取得できていません");
       return;
     }
 
@@ -221,77 +227,49 @@ export default function PerformerRequestDetailPage() {
       setFavoriteLoading(true);
 
       if (isFavorite) {
-        const response = await fetch(
-          "/api/favorites",
-          {
-            method: "DELETE",
-            headers: {
-              "Content-Type":
-                "application/json",
-              "x-line-user-id":
-                lineUserId,
-            },
-            body: JSON.stringify({
-              targetUserId:
-                request.facilities.user_id,
-            }),
-          }
-        );
+        const response = await fetch("/api/favorites", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-line-user-id": lineUserId,
+          },
+          body: JSON.stringify({
+            targetUserId: request.facilities.user_id,
+          }),
+        });
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
         if (!response.ok) {
-          alert(
-            data.error ||
-              "お気に入り解除に失敗しました"
-          );
-
+          alert(data.error || "お気に入り解除に失敗しました");
           return;
         }
 
         setIsFavorite(false);
       } else {
-        const response = await fetch(
-          "/api/favorites",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              "x-line-user-id":
-                lineUserId,
-            },
-            body: JSON.stringify({
-              targetUserId:
-                request.facilities.user_id,
-            }),
-          }
-        );
+        const response = await fetch("/api/favorites", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-line-user-id": lineUserId,
+          },
+          body: JSON.stringify({
+            targetUserId: request.facilities.user_id,
+          }),
+        });
 
-        const data =
-          await response.json();
+        const data = await response.json();
 
         if (!response.ok) {
-          alert(
-            data.error ||
-              "お気に入り登録に失敗しました"
-          );
-
+          alert(data.error || "お気に入り登録に失敗しました");
           return;
         }
 
         setIsFavorite(true);
       }
     } catch (error) {
-      console.error(
-        "お気に入り処理エラー:",
-        error
-      );
-
-      alert(
-        "通信エラーが発生しました"
-      );
+      console.error("お気に入り処理エラー:", error);
+      alert("通信エラーが発生しました");
     } finally {
       setFavoriteLoading(false);
     }
@@ -299,10 +277,7 @@ export default function PerformerRequestDetailPage() {
 
   const handleApply = async () => {
     if (!lineUserId) {
-      alert(
-        "LINEユーザー情報を取得できていません"
-      );
-
+      alert("LINEユーザー情報を取得できていません");
       return;
     }
 
@@ -310,18 +285,25 @@ export default function PerformerRequestDetailPage() {
       return;
     }
 
-    if (request.status !== "open") {
-      alert(
-        "この案件には現在応募できません"
-      );
+    // クリック時点の日本時間で期限を再確認
+    const today = getJapanToday();
+    const deadline = String(
+      request.application_deadline || ""
+    ).slice(0, 10);
 
+    if (!deadline || today > deadline) {
+      alert("応募期限を過ぎているため、この案件には応募できません。");
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        "この案件に応募しますか？"
-      );
+    if (request.status !== "open") {
+      alert("この案件には現在応募できません");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "この案件に応募しますか？\n応募には10コイン必要です。"
+    );
 
     if (!confirmed) {
       return;
@@ -330,51 +312,30 @@ export default function PerformerRequestDetailPage() {
     try {
       setApplying(true);
 
-      const response = await fetch(
-        "/api/applications",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-            "x-line-user-id":
-              lineUserId,
-          },
-          body: JSON.stringify({
-            requestId,
-            message,
-          }),
-        }
-      );
+      const response = await fetch("/api/applications", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-line-user-id": lineUserId,
+        },
+        body: JSON.stringify({
+          requestId,
+          message,
+        }),
+      });
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
-        alert(
-          data.error ||
-            "応募に失敗しました"
-        );
-
+        alert(data.error || "応募に失敗しました");
         return;
       }
 
-      alert(
-        "応募しました！"
-      );
-
-      router.push(
-        "/performer/home"
-      );
+      alert("応募しました！");
+      router.push("/performer/home");
     } catch (error) {
-      console.error(
-        "応募エラー:",
-        error
-      );
-
-      alert(
-        "通信エラーが発生しました"
-      );
+      console.error("応募エラー:", error);
+      alert("通信エラーが発生しました");
     } finally {
       setApplying(false);
     }
@@ -388,17 +349,13 @@ export default function PerformerRequestDetailPage() {
             <p className="text-sm font-medium text-gray-500">
               演奏マッチング
             </p>
-
             <h1 className="mt-1 text-2xl font-bold text-gray-900">
               案件詳細
             </h1>
           </header>
 
           <div className="mt-8 rounded-2xl bg-white border border-gray-200 p-8 text-center shadow-sm">
-            <div className="text-3xl">
-              🎵
-            </div>
-
+            <div className="text-3xl">🎵</div>
             <p className="mt-3 text-sm text-gray-500">
               案件を読み込んでいます...
             </p>
@@ -416,7 +373,6 @@ export default function PerformerRequestDetailPage() {
             <p className="text-sm font-medium text-gray-500">
               演奏マッチング
             </p>
-
             <h1 className="mt-1 text-2xl font-bold text-gray-900">
               案件詳細
             </h1>
@@ -424,17 +380,12 @@ export default function PerformerRequestDetailPage() {
 
           <div className="mt-6 rounded-2xl bg-red-50 border border-red-200 p-5">
             <p className="text-sm leading-6 text-red-600">
-              {error ||
-                "案件が見つかりません"}
+              {error || "案件が見つかりません"}
             </p>
           </div>
 
           <button
-            onClick={() =>
-              router.push(
-                "/performer/requests"
-              )
-            }
+            onClick={() => router.push("/performer/requests")}
             className="w-full mt-5 rounded-2xl bg-white border border-gray-200 px-5 py-4 text-sm font-semibold text-gray-700 shadow-sm active:bg-gray-50"
           >
             ← 案件一覧へ戻る
@@ -447,14 +398,9 @@ export default function PerformerRequestDetailPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen px-4 py-6">
-
         {/* 戻る */}
         <button
-          onClick={() =>
-            router.push(
-              "/performer/requests"
-            )
-          }
+          onClick={() => router.push("/performer/requests")}
           className="inline-flex items-center text-sm font-medium text-gray-500 active:text-gray-800"
         >
           ← 案件一覧へ戻る
@@ -462,48 +408,55 @@ export default function PerformerRequestDetailPage() {
 
         {/* 案件ヘッダー */}
         <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-semibold text-gray-400">
                 演奏案件
               </p>
-
               <h1 className="mt-1 text-2xl font-bold leading-8 text-gray-900">
                 {request.title}
               </h1>
             </div>
 
-            {request.status === "open" && (
+            {request.status === "open" && !isExpired && (
               <span className="shrink-0 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-semibold text-green-700">
                 募集中
               </span>
             )}
           </div>
 
-          {/* 日時・場所・報酬 */}
+          {/* 日時・応募期限・場所・報酬 */}
           <div className="mt-5 overflow-hidden rounded-xl border border-gray-100">
-
             <div className="bg-gray-50 px-4 py-3">
               <p className="text-xs font-medium text-gray-500">
                 演奏日時
               </p>
-
               <p className="mt-1 text-sm font-bold text-gray-900">
-                📅 {request.performance_date}
+                📅 {formatJapaneseDate(request.performance_date)}
               </p>
-
               <p className="mt-1 text-sm text-gray-700">
-                🕐{" "}
-                {request.start_time.slice(
-                  0,
-                  5
-                )}
+                🕐 {request.start_time.slice(0, 5)}
                 {" ～ "}
-                {request.end_time.slice(
-                  0,
-                  5
-                )}
+                {request.end_time.slice(0, 5)}
+              </p>
+            </div>
+
+            <div className="border-t border-gray-100 px-4 py-3">
+              <p className="text-xs font-medium text-gray-500">
+                応募期限
+              </p>
+              <p
+                className={`mt-1 text-sm font-bold ${
+                  isExpired ? "text-red-600" : "text-gray-900"
+                }`}
+              >
+                {isExpired ? "⛔ 応募期限切れ" : "⏳ "}
+                {formatJapaneseDate(request.application_deadline)}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-gray-500">
+                {isExpired
+                  ? "この案件の応募受付は終了しています。"
+                  : "期限日の当日中まで応募できます。"}
               </p>
             </div>
 
@@ -512,7 +465,6 @@ export default function PerformerRequestDetailPage() {
                 <p className="text-xs font-medium text-gray-500">
                   エリア
                 </p>
-
                 <p className="mt-1 text-sm font-semibold text-gray-900">
                   📍 {request.area}
                 </p>
@@ -524,32 +476,25 @@ export default function PerformerRequestDetailPage() {
                 <p className="text-xs font-medium text-gray-500">
                   謝礼
                 </p>
-
                 <p className="mt-1 text-lg font-bold text-gray-900">
-                  💰{" "}
-                  {request.reward.toLocaleString()}
-                  円
+                  💰 {request.reward.toLocaleString()}円
                 </p>
               </div>
             )}
-
           </div>
         </section>
 
         {/* 施設情報 */}
         {request.facilities && (
           <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold text-gray-400">
                   依頼元
                 </p>
-
                 <h2 className="mt-1 text-lg font-bold text-gray-900">
                   🏢 {request.facilities.name}
                 </h2>
-
                 <p className="mt-1 text-sm text-gray-500">
                   {request.facilities.facility_type}
                 </p>
@@ -557,9 +502,7 @@ export default function PerformerRequestDetailPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowFacilityProfile(true)
-                }
+                onClick={() => setShowFacilityProfile(true)}
                 className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 active:bg-gray-50"
               >
                 プロフィール
@@ -570,7 +513,6 @@ export default function PerformerRequestDetailPage() {
               <p className="text-xs font-medium text-gray-500">
                 所在地
               </p>
-
               <p className="mt-1 text-sm leading-6 text-gray-700">
                 📍 {request.facilities.address}
               </p>
@@ -578,9 +520,7 @@ export default function PerformerRequestDetailPage() {
 
             <button
               type="button"
-              onClick={() =>
-                setShowFacilityProfile(true)
-              }
+              onClick={() => setShowFacilityProfile(true)}
               className="mt-3 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 active:bg-gray-50"
             >
               施設の詳細・レビューを見る →
@@ -592,7 +532,6 @@ export default function PerformerRequestDetailPage() {
         {(request.instruments?.length > 0 ||
           request.genres?.length > 0) && (
           <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-
             <h2 className="text-base font-bold text-gray-900">
               🎵 演奏条件
             </h2>
@@ -602,18 +541,15 @@ export default function PerformerRequestDetailPage() {
                 <p className="text-xs font-semibold text-gray-500">
                   演奏してほしい楽器
                 </p>
-
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {request.instruments.map(
-                    (instrument) => (
-                      <span
-                        key={instrument}
-                        className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700"
-                      >
-                        🎹 {instrument}
-                      </span>
-                    )
-                  )}
+                  {request.instruments.map((instrument) => (
+                    <span
+                      key={instrument}
+                      className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700"
+                    >
+                      🎹 {instrument}
+                    </span>
+                  ))}
                 </div>
               </div>
             )}
@@ -623,53 +559,43 @@ export default function PerformerRequestDetailPage() {
                 <p className="text-xs font-semibold text-gray-500">
                   演奏してほしいジャンル
                 </p>
-
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {request.genres.map(
-                    (genre) => (
-                      <span
-                        key={genre}
-                        className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700"
-                      >
-                        🎼 {genre}
-                      </span>
-                    )
-                  )}
+                  {request.genres.map((genre) => (
+                    <span
+                      key={genre}
+                      className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700"
+                    >
+                      🎼 {genre}
+                    </span>
+                  ))}
                 </div>
               </div>
             )}
-
           </section>
         )}
 
         {/* 案件内容 */}
         {request.description && (
           <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-
             <h2 className="text-base font-bold text-gray-900">
               📋 案件内容
             </h2>
-
             <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-gray-700">
               {request.description}
             </p>
-
           </section>
         )}
 
-        {/* 応募フォーム */}
-        {request.status === "open" ? (
+        {/* 応募フォーム・期限切れ表示 */}
+        {request.status === "open" && !isExpired ? (
           <section className="mt-5 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-
             <div>
               <p className="text-xs font-semibold text-gray-400">
                 応募
               </p>
-
               <h2 className="mt-1 text-lg font-bold text-gray-900">
                 この案件に応募する
               </h2>
-
               <p className="mt-2 text-sm leading-6 text-gray-500">
                 施設に伝えたいことがあれば入力してください。
               </p>
@@ -677,9 +603,7 @@ export default function PerformerRequestDetailPage() {
 
             <textarea
               value={message}
-              onChange={(e) =>
-                setMessage(e.target.value)
-              }
+              onChange={(e) => setMessage(e.target.value)}
               placeholder="過去の演奏経験や、今回の演奏への意気込みなど"
               rows={5}
               className="mt-4 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
@@ -694,36 +618,29 @@ export default function PerformerRequestDetailPage() {
               disabled={applying}
               className="mt-4 w-full rounded-2xl bg-black px-5 py-4 text-base font-bold text-white shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300"
             >
-              {applying
-                ? "応募中..."
-                : "この案件に応募する"}
+              {applying ? "応募中..." : "この案件に応募する"}
             </button>
 
             <p className="mt-3 text-center text-xs leading-5 text-gray-400">
-              応募後、施設から承認されると
-              マッチングが成立します。
+              応募には10コイン必要です。応募後、施設から承認されるとマッチングが成立します。
             </p>
-
           </section>
         ) : (
           <section className="mt-5 rounded-2xl bg-gray-100 border border-gray-200 p-5 text-center">
             <div className="text-2xl">
-              ℹ️
+              {isExpired ? "⏰" : "ℹ️"}
             </div>
-
             <p className="mt-2 text-sm font-medium text-gray-600">
-              この案件は現在募集していません。
+              {isExpired
+                ? "応募期限を過ぎているため、この案件には応募できません。"
+                : "この案件は現在募集していません。"}
             </p>
           </section>
         )}
 
         {/* 下部ナビゲーション */}
         <button
-          onClick={() =>
-            router.push(
-              "/performer/requests"
-            )
-          }
+          onClick={() => router.push("/performer/requests")}
           className="mt-6 w-full rounded-2xl bg-white border border-gray-200 px-5 py-4 text-sm font-semibold text-gray-600 shadow-sm active:bg-gray-50"
         >
           ← 案件一覧へ戻る
@@ -732,192 +649,163 @@ export default function PerformerRequestDetailPage() {
         <p className="pb-5 pt-6 text-center text-xs text-gray-400">
           あなたの演奏を、必要としている場所へ。
         </p>
-
       </div>
 
       {/* 施設プロフィールモーダル */}
-      {showFacilityProfile &&
-        request.facilities && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center sm:p-6">
-
-            <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-xl">
-
-              {/* モーダルヘッダー */}
-              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
-                <div>
-                  <p className="text-xs font-semibold text-gray-400">
-                    依頼元
-                  </p>
-
-                  <h2 className="mt-1 text-lg font-bold text-gray-900">
-                    施設プロフィール
-                  </h2>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setShowFacilityProfile(false)
-                  }
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-xl text-gray-500 active:bg-gray-200"
-                  aria-label="閉じる"
-                >
-                  ×
-                </button>
+      {showFacilityProfile && request.facilities && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center sm:p-6">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-xl">
+            {/* モーダルヘッダー */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-400">
+                  依頼元
+                </p>
+                <h2 className="mt-1 text-lg font-bold text-gray-900">
+                  施設プロフィール
+                </h2>
               </div>
 
-              <div className="max-h-[78vh] overflow-y-auto px-5 py-5">
+              <button
+                type="button"
+                onClick={() => setShowFacilityProfile(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-xl text-gray-500 active:bg-gray-200"
+                aria-label="閉じる"
+              >
+                ×
+              </button>
+            </div>
 
-                {/* 施設基本情報 */}
-                <div className="rounded-2xl bg-gray-50 p-4">
-                  <p className="text-xs font-semibold text-gray-400">
-                    施設名
-                  </p>
+            <div className="max-h-[78vh] overflow-y-auto px-5 py-5">
+              {/* 施設基本情報 */}
+              <div className="rounded-2xl bg-gray-50 p-4">
+                <p className="text-xs font-semibold text-gray-400">
+                  施設名
+                </p>
+                <p className="mt-1 text-xl font-bold text-gray-900">
+                  {request.facilities.name}
+                </p>
+                <p className="mt-2 text-sm text-gray-600">
+                  {request.facilities.facility_type}
+                </p>
+              </div>
 
-                  <p className="mt-1 text-xl font-bold text-gray-900">
-                    {request.facilities.name}
-                  </p>
+              <div className="mt-4 rounded-2xl border border-gray-100 p-4">
+                <p className="text-xs font-semibold text-gray-400">
+                  住所
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-700">
+                  {request.facilities.address}
+                </p>
+              </div>
 
-                  <p className="mt-2 text-sm text-gray-600">
-                    {request.facilities.facility_type}
-                  </p>
-                </div>
-
+              {request.facilities.description && (
                 <div className="mt-4 rounded-2xl border border-gray-100 p-4">
                   <p className="text-xs font-semibold text-gray-400">
-                    住所
+                    施設紹介
                   </p>
-
-                  <p className="mt-2 text-sm leading-6 text-gray-700">
-                    {request.facilities.address}
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">
+                    {request.facilities.description}
                   </p>
                 </div>
+              )}
 
-                {request.facilities.description && (
-                  <div className="mt-4 rounded-2xl border border-gray-100 p-4">
+              {/* レビュー */}
+              <div className="mt-5">
+                <div className="flex items-end justify-between">
+                  <div>
                     <p className="text-xs font-semibold text-gray-400">
-                      施設紹介
+                      施設のレビュー
                     </p>
+                    <h3 className="mt-1 text-base font-bold text-gray-900">
+                      利用した演奏者の評価
+                    </h3>
+                  </div>
 
-                    <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-gray-700">
-                      {request.facilities.description}
+                  {facilityReviewCount > 0 &&
+                    facilityRating !== null && (
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-gray-900">
+                          ⭐ {facilityRating.toFixed(1)}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {facilityReviewCount}件
+                        </p>
+                      </div>
+                    )}
+                </div>
+
+                {facilityReviewsLoading ? (
+                  <div className="mt-4 rounded-2xl bg-gray-50 p-5 text-center">
+                    <p className="text-sm text-gray-500">
+                      レビューを読み込んでいます...
+                    </p>
+                  </div>
+                ) : facilityReviewCount > 0 ? (
+                  <div className="mt-4 space-y-3">
+                    {facilityReviews.map((review, index) => (
+                      <div
+                        key={`${review.created_at}-${index}`}
+                        className="rounded-2xl bg-gray-50 p-4"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-bold tracking-wide text-gray-800">
+                            {"★".repeat(review.rating)}
+                            <span className="text-gray-300">
+                              {"☆".repeat(5 - review.rating)}
+                            </span>
+                          </p>
+                          <p className="shrink-0 text-xs text-gray-400">
+                            {new Date(
+                              review.created_at
+                            ).toLocaleDateString("ja-JP")}
+                          </p>
+                        </div>
+
+                        {review.comment && (
+                          <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+                            {review.comment}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl bg-gray-50 p-5 text-center">
+                    <p className="text-sm text-gray-500">
+                      まだレビューはありません。
                     </p>
                   </div>
                 )}
-
-                {/* レビュー */}
-                <div className="mt-5">
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-400">
-                        施設のレビュー
-                      </p>
-
-                      <h3 className="mt-1 text-base font-bold text-gray-900">
-                        利用した演奏者の評価
-                      </h3>
-                    </div>
-
-                    {facilityReviewCount > 0 &&
-                      facilityRating !== null && (
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-900">
-                            ⭐{" "}
-                            {facilityRating.toFixed(1)}
-                          </p>
-
-                          <p className="text-xs text-gray-400">
-                            {facilityReviewCount}件
-                          </p>
-                        </div>
-                      )}
-                  </div>
-
-                  {facilityReviewsLoading ? (
-                    <div className="mt-4 rounded-2xl bg-gray-50 p-5 text-center">
-                      <p className="text-sm text-gray-500">
-                        レビューを読み込んでいます...
-                      </p>
-                    </div>
-                  ) : facilityReviewCount > 0 ? (
-                    <div className="mt-4 space-y-3">
-                      {facilityReviews.map(
-                        (review, index) => (
-                          <div
-                            key={`${review.created_at}-${index}`}
-                            className="rounded-2xl bg-gray-50 p-4"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-bold tracking-wide text-gray-800">
-                                {"★".repeat(
-                                  review.rating
-                                )}
-                                <span className="text-gray-300">
-                                  {"☆".repeat(
-                                    5 -
-                                      review.rating
-                                  )}
-                                </span>
-                              </p>
-
-                              <p className="shrink-0 text-xs text-gray-400">
-                                {new Date(
-                                  review.created_at
-                                ).toLocaleDateString(
-                                  "ja-JP"
-                                )}
-                              </p>
-                            </div>
-
-                            {review.comment && (
-                              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700">
-                                {review.comment}
-                              </p>
-                            )}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  ) : (
-                    <div className="mt-4 rounded-2xl bg-gray-50 p-5 text-center">
-                      <p className="text-sm text-gray-500">
-                        まだレビューはありません。
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* お気に入り */}
-                <button
-                  onClick={handleFavoriteToggle}
-                  disabled={favoriteLoading}
-                  className={`mt-5 w-full rounded-2xl border px-5 py-4 text-sm font-bold transition ${
-                    isFavorite
-                      ? "border-pink-200 bg-pink-50 text-pink-600"
-                      : "border-gray-200 bg-white text-gray-700"
-                  } disabled:opacity-50`}
-                >
-                  {favoriteLoading
-                    ? "処理中..."
-                    : isFavorite
-                      ? "♥ お気に入り済み"
-                      : "♡ この施設をお気に入りに追加"}
-                </button>
-
-                <button
-                  onClick={() =>
-                    setShowFacilityProfile(false)
-                  }
-                  className="mt-3 w-full rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white active:bg-gray-800"
-                >
-                  閉じる
-                </button>
-
               </div>
+
+              {/* お気に入り */}
+              <button
+                onClick={handleFavoriteToggle}
+                disabled={favoriteLoading}
+                className={`mt-5 w-full rounded-2xl border px-5 py-4 text-sm font-bold transition ${
+                  isFavorite
+                    ? "border-pink-200 bg-pink-50 text-pink-600"
+                    : "border-gray-200 bg-white text-gray-700"
+                } disabled:opacity-50`}
+              >
+                {favoriteLoading
+                  ? "処理中..."
+                  : isFavorite
+                    ? "♥ お気に入り済み"
+                    : "♡ この施設をお気に入りに追加"}
+              </button>
+
+              <button
+                onClick={() => setShowFacilityProfile(false)}
+                className="mt-3 w-full rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white active:bg-gray-800"
+              >
+                閉じる
+              </button>
             </div>
           </div>
-        )}
-
+        </div>
+      )}
     </main>
   );
 }

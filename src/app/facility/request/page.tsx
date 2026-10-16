@@ -42,6 +42,34 @@ const inputClass =
 const checkboxClass =
   "flex items-center gap-2 rounded-xl border p-3 text-sm cursor-pointer";
 
+// 日本時間（Asia/Tokyo）で今日の日付を YYYY-MM-DD 形式で取得
+function getJapanToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+// YYYY-MM-DD の日付を1日進める／戻す
+function shiftDate(date: string, days: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const result = new Date(Date.UTC(year, month - 1, day + days));
+
+  return [
+    result.getUTCFullYear(),
+    String(result.getUTCMonth() + 1).padStart(2, "0"),
+    String(result.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 function parseCustomValues(value: string) {
   return value
     .split(/[,、]/)
@@ -55,6 +83,9 @@ export default function FacilityRequestPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [performanceDate, setPerformanceDate] = useState("");
+  const [applicationDeadline, setApplicationDeadline] = useState(
+    () => getJapanToday()
+  );
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
 
@@ -76,6 +107,12 @@ export default function FacilityRequestPage() {
 
   const [reward, setReward] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const japanToday = getJapanToday();
+  const minPerformanceDate = shiftDate(japanToday, 1);
+  const maxApplicationDeadline = performanceDate
+    ? shiftDate(performanceDate, -1)
+    : undefined;
 
   useEffect(() => {
     async function initLiff() {
@@ -119,6 +156,15 @@ export default function FacilityRequestPage() {
     );
   };
 
+  const handlePerformanceDateChange = (value: string) => {
+    setPerformanceDate(value);
+
+    // 応募期限が演奏日以降になった場合は、演奏日の前日に調整する。
+    if (value && applicationDeadline >= value) {
+      setApplicationDeadline(shiftDate(value, -1));
+    }
+  };
+
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -127,10 +173,29 @@ export default function FacilityRequestPage() {
     if (
       !title.trim() ||
       !performanceDate ||
+      !applicationDeadline ||
       !startTime ||
       !endTime
     ) {
-      alert("依頼タイトル・演奏日・開始時間・終了時間を入力してください");
+      alert("依頼タイトル・演奏日・応募期限・開始時間・終了時間を入力してください");
+      return;
+    }
+
+    // 日本時間を基準に日付を検証する
+    const today = getJapanToday();
+
+    if (performanceDate <= today) {
+      alert("演奏日は明日以降の日付を選択してください");
+      return;
+    }
+
+    if (applicationDeadline < today) {
+      alert("応募期限は今日以降の日付を選択してください");
+      return;
+    }
+
+    if (applicationDeadline >= performanceDate) {
+      alert("応募期限は演奏日の前日までに設定してください");
       return;
     }
 
@@ -180,6 +245,7 @@ export default function FacilityRequestPage() {
           title: title.trim(),
           description,
           performanceDate,
+          applicationDeadline,
           startTime,
           endTime,
           area,
@@ -261,10 +327,33 @@ export default function FacilityRequestPage() {
               <input
                 type="date"
                 value={performanceDate}
-                onChange={(e) => setPerformanceDate(e.target.value)}
+                min={minPerformanceDate}
+                onChange={(e) => handlePerformanceDateChange(e.target.value)}
                 className={inputClass}
                 required
               />
+              <p className="text-xs text-gray-500 mt-2">
+                演奏日は明日以降の日付を選択してください。
+              </p>
+            </div>
+
+            <div className="mt-5">
+              <label className="font-bold text-sm text-gray-800 mb-2 block">
+                応募期限 <span className="text-red-500">＊必須</span>
+              </label>
+              <input
+                type="date"
+                value={applicationDeadline}
+                min={japanToday}
+                max={maxApplicationDeadline}
+                onChange={(e) => setApplicationDeadline(e.target.value)}
+                className={inputClass}
+                required
+              />
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                応募期限当日までは応募できます。期限の翌日になると募集一覧から非表示になります。
+                応募期限は演奏日の前日まで設定できます。
+              </p>
             </div>
 
             <div className="mt-5">
