@@ -9,6 +9,7 @@ type PerformanceRequest = {
   title: string;
   description: string | null;
   performance_date: string;
+  application_deadline: string;
   start_time: string;
   end_time: string;
   area: string | null;
@@ -352,6 +353,20 @@ export default function FacilityRequestDetailPage() {
                 📅{" "}
                 {formatDate(
                   request.performance_date
+                )}
+              </p>
+            </div>
+
+            {/* 募集期限 */}
+            <div>
+              <p className="text-xs font-medium text-gray-400">
+                募集期限
+              </p>
+
+              <p className="mt-1 font-bold text-gray-900">
+                ⏳{" "}
+                {formatDate(
+                  request.application_deadline
                 )}
               </p>
             </div>

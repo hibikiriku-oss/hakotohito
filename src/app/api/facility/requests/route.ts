@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
         title,
         description,
         performance_date,
+        application_deadline,
         start_time,
         end_time,
         area,

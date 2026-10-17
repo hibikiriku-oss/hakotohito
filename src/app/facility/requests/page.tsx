@@ -9,6 +9,7 @@ type PerformanceRequest = {
   title: string;
   description: string | null;
   performance_date: string;
+  application_deadline: string;
   start_time: string;
   end_time: string;
   area: string | null;
@@ -670,6 +671,17 @@ export default function FacilityRequestsPage() {
                           </span>
                         </div>
                       )}
+                    </div>
+
+                    {/* 募集期限 */}
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="text-base">⏳</span>
+                      <span className="text-sm text-gray-700">
+                        募集期限：
+                        {formatDate(
+                          request.application_deadline
+                        )}
+                      </span>
                     </div>
 
                     {/* 楽器・ジャンル */}
