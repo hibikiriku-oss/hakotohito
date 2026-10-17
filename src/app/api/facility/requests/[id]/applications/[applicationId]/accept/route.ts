@@ -297,6 +297,12 @@ export async function POST(
       "https://miniapp.line.me/2011785379-l5XCTbIf/performer/matches/" +
       matchId;
 
+    const rewardText =
+      performanceRequest.reward == null ||
+      Number(performanceRequest.reward) === 0
+        ? "報酬：ボランティア"
+        : `報酬：${Number(performanceRequest.reward).toLocaleString("ja-JP")}円`;
+
     const flexMessage = {
       type: "flex",
       altText: "マッチングが成立しました！",
@@ -340,7 +346,7 @@ export async function POST(
             },
             {
               type: "text",
-              text: `報酬：${(performanceRequest.reward ?? 0).toLocaleString("ja-JP")}円`,
+              text: rewardText,
               margin: "sm",
               wrap: true,
             },

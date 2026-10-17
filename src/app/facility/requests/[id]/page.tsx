@@ -410,9 +410,11 @@ export default function FacilityRequestDetailPage() {
 
               <p className="mt-1 font-bold text-gray-900">
                 💰{" "}
-                {request.reward !== null
+                {request.reward !== null &&
+                request.reward !== undefined &&
+                request.reward > 0
                   ? `${request.reward.toLocaleString()}円`
-                  : "応相談"}
+                  : "ボランティア"}
               </p>
             </div>
 
