@@ -144,6 +144,11 @@ export async function PATCH(
         ? body.performance_date
         : "";
 
+    const applicationDeadline =
+      typeof body.application_deadline === "string"
+        ? body.application_deadline
+        : "";
+
     const startTime =
       typeof body.start_time === "string"
         ? body.start_time
@@ -192,6 +197,41 @@ export async function PATCH(
       );
     }
 
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Tokyo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    if (!applicationDeadline) {
+      return NextResponse.json(
+        { error: "募集期限を入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (performanceDate <= today) {
+      return NextResponse.json(
+        { error: "演奏日は明日以降の日付を指定してください" },
+        { status: 400 }
+      );
+    }
+
+    if (applicationDeadline < today) {
+      return NextResponse.json(
+        { error: "募集期限は今日以降の日付を指定してください" },
+        { status: 400 }
+      );
+    }
+
+    if (applicationDeadline >= performanceDate) {
+      return NextResponse.json(
+        { error: "募集期限は演奏日の前日までに設定してください" },
+        { status: 400 }
+      );
+    }
+
     if (!startTime || !endTime) {
       return NextResponse.json(
         { error: "開始時間と終了時間を入力してください" },
@@ -212,6 +252,7 @@ export async function PATCH(
         title,
         description: description || null,
         performance_date: performanceDate,
+        application_deadline: applicationDeadline,
         start_time: startTime,
         end_time: endTime,
         area: area || null,
