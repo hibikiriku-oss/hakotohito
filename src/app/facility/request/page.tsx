@@ -344,17 +344,56 @@ export default function FacilityRequestPage() {
           <p className="text-sm font-medium text-gray-500">案件管理</p>
 
           <h1 className="text-2xl font-bold text-gray-900 mt-1">
-            🎵 演奏依頼を作成
+            🎵 ライブ・フェス・セッション募集
           </h1>
 
           <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-            演奏してくれる方を募集するための依頼を登録してください。
+            演奏案件・イベント出演者の募集・施設レンタルを登録できます。
           </p>
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* 基本情報 */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
+            
+            <div className="mb-5">
+              <label className="font-bold text-sm text-gray-800 mb-2 block">
+                募集タイプ <span className="text-red-500">＊必須</span>
+              </label>
+              <select
+                value={requestType}
+                onChange={(e) => setRequestType(e.target.value)}
+                className={inputClass}
+              >
+                <option value="performance">演奏案件</option>
+                <option value="live">ライブ</option>
+                <option value="festival">フェス</option>
+                <option value="session">セッション</option>
+                <option value="rental">レンタル（演奏者が施設を借りる）</option>
+              </select>
+            </div>
+
+            {requestType !== "performance" && (
+              <div className="mb-5">
+                <label className="font-bold text-sm text-gray-800 mb-2 block">
+                  最大参加人数 <span className="text-red-500">＊必須</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={maxParticipants}
+                  onChange={(e) => setMaxParticipants(e.target.value)}
+                  placeholder="例：10"
+                  className={inputClass}
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-2">
+                  この募集で受け入れる演奏者の最大人数です。
+                </p>
+              </div>
+            )}
+            
             <div className="mb-5">
               <h2 className="font-bold text-gray-900">基本情報</h2>
               <p className="text-xs text-gray-400 mt-1">
@@ -618,6 +657,52 @@ export default function FacilityRequestPage() {
               </p>
             </div>
           </section>
+
+          {/* 参加費・レンタル利用料金 */}
+          {["live", "festival", "session"].includes(requestType) && (
+            <section className="bg-white border border-gray-200 rounded-2xl p-5">
+              <h2 className="font-bold text-gray-900 mb-2">参加費</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                演奏者がイベントに参加する際の料金です。無料の場合は空欄にできます。
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={participationFee}
+                  onChange={(e) => setParticipationFee(e.target.value)}
+                  placeholder="例：1000"
+                  className={inputClass}
+                />
+                <span className="font-bold text-gray-600">円</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                参加費が設定された場合、マッチ成立ごとに施設側へ参加費の1%分のコイン手数料を適用する想定です。
+              </p>
+            </section>
+          )}
+
+          {requestType === "rental" && (
+            <section className="bg-white border border-gray-200 rounded-2xl p-5">
+              <h2 className="font-bold text-gray-900 mb-2">レンタル利用料金</h2>
+              <p className="text-xs text-gray-500 mb-4">
+                演奏者が施設に支払う利用料金です。
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={rentalFee}
+                  onChange={(e) => setRentalFee(e.target.value)}
+                  placeholder="例：3000"
+                  className={inputClass}
+                />
+                <span className="font-bold text-gray-600">円</span>
+              </div>
+            </section>
+          )}
 
           {/* 謝礼 */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
