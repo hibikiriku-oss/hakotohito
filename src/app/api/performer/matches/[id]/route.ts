@@ -67,6 +67,8 @@ export async function GET(
         completion_disputed_at,
         completion_disputed_by,
         completion_dispute_reason,
+        completion_dispute_facility_agreed_at,
+        completion_dispute_performer_agreed_at,
         completion_method,
         performance_requests (
           id,

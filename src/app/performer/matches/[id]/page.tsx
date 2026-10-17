@@ -40,6 +40,8 @@ type Match = {
   completion_disputed_at: string | null;
   completion_disputed_by: string | null;
   completion_dispute_reason: string | null;
+  completion_dispute_facility_agreed_at: string | null;
+  completion_dispute_performer_agreed_at: string | null;
   completion_method: string | null;
   performance_requests: PerformanceRequest | null;
 };
@@ -56,6 +58,7 @@ export default function PerformerMatchDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [agreeingDispute, setAgreeingDispute] = useState(false);
 
   useEffect(() => {
     async function initialize() {
@@ -205,6 +208,91 @@ export default function PerformerMatchDetailPage() {
       );
     } finally {
       setCompleting(false);
+    }
+  }
+
+  async function handleAgreeDispute() {
+    if (!match || agreeingDispute) return;
+
+    if (match.completion_dispute_performer_agreed_at) {
+      setNotice("演奏者側はすでに同意済みです。施設側の同意を待っています。");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "異議申し立ての取り下げに同意しますか？\n\n双方が同意すると異議申し立てが解除され、演奏完了の報告を再開できます。\n\n一度同意すると、現在の仕組みでは取り消せません。内容を確認してから同意してください。"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setAgreeingDispute(true);
+      setError("");
+      setNotice("");
+
+      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+      if (!liffId) {
+        throw new Error("LINE MINI Appの設定がありません");
+      }
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const profile = await liff.getProfile();
+
+      const response = await fetch(
+        `/api/performer/matches/${matchId}/dispute/agree`,
+        {
+          method: "POST",
+          headers: {
+            "x-line-user-id": profile.userId,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "取り下げへの同意に失敗しました"
+        );
+      }
+
+      setNotice(
+        data.message ||
+          "同意を記録しました。相手側の同意を待っています。"
+      );
+
+      const refreshResponse = await fetch(
+        `/api/performer/matches/${matchId}`,
+        {
+          headers: {
+            "x-line-user-id": profile.userId,
+          },
+        }
+      );
+
+      const refreshData = await refreshResponse.json();
+
+      if (!refreshResponse.ok) {
+        throw new Error(
+          refreshData.error ||
+            "最新の演奏状況を取得できませんでした"
+        );
+      }
+
+      setMatch(refreshData.match);
+    } catch (err) {
+      console.error("異議申し立て取り下げ同意エラー:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "取り下げへの同意に失敗しました"
+      );
+    } finally {
+      setAgreeingDispute(false);
     }
   }
 
@@ -571,26 +659,86 @@ export default function PerformerMatchDetailPage() {
               </p>
             </div>
           ) : isDisputed ? (
-            <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 p-4">
-              <p className="font-bold text-amber-800">
-                ⚠️ 演奏完了について異議申し立て中
-              </p>
-              <p className="mt-2 text-sm leading-6 text-gray-700">
-                異議申し立てが行われているため、完了報告はできません。
-                内容を確認し、施設とご相談ください。
-              </p>
+            <>
+              <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 p-4">
+                <p className="font-bold text-amber-800">
+                  ⚠️ 演奏完了について異議申し立て中
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-700">
+                  異議申し立てが行われているため、完了報告はできません。
+                  内容を確認し、施設とご相談ください。
+                </p>
 
-              {match.completion_dispute_reason && (
-                <div className="mt-3">
-                  <p className="text-sm font-medium text-gray-700">
-                    申し立て理由
-                  </p>
-                  <p className="mt-1 text-sm whitespace-pre-wrap text-gray-700">
-                    {match.completion_dispute_reason}
-                  </p>
-                </div>
-              )}
-            </div>
+                {match.completion_dispute_reason && (
+                  <div className="mt-3">
+                    <p className="text-sm font-medium text-gray-700">
+                      申し立て理由
+                    </p>
+                    <p className="mt-1 text-sm whitespace-pre-wrap text-gray-700">
+                      {match.completion_dispute_reason}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 rounded-xl bg-white border border-amber-200 p-4">
+                <p className="font-bold text-gray-800">
+                  🤝 取り下げへの同意状況
+                </p>
+
+                <p className="mt-3 text-sm">
+                  施設側：
+                  {match.completion_dispute_facility_agreed_at ? (
+                    <span className="text-green-700 font-bold">
+                      ✅ 同意済み
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">
+                      未同意
+                    </span>
+                  )}
+                </p>
+
+                <p className="mt-2 text-sm">
+                  演奏者側：
+                  {match.completion_dispute_performer_agreed_at ? (
+                    <span className="text-green-700 font-bold">
+                      ✅ 同意済み
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">
+                      未同意
+                    </span>
+                  )}
+                </p>
+
+                {match.completion_dispute_performer_agreed_at ? (
+                  <div className="mt-4 rounded-lg bg-green-50 p-3">
+                    <p className="text-sm font-bold text-green-700">
+                      演奏者側は同意済みです
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      施設側の同意がそろうと、異議申し立てが解除されます。
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="mt-3 text-sm text-gray-600">
+                      双方が取り下げに同意すると、異議申し立てが解除され、演奏完了の報告を再開できます。
+                    </p>
+
+                    <button
+                      onClick={handleAgreeDispute}
+                      disabled={agreeingDispute}
+                      className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm disabled:opacity-50"
+                    >
+                      {agreeingDispute
+                        ? "同意を登録中..."
+                        : "🤝 取り下げに同意する"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </>
           ) : (
             <>
               <div className="mt-4 rounded-xl bg-gray-50 border border-gray-100 p-4">
