@@ -11,14 +11,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
       return NextResponse.json(
-        {
-          error: "LINEユーザー情報がありません",
-        },
+        { error: "LINEユーザー情報がありません" },
         { status: 400 }
       );
     }
@@ -26,132 +23,119 @@ export async function GET(
     const { id: matchId } = await params;
 
     // LINEユーザーを取得
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", lineUserId)
+      .single();
 
     if (userError || !user) {
-      console.error(
-        "ユーザー取得エラー:",
-        userError
-      );
+      console.error("ユーザー取得エラー:", userError);
 
       return NextResponse.json(
-        {
-          error: "ユーザー情報が見つかりません",
-        },
+        { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    // 施設を取得
-    const { data: facility, error: facilityError } =
-      await supabase
-        .from("facilities")
-        .select("id")
-        .eq("user_id", user.id)
-        .single();
+    // 施設プロフィールを取得
+    const { data: facility, error: facilityError } = await supabase
+      .from("facilities")
+      .select("id")
+      .eq("user_id", user.id)
+      .single();
 
     if (facilityError || !facility) {
-      console.error(
-        "施設取得エラー:",
-        facilityError
-      );
+      console.error("施設取得エラー:", facilityError);
 
       return NextResponse.json(
-        {
-          error: "施設プロフィールが見つかりません",
-        },
+        { error: "施設プロフィールが見つかりません" },
         { status: 404 }
       );
     }
 
-    // マッチングを取得
-    const { data: match, error: matchError } =
-      await supabase
-        .from("matches")
-        .select(`
+    // マッチングと完了報告・異議申し立ての情報を取得
+    // * を使用し、新しく追加したカラムも取得する
+    const { data: rawMatch, error: matchError } = await supabase
+      .from("matches")
+      .select(`
+        *,
+        performance_requests (
           id,
-          request_id,
-          performer_id,
-          matched_at,
-          status,
-          performance_status,
-          completed_at,
-          performance_requests (
+          facility_id,
+          title,
+          description,
+          performance_date,
+          start_time,
+          end_time,
+          area,
+          instruments,
+          genres,
+          reward,
+          status
+        ),
+        performers (
+          id,
+          name,
+          instruments,
+          genres,
+          area,
+          bio,
+          users (
             id,
-            facility_id,
-            title,
-            description,
-            performance_date,
-            start_time,
-            end_time,
-            area,
-            instruments,
-            genres,
-            reward,
-            status
-          ),
-          performers (
-            id,
-            name,
-            instruments,
-            genres,
-            area,
-            bio,
-            users (
-              id,
-              display_name,
-              picture_url
-            )
+            display_name,
+            picture_url
           )
-        `)
-        .eq("id", matchId)
-        .eq("performer_id", (await getPerformerId(matchId)))
-        .single();
+        )
+      `)
+      .eq("id", matchId)
+      .single();
 
-    if (matchError || !match) {
-      console.error(
-        "マッチング取得エラー:",
-        matchError
-      );
+    if (matchError || !rawMatch) {
+      console.error("マッチング取得エラー:", matchError);
 
       return NextResponse.json(
-        {
-          error:
-            "マッチング情報が見つかりません",
-        },
+        { error: "マッチング情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    const performanceRequest =
-      Array.isArray(match.performance_requests)
-        ? match.performance_requests[0]
-        : match.performance_requests;
+    const match = rawMatch as unknown as {
+      id: string;
+      request_id: string;
+      performer_id: string;
+      status: string;
+      performance_status: string;
+      completed_at: string | null;
+      performer_completion_reported_at: string | null;
+      facility_completion_reported_at: string | null;
+      completion_disputed_at: string | null;
+      completion_disputed_by: string | null;
+      completion_dispute_reason: string | null;
+      completion_method: string | null;
+      performance_requests:
+        | Record<string, unknown>
+        | Record<string, unknown>[]
+        | null;
+      performers: Record<string, unknown> | null;
+      [key: string]: unknown;
+    };
+
+    const performanceRequest = Array.isArray(match.performance_requests)
+      ? match.performance_requests[0]
+      : match.performance_requests;
 
     if (!performanceRequest) {
       return NextResponse.json(
-        {
-          error: "演奏案件が見つかりません",
-        },
+        { error: "演奏案件が見つかりません" },
         { status: 404 }
       );
     }
 
     // 施設本人の案件か確認
-    if (
-      performanceRequest.facility_id !==
-      facility.id
-    ) {
+    if (performanceRequest.facility_id !== facility.id) {
       return NextResponse.json(
-        {
-          error:
-            "このマッチングを閲覧する権限がありません",
-        },
+        { error: "このマッチングを閲覧する権限がありません" },
         { status: 403 }
       );
     }
@@ -160,64 +144,25 @@ export async function GET(
     const { data: application, error: applicationError } =
       await supabase
         .from("applications")
-        .select(`
-          id,
-          message,
-          status,
-          created_at
-        `)
+        .select("id, message, status, created_at")
         .eq("request_id", match.request_id)
-        .eq(
-          "performer_id",
-          match.performer_id
-        )
-        .single();
+        .eq("performer_id", match.performer_id)
+        .maybeSingle();
 
     if (applicationError) {
-      console.error(
-        "応募情報取得エラー:",
-        applicationError
-      );
+      console.error("応募情報取得エラー:", applicationError);
     }
 
     return NextResponse.json({
       match,
-      application:
-        application || null,
+      application: application || null,
     });
   } catch (error) {
-    console.error(
-      "施設マッチング詳細APIエラー:",
-      error
-    );
+    console.error("施設マッチング詳細APIエラー:", error);
 
     return NextResponse.json(
-      {
-        error: "サーバーエラー",
-      },
+      { error: "サーバーエラー" },
       { status: 500 }
     );
   }
-}
-
-/**
- * マッチングに登録されている演奏者IDを取得
- */
-async function getPerformerId(
-  matchId: string
-): Promise<string> {
-  const { data, error } =
-    await supabase
-      .from("matches")
-      .select("performer_id")
-      .eq("id", matchId)
-      .single();
-
-  if (error || !data) {
-    throw new Error(
-      "演奏者情報を取得できません"
-    );
-  }
-
-  return data.performer_id;
 }

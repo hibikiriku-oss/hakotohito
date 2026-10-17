@@ -11,8 +11,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const lineUserId = request.headers.get("x-line-user-id");
 
     if (!lineUserId) {
       return NextResponse.json(
@@ -24,12 +23,11 @@ export async function GET(
     const { id: matchId } = await params;
 
     // LINEユーザー取得
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", lineUserId)
+      .single();
 
     if (userError || !user) {
       return NextResponse.json(
@@ -38,7 +36,7 @@ export async function GET(
       );
     }
 
-    // 演奏者取得
+    // 演奏者プロフィール取得
     const { data: performer, error: performerError } =
       await supabase
         .from("performers")
@@ -53,48 +51,50 @@ export async function GET(
       );
     }
 
-    // マッチング取得
-    // performer_idも条件に入れて、本人のマッチングだけ取得
-    const { data: match, error: matchError } =
-      await supabase
-        .from("matches")
-        .select(`
+    // 本人が参加しているマッチングだけ取得
+    const { data: match, error: matchError } = await supabase
+      .from("matches")
+      .select(`
+        id,
+        request_id,
+        performer_id,
+        matched_at,
+        status,
+        performance_status,
+        completed_at,
+        performer_completion_reported_at,
+        facility_completion_reported_at,
+        completion_disputed_at,
+        completion_disputed_by,
+        completion_dispute_reason,
+        completion_method,
+        performance_requests (
           id,
-          request_id,
-          performer_id,
-          matched_at,
+          title,
+          description,
+          performance_date,
+          start_time,
+          end_time,
+          area,
+          instruments,
+          genres,
+          reward,
           status,
-          performance_status,
-          performance_requests (
+          facilities (
             id,
-            title,
-            description,
-            performance_date,
-            start_time,
-            end_time,
-            area,
-            instruments,
-            genres,
-            reward,
-            status,
-            facilities (
-              id,
-              name,
-              facility_type,
-              address,
-              description
-            )
+            name,
+            facility_type,
+            address,
+            description
           )
-        `)
-        .eq("id", matchId)
-        .eq("performer_id", performer.id)
-        .single();
+        )
+      `)
+      .eq("id", matchId)
+      .eq("performer_id", performer.id)
+      .single();
 
     if (matchError || !match) {
-      console.error(
-        "マッチング取得エラー:",
-        matchError
-      );
+      console.error("マッチング取得エラー:", matchError);
 
       return NextResponse.json(
         { error: "マッチング情報が見つかりません" },
@@ -102,15 +102,9 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      match,
-    });
-
+    return NextResponse.json({ match });
   } catch (error) {
-    console.error(
-      "マッチング詳細APIエラー:",
-      error
-    );
+    console.error("マッチング詳細APIエラー:", error);
 
     return NextResponse.json(
       { error: "サーバーエラー" },
