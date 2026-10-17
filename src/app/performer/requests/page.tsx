@@ -53,6 +53,7 @@ export default function PerformerRequestsPage() {
   const [lineUserId, setLineUserId] = useState("");
 
   const [keyword, setKeyword] = useState("");
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
   const [areaFilter, setAreaFilter] = useState("");
   const [instrumentFilter, setInstrumentFilter] = useState("");
   const [genreFilter, setGenreFilter] = useState("");
@@ -159,7 +160,7 @@ export default function PerformerRequestsPage() {
           page: String(page),
           limit: String(PAGE_SIZE),
           sort,
-          keyword: keyword.trim(),
+          keyword: debouncedKeyword.trim(),
           area: areaFilter,
           instrument: instrumentFilter,
           genre: genreFilter,
@@ -219,7 +220,7 @@ export default function PerformerRequestsPage() {
     lineUserId,
     page,
     sort,
-    keyword,
+    debouncedKeyword,
     areaFilter,
     instrumentFilter,
     genreFilter,
@@ -233,6 +234,14 @@ export default function PerformerRequestsPage() {
     rewardOnly,
     reloadKey,
   ]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedKeyword(keyword);
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [keyword]);
 
   const areas = Array.from(
     new Set([
