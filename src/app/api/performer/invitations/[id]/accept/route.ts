@@ -116,14 +116,28 @@ export async function POST(
         p_performer_id: performer.id,
       });
 
+
     if (rpcError) {
       console.error("直接依頼の承諾処理エラー:", rpcError);
 
+      const errorMessage = rpcError.message || "";
+      const isInsufficientCoins =
+        /コイン不足|コインが不足|チャージが必要|insufficient|coin/i.test(
+          errorMessage
+        );
+
       return NextResponse.json(
-        { error: "依頼の承諾処理に失敗しました" },
-        { status: 500 }
+        {
+          error: isInsufficientCoins
+            ? "施設側のコインが不足しています。チャージしてから再度お試しください。"
+            : "依頼の承諾処理に失敗しました。時間をおいて再度お試しください。",
+        },
+        {
+          status: isInsufficientCoins ? 400 : 500,
+        }
       );
     }
+
 
     const rpcResult = Array.isArray(result) ? result[0] : result;
 

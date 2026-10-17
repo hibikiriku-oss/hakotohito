@@ -172,18 +172,23 @@ export async function POST(
       });
 
     if (matchingError) {
-      console.error(
-        "マッチングRPCエラー:",
-        matchingError
-      );
+      console.error("マッチングRPCエラー:", matchingError);
+
+      const errorMessage = matchingError.message || "";
+      const isInsufficientCoins =
+        /コイン不足|コインが不足|チャージが必要|insufficient/i.test(
+          errorMessage
+        );
 
       return NextResponse.json(
         {
-          error:
-            matchingError.message ||
-            "マッチング処理に失敗しました",
+          error: isInsufficientCoins
+            ? errorMessage
+            : "マッチング処理に失敗しました。時間をおいて再度お試しください。",
         },
-        { status: 500 }
+        {
+          status: isInsufficientCoins ? 400 : 500,
+        }
       );
     }
 
@@ -215,7 +220,20 @@ export async function POST(
     // 11. マッチングID・残高取得
     // ----------------------------------------
     const matchId = matching.match_id;
-    const coinBalance = matching.balance_after;
+
+    // 成立処理後の施設側のコイン残高を取得
+    const { data: facilityBalance, error: balanceError } =
+      await supabase
+        .from("users")
+        .select("coin_balance")
+        .eq("id", user.id)
+        .single();
+
+    if (balanceError || !facilityBalance) {
+      console.error("施設のコイン残高取得エラー:", balanceError);
+    }
+
+    const coinBalance = facilityBalance?.coin_balance ?? null;
 
     if (!matchId) {
       console.error(

@@ -386,14 +386,15 @@ export async function POST(request: NextRequest) {
           .eq("id", data.id);
       }
 
+
       return NextResponse.json(
         {
           error:
-            coin?.error_message ||
-            "コインが不足しています。応募には10コイン必要です。",
+            "コインが不足しています。応募には10コイン必要です。チャージしてから再度お試しください。",
         },
         { status: 400 }
       );
+
     }
 
     // ==============================
