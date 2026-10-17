@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     } = await supabase
       .from("performance_requests")
       .select(
-        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels, application_deadline"
+        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels, application_deadline, reward"
       )
       .eq("id", requestId)
       .single();
@@ -230,6 +230,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "この案件にはすでに採用されています" },
         { status: 409 }
+      );
+    }
+
+    // ==============================
+    // 応募前の必要コイン確認
+    // ==============================
+
+    // 応募料10コイン + 謝礼の1%（端数切り上げ）
+    const rewardAmount = Number(performanceRequest.reward ?? 0);
+
+    const rewardFee =
+      Number.isFinite(rewardAmount) && rewardAmount > 0
+        ? Math.ceil(rewardAmount * 0.01)
+        : 0;
+
+    const requiredCoins = 10 + rewardFee;
+
+    // 最新の残高を取得
+    const {
+      data: latestUser,
+      error: balanceError,
+    } = await supabase
+      .from("users")
+      .select("coin_balance")
+      .eq("id", user.id)
+      .single();
+
+    if (balanceError || !latestUser) {
+      console.error("応募前の残高取得エラー:", balanceError);
+
+      return NextResponse.json(
+        { error: "コイン残高の確認に失敗しました。時間をおいて再度お試しください。" },
+        { status: 500 }
+      );
+    }
+
+    const currentBalance = Number(latestUser.coin_balance ?? 0);
+
+    if (currentBalance < requiredCoins) {
+      return NextResponse.json(
+        {
+          error:
+            `コイン不足のため応募できません。` +
+            `この案件への応募には${requiredCoins}コイン必要です` +
+            `（応募料10コイン＋成立時手数料${rewardFee}コイン）。` +
+            `現在の残高は${currentBalance}コインです。` +
+            "チャージしてから再度お試しください。",
+        },
+        { status: 400 }
       );
     }
 
