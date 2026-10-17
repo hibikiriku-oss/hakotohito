@@ -449,6 +449,10 @@ export async function POST(request: NextRequest) {
       genres,
       reward,
       targetLevels,
+      requestType = "performance",
+      maxParticipants,
+      participationFee,
+      rentalFee,
     } = body;
 
     if (
@@ -472,6 +476,92 @@ export async function POST(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "演奏日または応募期限の日付が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const validRequestTypes = [
+      "performance",
+      "live",
+      "festival",
+      "session",
+      "rental",
+    ];
+
+    if (
+      typeof requestType !== "string" ||
+      !validRequestTypes.includes(requestType)
+    ) {
+      return NextResponse.json(
+        { error: "募集タイプが正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      requestType !== "performance" &&
+      (!Number.isInteger(Number(maxParticipants)) ||
+        Number(maxParticipants) < 1)
+    ) {
+      return NextResponse.json(
+        { error: "最大参加人数は1人以上で入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      participationFee != null &&
+      participationFee !== "" &&
+      (!Number.isInteger(Number(participationFee)) ||
+        Number(participationFee) < 0)
+    ) {
+      return NextResponse.json(
+        { error: "参加費は0円以上の整数で入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      rentalFee != null &&
+      rentalFee !== "" &&
+      (!Number.isInteger(Number(rentalFee)) ||
+        Number(rentalFee) < 0)
+    ) {
+      return NextResponse.json(
+        { error: "レンタル利用料金は0円以上の整数で入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      reward != null &&
+      reward !== "" &&
+      (!Number.isInteger(Number(reward)) || Number(reward) < 0)
+    ) {
+      return NextResponse.json(
+        { error: "謝礼は0円以上の整数で入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      ["performance", "live", "festival", "session"].includes(requestType) &&
+      rentalFee != null &&
+      rentalFee !== ""
+    ) {
+      return NextResponse.json(
+        { error: "レンタル以外では利用料金を設定できません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      requestType !== "rental" &&
+      participationFee != null &&
+      participationFee !== ""
+    ) {
+      return NextResponse.json(
+        { error: "参加費を設定できるのはライブ・フェス・セッションです" },
         { status: 400 }
       );
     }
@@ -594,7 +684,22 @@ export async function POST(request: NextRequest) {
           reward !== "" && reward !== null && reward !== undefined
             ? Number(reward)
             : null,
-        target_levels: normalizedTargetLevels,
+        request_type: requestType,
+        max_participants:
+          requestType !== "performance" ? Number(maxParticipants) : null,
+        participation_fee:
+          ["live", "festival", "session"].includes(requestType) &&
+          participationFee !== "" &&
+          participationFee != null
+            ? Number(participationFee)
+            : null,
+        rental_fee:
+          requestType === "rental" &&
+          rentalFee !== "" &&
+          rentalFee != null
+            ? Number(rentalFee)
+            : null,        
+            target_levels: normalizedTargetLevels,
         status: "open",
       })
       .select()

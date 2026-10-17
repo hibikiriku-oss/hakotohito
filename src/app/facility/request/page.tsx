@@ -105,9 +105,14 @@ export default function FacilityRequestPage() {
     "pro",
   ]);
 
+  const [requestType, setRequestType] = useState("performance");
+  const [maxParticipants, setMaxParticipants] = useState("");
+  const [participationFee, setParticipationFee] = useState("");
+  const [rentalFee, setRentalFee] = useState("");
+
   const [reward, setReward] = useState("");
   const [loading, setLoading] = useState(false);
-
+  
   const japanToday = getJapanToday();
   const minPerformanceDate = shiftDate(japanToday, 1);
   const maxApplicationDeadline = performanceDate
@@ -209,6 +214,42 @@ export default function FacilityRequestPage() {
       return;
     }
 
+    if (
+      requestType !== "performance" &&
+      (!maxParticipants ||
+        !Number.isInteger(Number(maxParticipants)) ||
+        Number(maxParticipants) < 1)
+    ) {
+      alert("最大参加人数を1人以上で入力してください");
+      return;
+    }
+
+    if (
+      participationFee !== "" &&
+      (!Number.isInteger(Number(participationFee)) ||
+        Number(participationFee) < 0)
+    ) {
+      alert("参加費は0円以上の整数で入力してください");
+      return;
+    }
+
+    if (
+      rentalFee !== "" &&
+      (!Number.isInteger(Number(rentalFee)) ||
+        Number(rentalFee) < 0)
+    ) {
+      alert("レンタル利用料金は0円以上の整数で入力してください");
+      return;
+    }
+
+    if (
+      reward !== "" &&
+      (!Number.isInteger(Number(reward)) || Number(reward) < 0)
+    ) {
+      alert("謝礼は0円以上の整数で入力してください");
+      return;
+    }
+
     if (!lineUserId) {
       alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
       return;
@@ -253,6 +294,21 @@ export default function FacilityRequestPage() {
           genres: finalGenres,
           reward,
           targetLevels,
+          requestType,
+          maxParticipants:
+            requestType !== "performance" ? Number(maxParticipants) : null,
+          participationFee:
+            requestType === "live" ||
+            requestType === "festival" ||
+            requestType === "session"
+              ? participationFee !== ""
+                ? Number(participationFee)
+                : null
+              : null,
+          rentalFee:
+            requestType === "rental" && rentalFee !== ""
+              ? Number(rentalFee)
+              : null,
         }),
       });
 
