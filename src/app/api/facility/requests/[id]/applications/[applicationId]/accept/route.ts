@@ -340,7 +340,7 @@ export async function POST(
             },
             {
               type: "text",
-              text: `報酬：${performanceRequest.reward?.toLocaleString()}円`,
+              text: `報酬：${(performanceRequest.reward ?? 0).toLocaleString("ja-JP")}円`,
               margin: "sm",
               wrap: true,
             },
