@@ -152,7 +152,6 @@ export default function PerformerRequestsPage() {
     let cancelled = false;
 
     async function fetchRequests() {
-      setLoading(true);
       setError("");
 
       try {
@@ -295,6 +294,7 @@ export default function PerformerRequestsPage() {
   };
 
   const retry = () => {
+    setLoading(true);
     setPage(1);
     setReloadKey((current) => current + 1);
   };
