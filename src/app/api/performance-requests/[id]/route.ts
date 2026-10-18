@@ -101,7 +101,9 @@ export async function PATCH(
     const { data: existingRequest, error: existingError } =
       await supabase
         .from("performance_requests")
-        .select("id, facility_id, status")
+        .select(
+          "id, facility_id, status, request_type, participation_fee, rental_fee"
+        )
         .eq("id", id)
         .single();
 
@@ -183,6 +185,62 @@ export async function PATCH(
         ? null
         : Number(body.reward);
 
+    const participationFee =
+      body.participation_fee === null ||
+      body.participation_fee === undefined ||
+      body.participation_fee === ""
+        ? null
+        : Number(body.participation_fee);
+
+    const rentalFee =
+      body.rental_fee === null ||
+      body.rental_fee === undefined ||
+      body.rental_fee === ""
+        ? null
+        : Number(body.rental_fee);
+
+    const requestType = existingRequest.request_type;
+
+    if (
+      participationFee !== null &&
+      (
+        !Number.isInteger(participationFee) ||
+        participationFee < 0
+      )
+    ) {
+      return NextResponse.json(
+        { error: "参加費は0以上の整数で入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      rentalFee !== null &&
+      (!Number.isInteger(rentalFee) || rentalFee < 0)
+    ) {
+      return NextResponse.json(
+        { error: "レンタル利用料金は0以上の整数で入力してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      ["live", "festival", "session"].includes(requestType) &&
+      rentalFee !== null
+    ) {
+      return NextResponse.json(
+        { error: "この募集タイプではレンタル利用料金を設定できません" },
+        { status: 400 }
+      );
+    }
+
+    if (requestType === "rental" && participationFee !== null) {
+      return NextResponse.json(
+        { error: "レンタルでは参加費を設定できません" },
+        { status: 400 }
+      );
+    }
+
     if (!title) {
       return NextResponse.json(
         { error: "案件タイトルを入力してください" },
@@ -259,6 +317,12 @@ export async function PATCH(
         instruments,
         genres,
         reward,
+        participation_fee:
+          ["live", "festival", "session"].includes(requestType)
+            ? participationFee
+            : null,
+        rental_fee:
+          requestType === "rental" ? rentalFee : null,
       })
       .eq("id", id)
       .eq("facility_id", facility.id)
@@ -326,7 +390,9 @@ export async function DELETE(
     const { data: existingRequest, error: existingError } =
       await supabase
         .from("performance_requests")
-        .select("id, facility_id, status")
+        .select(
+          "id, facility_id, status, request_type, participation_fee, rental_fee"
+        )
         .eq("id", id)
         .single();
 

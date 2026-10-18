@@ -16,6 +16,9 @@ type PerformanceRequest = {
   instruments: string[];
   genres: string[];
   reward: number | null;
+  request_type: string;
+  participation_fee: number | null;
+  rental_fee: number | null;
   status: "open" | "matched" | "closed";
 };
 
@@ -40,6 +43,8 @@ function formatDate(date: string): string {
   return `${year}年${Number(month)}月${Number(day)}日`;
 }
 
+const PARTICIPATION_TYPES = ["live", "festival", "session"];
+
 export default function FacilityRequestEditPage() {
   const params = useParams();
   const router = useRouter();
@@ -59,10 +64,16 @@ export default function FacilityRequestEditPage() {
   const [instruments, setInstruments] = useState("");
   const [genres, setGenres] = useState("");
   const [reward, setReward] = useState("");
+  const [participationFee, setParticipationFee] = useState("");
+  const [rentalFee, setRentalFee] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const isParticipationType =
+    !!request && PARTICIPATION_TYPES.includes(request.request_type);
+  const isRental = request?.request_type === "rental";
 
   useEffect(() => {
     if (requestId) {
@@ -82,7 +93,7 @@ export default function FacilityRequestEditPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || "案件情報を取得できませんでした"
+          data.error || "オファー情報を取得できませんでした"
         );
       }
 
@@ -93,7 +104,7 @@ export default function FacilityRequestEditPage() {
 
       if (loadedRequest.status !== "open") {
         setError(
-          "マッチング済みまたは募集終了の案件は編集できません。"
+          "マッチング済みまたは募集終了のオファーは編集できません。"
         );
         return;
       }
@@ -123,12 +134,24 @@ export default function FacilityRequestEditPage() {
           ? String(loadedRequest.reward)
           : ""
       );
+      setParticipationFee(
+        loadedRequest.participation_fee !== null &&
+          loadedRequest.participation_fee !== undefined
+          ? String(loadedRequest.participation_fee)
+          : ""
+      );
+      setRentalFee(
+        loadedRequest.rental_fee !== null &&
+          loadedRequest.rental_fee !== undefined
+          ? String(loadedRequest.rental_fee)
+          : ""
+      );
     } catch (err) {
       console.error(err);
       setError(
         err instanceof Error
           ? err.message
-          : "案件情報を取得できませんでした"
+          : "オファー情報を取得できませんでした"
       );
     } finally {
       setLoading(false);
@@ -142,16 +165,31 @@ export default function FacilityRequestEditPage() {
       .filter(Boolean);
   }
 
+  function validateOptionalFee(
+    value: string,
+    label: string
+  ): number | null {
+    if (value.trim() === "") return null;
+
+    const number = Number(value);
+
+    if (!Number.isInteger(number) || number < 0) {
+      throw new Error(`${label}は0以上の整数で入力してください`);
+    }
+
+    return number;
+  }
+
   async function handleSave() {
     setError("");
 
     if (!title.trim()) {
-      setError("案件タイトルを入力してください");
+      setError("オファータイトルを入力してください");
       return;
     }
 
     if (!performanceDate) {
-      setError("演奏日を入力してください");
+      setError("開催日を入力してください");
       return;
     }
 
@@ -161,7 +199,7 @@ export default function FacilityRequestEditPage() {
     }
 
     if (performanceDate <= getJapanToday()) {
-      setError("演奏日は明日以降の日付を指定してください");
+      setError("開催日は明日以降の日付を指定してください");
       return;
     }
 
@@ -171,7 +209,7 @@ export default function FacilityRequestEditPage() {
     }
 
     if (applicationDeadline >= performanceDate) {
-      setError("募集期限は演奏日の前日までに設定してください");
+      setError("募集期限は開催日の前日までに設定してください");
       return;
     }
 
@@ -183,15 +221,34 @@ export default function FacilityRequestEditPage() {
     if (reward.trim() !== "") {
       const rewardNumber = Number(reward);
 
-      if (!Number.isFinite(rewardNumber)) {
-        setError("報酬は数値で入力してください");
+      if (!Number.isInteger(rewardNumber) || rewardNumber < 0) {
+        setError("謝礼は0以上の整数で入力してください");
         return;
+      }
+    }
+
+    let participationFeeNumber: number | null = null;
+    let rentalFeeNumber: number | null = null;
+
+    try {
+      if (isParticipationType) {
+        participationFeeNumber = validateOptionalFee(
+          participationFee,
+          "参加費"
+        );
       }
 
-      if (!Number.isInteger(rewardNumber) || rewardNumber < 0) {
-        setError("報酬は0以上の整数で入力してください");
-        return;
+      if (isRental) {
+        rentalFeeNumber = validateOptionalFee(
+          rentalFee,
+          "レンタル利用料金"
+        );
       }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "料金の入力を確認してください"
+      );
+      return;
     }
 
     try {
@@ -228,6 +285,8 @@ export default function FacilityRequestEditPage() {
             genres: convertToArray(genres),
             reward:
               reward.trim() === "" ? null : Number(reward),
+            participation_fee: participationFeeNumber,
+            rental_fee: rentalFeeNumber,
           }),
         }
       );
@@ -236,18 +295,18 @@ export default function FacilityRequestEditPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || "案件の更新に失敗しました"
+          data.error || "オファーの更新に失敗しました"
         );
       }
 
-      alert("案件を更新しました");
+      alert("オファーを更新しました");
       router.push(`/facility/requests/${requestId}`);
     } catch (err) {
       console.error(err);
       setError(
         err instanceof Error
           ? err.message
-          : "案件の更新に失敗しました"
+          : "オファーの更新に失敗しました"
       );
     } finally {
       setSaving(false);
@@ -262,10 +321,10 @@ export default function FacilityRequestEditPage() {
       <main className="min-h-screen bg-gray-50">
         <div className="max-w-md mx-auto px-4 py-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-6">
-            ✏️ 案件を編集
+            ✏️ オファーを編集
           </h1>
           <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
-            案件情報を読み込んでいます…
+            オファー情報を読み込んでいます…
           </div>
         </div>
       </main>
@@ -281,14 +340,14 @@ export default function FacilityRequestEditPage() {
             onClick={() => router.push("/facility/requests")}
             className="text-sm text-gray-500 mb-5"
           >
-            ← 案件一覧に戻る
+            ← オファー一覧に戻る
           </button>
           <div className="bg-white border border-gray-200 rounded-2xl p-6">
             <h1 className="text-xl font-bold text-gray-900">
-              案件を編集できません
+              オファーを編集できません
             </h1>
             <p className="text-sm text-red-600 mt-3">
-              {error || "案件が見つかりませんでした"}
+              {error || "オファーが見つかりませんでした"}
             </p>
           </div>
         </div>
@@ -307,17 +366,17 @@ export default function FacilityRequestEditPage() {
             }
             className="text-sm text-gray-500 mb-4"
           >
-            ← 案件詳細に戻る
+            ← オファー詳細に戻る
           </button>
 
           <p className="text-sm font-medium text-gray-500">
-            案件管理
+            オファー管理
           </p>
           <h1 className="text-2xl font-bold text-gray-900 mt-1">
-            ✏️ 案件を編集
+            ✏️ オファーを編集
           </h1>
           <p className="text-sm text-gray-500 mt-2">
-            案件の内容や募集期限を変更できます。
+            オファーの内容や料金、募集期限を変更できます。
           </p>
         </header>
 
@@ -338,12 +397,12 @@ export default function FacilityRequestEditPage() {
               基本情報
             </h2>
             <p className="text-xs text-gray-400 mt-1 mb-5">
-              演奏案件の基本的な情報を入力してください。
+              オファーの基本的な情報を入力してください。
             </p>
 
             <div>
               <label className="font-bold text-sm text-gray-800 mb-2 block">
-                案件タイトル（必須）
+                オファータイトル（必須）
               </label>
               <input
                 type="text"
@@ -356,7 +415,7 @@ export default function FacilityRequestEditPage() {
 
             <div className="mt-5">
               <label className="font-bold text-sm text-gray-800 mb-2 block">
-                演奏日（必須）
+                開催日・利用日（必須）
               </label>
               <input
                 type="date"
@@ -396,14 +455,14 @@ export default function FacilityRequestEditPage() {
                 {formatDate(request.application_deadline) || "未設定"}
               </p>
               <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                今日以降、演奏日の前日までを指定してください。
+                今日以降、開催日の前日までを指定してください。
                 募集期限を過ぎると演奏者は応募できなくなります。
               </p>
             </div>
 
             <div className="mt-5">
               <label className="font-bold text-sm text-gray-800 mb-2 block">
-                演奏時間（必須）
+                開始時間・終了時間（必須）
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -424,7 +483,7 @@ export default function FacilityRequestEditPage() {
 
             <div className="mt-5">
               <label className="font-bold text-sm text-gray-800 mb-2 block">
-                活動エリア
+                エリア
               </label>
               <input
                 type="text"
@@ -477,39 +536,95 @@ export default function FacilityRequestEditPage() {
             </div>
           </section>
 
-          <section className="bg-white border border-gray-200 rounded-2xl p-5">
-            <h2 className="font-bold text-gray-900 mb-5">
-              謝礼
-            </h2>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={reward}
-                onChange={(e) => setReward(e.target.value)}
-                placeholder="例：5000"
-                className={inputClass}
-              />
-              <span className="font-bold text-gray-600">円</span>
-            </div>
-            <p className="text-xs text-gray-400 mt-2">
-              未入力の場合は「応相談」として保存されます。
-            </p>
-          </section>
+          {request.request_type !== "rental" && (
+            <section className="bg-white border border-gray-200 rounded-2xl p-5">
+              <h2 className="font-bold text-gray-900 mb-5">
+                演奏者への謝礼
+              </h2>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={reward}
+                  onChange={(e) => setReward(e.target.value)}
+                  placeholder="例：5000"
+                  className={inputClass}
+                />
+                <span className="font-bold text-gray-600">円</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                未入力の場合は「応相談」として保存されます。
+              </p>
+            </section>
+          )}
+
+          {isParticipationType && (
+            <section className="bg-white border border-gray-200 rounded-2xl p-5">
+              <h2 className="font-bold text-gray-900 mb-2">
+                参加費
+              </h2>
+              <p className="text-xs text-gray-500 mb-4">
+                参加者が支払う料金を設定できます。
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={participationFee}
+                  onChange={(e) =>
+                    setParticipationFee(e.target.value)
+                  }
+                  placeholder="例：1000"
+                  className={inputClass}
+                />
+                <span className="font-bold text-gray-600">円</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                未入力の場合は参加費未設定として保存されます。
+              </p>
+            </section>
+          )}
+
+          {isRental && (
+            <section className="bg-white border border-gray-200 rounded-2xl p-5">
+              <h2 className="font-bold text-gray-900 mb-2">
+                レンタル利用料金
+              </h2>
+              <p className="text-xs text-gray-500 mb-4">
+                施設を利用するための料金を設定できます。
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={rentalFee}
+                  onChange={(e) => setRentalFee(e.target.value)}
+                  placeholder="例：3000"
+                  className={inputClass}
+                />
+                <span className="font-bold text-gray-600">円</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                未入力の場合はレンタル利用料金未設定として保存されます。
+              </p>
+            </section>
+          )}
 
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <h2 className="font-bold text-gray-900 mb-2">
-              依頼内容
+              オファー内容
             </h2>
             <p className="text-xs text-gray-400 mt-1 mb-5">
-              演奏してほしい内容やイベントについて記入してください。
+              オファーの詳細やイベント、施設利用について記入してください。
             </p>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={6}
-              placeholder="演奏してほしい内容などを入力してください"
+              placeholder="オファーの詳細を入力してください"
               className={`${inputClass} resize-none`}
             />
           </section>
