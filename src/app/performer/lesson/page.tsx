@@ -257,10 +257,10 @@ export default function LessonListPage() {
         <header className="mb-5">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={() => router.push("/performer/home")}
             className="text-sm text-gray-500 mb-4"
           >
-            ← 戻る
+            ← ホームに戻る
           </button>
 
           <div className="flex items-start justify-between gap-3">
