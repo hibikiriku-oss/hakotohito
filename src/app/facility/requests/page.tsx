@@ -441,7 +441,7 @@ export default function FacilityRequestsPage() {
           className="w-full bg-black text-white rounded-2xl p-4 font-bold shadow-sm active:scale-[0.99] transition"
         >
           <div className="flex items-center justify-between">
-            <span>🎵 新しい演奏依頼を作成</span>
+            <span>🎵 新しいオファーを登録</span>
             <span className="text-lg">→</span>
           </div>
         </button>
@@ -555,7 +555,7 @@ export default function FacilityRequestsPage() {
             <div className="text-4xl">🎵</div>
 
             <h2 className="font-bold text-gray-900 mt-4">
-              まだ演奏依頼がありません
+              まだオファーがありません
             </h2>
 
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">
@@ -567,7 +567,7 @@ export default function FacilityRequestsPage() {
               onClick={() => router.push("/facility/request")}
               className="w-full mt-5 bg-black text-white rounded-xl p-4 font-bold"
             >
-              🎵 演奏依頼を作成する
+              🎵 オファーを登録する
             </button>
           </div>
         ) : filteredRequests.length === 0 ? (

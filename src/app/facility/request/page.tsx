@@ -319,7 +319,7 @@ export default function FacilityRequestPage() {
         return;
       }
 
-      alert("演奏依頼を登録しました！");
+      alert("オファーを登録しました！");
       window.location.href = "/facility/home";
     } catch (error) {
       console.error("登録エラー:", error);
@@ -344,7 +344,7 @@ export default function FacilityRequestPage() {
           <p className="text-sm font-medium text-gray-500">案件管理</p>
 
           <h1 className="text-2xl font-bold text-gray-900 mt-1">
-            🎵 ライブ・フェス・セッション募集
+            🎵 オファーを登録
           </h1>
 
           <p className="text-sm text-gray-500 mt-2 leading-relaxed">
@@ -755,7 +755,7 @@ export default function FacilityRequestPage() {
               disabled={loading}
               className="w-full bg-black text-white rounded-2xl p-4 font-bold shadow-sm active:scale-[0.99] transition disabled:bg-gray-300 disabled:text-gray-500"
             >
-              {loading ? "登録中..." : "🎵 演奏依頼を登録する"}
+              {loading ? "登録中..." : "🎵 オファーを登録する"}
             </button>
 
             <p className="text-center text-xs text-gray-400 mt-3 leading-relaxed">

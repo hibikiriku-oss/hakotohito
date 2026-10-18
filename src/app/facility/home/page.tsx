@@ -97,7 +97,7 @@ export default function FacilityHomePage() {
           </div>
 
           <p className="text-sm text-gray-600 mt-3 leading-relaxed">
-            演奏者を探したり、演奏依頼やマッチングを管理できます。
+            演奏者を探したり、オファーやマッチングを管理できます。
           </p>
         </header>
 
@@ -141,7 +141,7 @@ export default function FacilityHomePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-lg font-bold text-gray-900">
-                    🎵 演奏依頼を作成する
+                    🎵 オファーを登録する
                   </div>
 
                   <p className="text-sm text-gray-500 mt-1">
