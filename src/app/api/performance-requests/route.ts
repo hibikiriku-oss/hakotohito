@@ -579,7 +579,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (
-      requestType !== "rental" &&
+      requestType === "rental" &&
       participationFee != null &&
       participationFee !== ""
     ) {
