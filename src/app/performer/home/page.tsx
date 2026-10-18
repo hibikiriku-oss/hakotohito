@@ -80,13 +80,13 @@ export default function PerformerHomePage() {
           </div>
 
           <p className="mt-3 text-sm leading-6 text-gray-600">
-            演奏案件を探したり、施設からの依頼を確認できます。
+            演奏案件やレッスンを探したり、施設からの直接依頼を確認できます。
           </p>
         </header>
 
         {/* メインメニュー */}
         <section className="mt-7 space-y-3">
-          {/* 演奏案件を探す */}
+          {/* オファーを探す */}
           <button
             onClick={() => router.push("/performer/requests")}
             className="w-full rounded-2xl bg-black px-5 py-5 text-left text-white shadow-sm active:scale-[0.99]"
@@ -94,11 +94,11 @@ export default function PerformerHomePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-lg font-bold">
-                  🔍 演奏案件を探す
+                  🔍 オファーを探す
                 </p>
 
                 <p className="mt-1 text-sm text-gray-300">
-                  自分に合ったオファーを探す
+                  演奏案件やイベントなど、自分に合った募集を探す
                 </p>
               </div>
 
@@ -106,7 +106,7 @@ export default function PerformerHomePage() {
             </div>
           </button>
 
-          {/* 施設からのオファーを確認する */}
+          {/* ダイレクトオファーを確認する */}
           <button
             onClick={() => router.push("/performer/invitations")}
             className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-5 py-5 text-left shadow-sm active:bg-blue-100"
@@ -114,11 +114,51 @@ export default function PerformerHomePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-lg font-bold text-gray-900">
-                  ✉️ オファーを確認する
+                  ✉️ ダイレクトオファーを確認する
                 </p>
 
                 <p className="mt-1 text-sm text-gray-600">
                   施設から届いた直接依頼を確認
+                </p>
+              </div>
+
+              <span className="text-2xl text-gray-400">→</span>
+            </div>
+          </button>
+
+          {/* レッスンを探す */}
+          <button
+            onClick={() => router.push("/performer/lesson")}
+            className="w-full rounded-2xl border border-purple-200 bg-purple-50 px-5 py-5 text-left shadow-sm active:bg-purple-100"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold text-gray-900">
+                  🎹 レッスンを探す
+                </p>
+
+                <p className="mt-1 text-sm text-gray-600">
+                  他の演奏者のレッスンを探して申し込む
+                </p>
+              </div>
+
+              <span className="text-2xl text-gray-400">→</span>
+            </div>
+          </button>
+
+          {/* レッスンを募集する */}
+          <button
+            onClick={() => router.push("/performer/lesson/new")}
+            className="w-full rounded-2xl border border-green-200 bg-green-50 px-5 py-5 text-left shadow-sm active:bg-green-100"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-lg font-bold text-gray-900">
+                  🎼 レッスンを募集する
+                </p>
+
+                <p className="mt-1 text-sm text-gray-600">
+                  自分のレッスンを登録して受講者を募集
                 </p>
               </div>
 
