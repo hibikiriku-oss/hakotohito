@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -39,6 +38,8 @@ type LessonOffer = {
   target_levels?: string[] | null;
   performers: Performer | null;
 };
+
+type OfferFilter = "all" | "mine" | "others";
 
 const instrumentOptions = [
   "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ",
@@ -86,9 +87,10 @@ export default function LessonListPage() {
   const [genre, setGenre] = useState("");
   const [searchKey, setSearchKey] = useState(0);
   const [applyingId, setApplyingId] = useState("");
-  const [messageByOffer, setMessageByOffer] = useState<Record<string, string>>(
-    {}
-  );
+  const [messageByOffer, setMessageByOffer] = useState<
+    Record<string, string>
+  >({});
+  const [offerFilter, setOfferFilter] = useState<OfferFilter>("all");
 
   useEffect(() => {
     async function initLiff() {
@@ -170,6 +172,12 @@ export default function LessonListPage() {
       fetchOffers();
     }
   }, [lineUserId, searchKey, fetchOffers]);
+
+  const filteredOffers = offers.filter((offer) => {
+    if (offerFilter === "mine") return offer.is_mine;
+    if (offerFilter === "others") return !offer.is_mine;
+    return true;
+  });
 
   const handleApply = async (offer: LessonOffer) => {
     if (!lineUserId) {
@@ -285,7 +293,9 @@ export default function LessonListPage() {
         </header>
 
         <section className="bg-white border border-gray-200 rounded-2xl p-4 mb-5">
-          <h2 className="font-bold text-gray-900 mb-3">条件を指定して探す</h2>
+          <h2 className="font-bold text-gray-900 mb-3">
+            条件を指定して探す
+          </h2>
 
           <div className="space-y-3">
             <input
@@ -354,10 +364,37 @@ export default function LessonListPage() {
           </div>
         </section>
 
+        <section className="bg-white border border-gray-200 rounded-2xl p-3 mb-4">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { value: "all", label: "すべて" },
+              { value: "mine", label: "自分の募集" },
+              { value: "others", label: "他の人の募集" },
+            ].map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() =>
+                  setOfferFilter(item.value as OfferFilter)
+                }
+                className={`rounded-xl px-2 py-3 text-sm font-bold ${
+                  offerFilter === item.value
+                    ? "bg-black text-white"
+                    : "bg-gray-100 text-gray-700"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </section>
+
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-gray-900">レッスン募集一覧</h2>
           {!loading && (
-            <span className="text-sm text-gray-500">{offers.length}件</span>
+            <span className="text-sm text-gray-500">
+              {filteredOffers.length}件
+            </span>
           )}
         </div>
 
@@ -380,7 +417,7 @@ export default function LessonListPage() {
           </div>
         )}
 
-        {!loading && !errorMessage && offers.length === 0 && (
+        {!loading && !errorMessage && filteredOffers.length === 0 && (
           <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
             <div className="text-4xl mb-3">🎼</div>
             <p className="font-bold text-gray-800">
@@ -399,9 +436,9 @@ export default function LessonListPage() {
           </div>
         )}
 
-        {!loading && !errorMessage && offers.length > 0 && (
+        {!loading && !errorMessage && filteredOffers.length > 0 && (
           <div className="space-y-4">
-            {offers.map((offer) => {
+            {filteredOffers.map((offer) => {
               const teacher = offer.performers;
               const teacherName =
                 teacher?.users?.display_name ||
