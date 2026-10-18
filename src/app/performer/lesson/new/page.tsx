@@ -72,6 +72,29 @@ export default function NewLessonOfferPage() {
   const [capacity, setCapacity] = useState("5");
   const [loading, setLoading] = useState(false);
 
+  // 仮押さえコインの見積もり
+  const feeNumber = Number(lessonFee);
+  const capacityNumber = Number(capacity);
+
+  const validFee =
+    lessonFee.trim() !== "" &&
+    Number.isSafeInteger(feeNumber) &&
+    feeNumber >= 0;
+
+  const validCapacity =
+    capacity.trim() !== "" &&
+    Number.isInteger(capacityNumber) &&
+    capacityNumber >= 1 &&
+    capacityNumber <= 100;
+
+  const coinsPerPerson =
+    validFee ? (feeNumber === 0 ? 5 : Math.ceil(feeNumber * 0.01)) : 0;
+
+  const estimatedReservedCoins =
+    validFee && validCapacity
+      ? coinsPerPerson * capacityNumber
+      : null;
+
   useEffect(() => {
     async function initLiff() {
       try {
@@ -142,20 +165,12 @@ export default function NewLessonOfferPage() {
       return;
     }
 
-    if (
-      lessonFee === "" ||
-      !Number.isSafeInteger(Number(lessonFee)) ||
-      Number(lessonFee) < 0
-    ) {
+    if (!validFee) {
       alert("レッスン料は0円以上の整数で入力してください");
       return;
     }
 
-    if (
-      !Number.isInteger(Number(capacity)) ||
-      Number(capacity) < 1 ||
-      Number(capacity) > 100
-    ) {
+    if (!validCapacity) {
       alert("定員は1〜100人で入力してください");
       return;
     }
@@ -198,19 +213,42 @@ export default function NewLessonOfferPage() {
           lessonDate: lessonDate || null,
           startTime: startTime || null,
           endTime: endTime || null,
-          lessonFee: Number(lessonFee),
-          capacity: Number(capacity),
+          lessonFee: feeNumber,
+          capacity: capacityNumber,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.error || "レッスン募集の登録に失敗しました");
+        let message = data.error || "レッスン募集の登録に失敗しました";
+
+        if (
+          Number.isFinite(Number(data.required_coins)) &&
+          Number.isFinite(Number(data.available_coins))
+        ) {
+          message +=
+            `\n\n必要なコイン：${Number(data.required_coins).toLocaleString()}コイン` +
+            `\n利用可能なコイン：${Number(data.available_coins).toLocaleString()}コイン`;
+
+          if (Number(data.required_coins) > Number(data.available_coins)) {
+            message +=
+              "\n\nコインが不足しています。定員を減らすか、コインを追加してから再度お試しください。";
+          }
+        }
+
+        alert(message);
         return;
       }
 
-      alert("レッスン募集を登録しました！");
+      const reservedCoins = Number(data.reserved_coins);
+
+      alert(
+        Number.isFinite(reservedCoins)
+          ? `レッスン募集を登録しました！\n${reservedCoins.toLocaleString()}コインを仮押さえしました。`
+          : "レッスン募集を登録しました！"
+      );
+
       window.location.href = "/performer/lesson";
     } catch (error) {
       console.error("レッスン募集登録エラー:", error);
@@ -226,10 +264,12 @@ export default function NewLessonOfferPage() {
         <header className="pb-6">
           <button
             type="button"
-            onClick={() => window.history.back()}
+            onClick={() => {
+              window.location.href = "/performer/lesson";
+            }}
             className="text-sm text-gray-500 mb-4"
           >
-            ← 戻る
+            ← レッスン募集一覧に戻る
           </button>
 
           <p className="text-sm font-medium text-gray-500">レッスン管理</p>
@@ -426,7 +466,9 @@ export default function NewLessonOfferPage() {
                   <input
                     type="checkbox"
                     checked={genres.includes(item)}
-                    onChange={() => toggleChoice(item, genres, setGenres)}
+                    onChange={() =>
+                      toggleChoice(item, genres, setGenres)
+                    }
                   />
                   <span>{item}</span>
                 </label>
@@ -482,6 +524,35 @@ export default function NewLessonOfferPage() {
               />
               <span className="font-bold text-gray-600">人</span>
             </div>
+          </section>
+
+          <section className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+            <h2 className="font-bold text-gray-900 mb-2">
+              仮押さえされるコイン
+            </h2>
+
+            {estimatedReservedCoins === null ? (
+              <p className="text-sm text-red-600">
+                レッスン料は0円以上の整数、定員は1〜100人で入力してください。
+              </p>
+            ) : (
+              <>
+                <p className="text-3xl font-bold text-gray-900">
+                  {estimatedReservedCoins.toLocaleString()}
+                  <span className="text-base ml-1">コイン</span>
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  1人あたり {coinsPerPerson.toLocaleString()} コイン × 定員{" "}
+                  {capacityNumber} 人
+                </p>
+                <p className="text-xs text-gray-500 mt-3 leading-relaxed">
+                  {feeNumber === 0
+                    ? "無料レッスンは、成立1人あたり5コインです。"
+                    : "有料レッスンは、レッスン料の1%（1コイン未満切り上げ）が成立1人あたりの手数料です。"}
+                  募集登録時に、定員分のコインが仮押さえされます。実際の仮押さえ額はサーバー側で確定します。
+                </p>
+              </>
+            )}
           </section>
 
           <div className="pt-1 pb-6">
