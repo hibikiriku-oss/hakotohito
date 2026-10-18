@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -196,6 +197,15 @@ export default function LessonDetailPage() {
     }
   }
 
+  function handleEdit() {
+    if (!offer?.is_mine) {
+      setError("自分が募集したレッスンだけ編集できます");
+      return;
+    }
+
+    router.push(`/performer/lesson/${offer.id}/edit`);
+  }
+
   if (loading) {
     return (
       <main className="mx-auto max-w-xl p-4">
@@ -353,8 +363,18 @@ export default function LessonDetailPage() {
       </section>
 
       {offer.is_mine ? (
-        <section className="rounded-xl border bg-amber-50 p-4 text-sm text-amber-900">
-          これはあなたが募集しているレッスンです。自分の募集には応募できません。
+        <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm leading-6 text-amber-900">
+            これはあなたが募集しているレッスンです。
+            募集内容を変更する場合は、下のボタンから編集してください。
+          </p>
+          <button
+            type="button"
+            onClick={handleEdit}
+            className="w-full rounded-xl bg-black px-4 py-3 font-bold text-white"
+          >
+            ✏️ 募集内容を編集する
+          </button>
         </section>
       ) : isOpen ? (
         <section className="space-y-3 rounded-2xl border p-5">
