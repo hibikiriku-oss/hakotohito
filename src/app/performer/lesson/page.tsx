@@ -36,6 +36,7 @@ type LessonOffer = {
   status: string;
   created_at: string;
   is_mine: boolean;
+  target_levels?: string[] | null;
   performers: Performer | null;
 };
 
@@ -52,6 +53,8 @@ const genreOptions = [
   "童謡・唱歌", "アニメ・ゲーム音楽", "映画音楽",
   "民謡", "邦楽", "ロック", "フォーク", "ゴスペル",
 ];
+
+const levelOptions = ["初心者", "アマ", "プロ"];
 
 const inputClass =
   "w-full border border-gray-200 rounded-xl px-3 py-3 bg-white text-gray-900 outline-none focus:ring-2 focus:ring-black";
@@ -181,7 +184,11 @@ export default function LessonListPage() {
 
     const confirmed = window.confirm(
       `「${offer.title}」に申し込みますか？\n\n` +
-        `レッスン料：${offer.lesson_fee === 0 ? "無料" : `${offer.lesson_fee.toLocaleString()}円`}\n\n` +
+        `レッスン料：${
+          offer.lesson_fee === 0
+            ? "無料"
+            : `${offer.lesson_fee.toLocaleString()}円`
+        }\n\n` +
         "申し込みが成立すると、募集者にレッスン成立手数料が発生します。"
     );
 
@@ -238,6 +245,10 @@ export default function LessonListPage() {
     setInstrument("");
     setGenre("");
     setSearchKey((value) => value + 1);
+  };
+
+  const openDetails = (offer: LessonOffer) => {
+    router.push(`/performer/lesson/${offer.id}`);
   };
 
   return (
@@ -346,9 +357,7 @@ export default function LessonListPage() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-gray-900">レッスン募集一覧</h2>
           {!loading && (
-            <span className="text-sm text-gray-500">
-              {offers.length}件
-            </span>
+            <span className="text-sm text-gray-500">{offers.length}件</span>
           )}
         </div>
 
@@ -399,6 +408,10 @@ export default function LessonListPage() {
                 teacher?.name ||
                 "演奏者";
 
+              const targetLevels = (offer.target_levels || []).filter(
+                (level) => levelOptions.includes(level)
+              );
+
               return (
                 <article
                   key={offer.id}
@@ -430,6 +443,28 @@ export default function LessonListPage() {
                     <p className="text-xs text-gray-500 mt-1">
                       1回あたりのレッスン料
                     </p>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-sm font-bold text-gray-700 mb-2">
+                      対象ランク
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {targetLevels.length > 0 ? (
+                        targetLevels.map((level) => (
+                          <span
+                            key={level}
+                            className="rounded-full bg-blue-50 text-blue-800 border border-blue-100 px-3 py-1 text-xs font-bold"
+                          >
+                            {level}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-gray-500">
+                          指定なし
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {offer.description && (
@@ -479,12 +514,24 @@ export default function LessonListPage() {
                     </div>
                   )}
 
+                  <button
+                    type="button"
+                    onClick={() => openDetails(offer)}
+                    className="w-full mt-5 border border-gray-300 text-gray-900 rounded-xl py-3 font-bold hover:bg-gray-50"
+                  >
+                    募集の詳細を見る →
+                  </button>
+
                   {!offer.is_mine && (
                     <div className="mt-5 border-t border-gray-100 pt-4">
-                      <label className="block text-sm font-bold text-gray-800 mb-2">
+                      <label
+                        htmlFor={`lesson-message-${offer.id}`}
+                        className="block text-sm font-bold text-gray-800 mb-2"
+                      >
                         講師へのメッセージ（任意）
                       </label>
                       <textarea
+                        id={`lesson-message-${offer.id}`}
                         value={messageByOffer[offer.id] || ""}
                         onChange={(e) =>
                           setMessageByOffer((previous) => ({

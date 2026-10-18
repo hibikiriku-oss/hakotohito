@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -5,6 +6,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const VALID_TARGET_LEVELS = ["初心者", "アマ", "プロ"];
 
 function isValidDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -40,6 +43,24 @@ function normalizeStringArray(value: unknown): string[] | null {
   }
 
   return Array.from(new Set(value.map((item: string) => item.trim())));
+}
+
+function normalizeTargetLevels(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+
+  if (
+    !value.every(
+      (item) =>
+        typeof item === "string" &&
+        VALID_TARGET_LEVELS.includes(item)
+    )
+  ) {
+    return null;
+  }
+
+  return Array.from(new Set(value));
 }
 
 async function getCurrentPerformer(lineUserId: string) {
@@ -104,6 +125,7 @@ export async function GET(request: NextRequest) {
         end_time,
         lesson_fee,
         capacity,
+        target_levels,
         status,
         created_at,
         reserved_coins,
@@ -182,7 +204,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// レッスン募集登録。登録時に定員分のコインを仮押さえします。
+// レッスン募集登録。対象ランクを保存し、定員分のコインを仮押さえします。
 export async function POST(request: NextRequest) {
   try {
     const lineUserId = request.headers.get("x-line-user-id");
@@ -221,6 +243,7 @@ export async function POST(request: NextRequest) {
 
     const instruments = normalizeStringArray(body.instruments);
     const genres = normalizeStringArray(body.genres);
+    const targetLevels = normalizeTargetLevels(body.targetLevels);
 
     const lessonDate =
       body.lessonDate === "" || body.lessonDate == null
@@ -268,10 +291,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (
-      !Number.isSafeInteger(lessonFee) ||
-      lessonFee < 0
-    ) {
+    if (targetLevels === null) {
+      return NextResponse.json(
+        {
+          error:
+            "対象ランクを1つ以上選択してください（初心者・アマ・プロ）",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!Number.isSafeInteger(lessonFee) || lessonFee < 0) {
       return NextResponse.json(
         { error: "レッスン料は0円以上の整数で入力してください" },
         { status: 400 }
@@ -320,9 +350,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 仮押さえ処理を含むデータベース関数を呼び出す
-    const { data, error } = await supabase.rpc(
-      "create_lesson_offer",
+    // 対象ランクの保存とコイン仮押さえをDB関数でまとめて処理
+    const { data: result, error } = await supabase.rpc(
+      "create_lesson_offer_with_levels",
       {
         p_performer_id: performer.id,
         p_title: title,
@@ -335,6 +365,7 @@ export async function POST(request: NextRequest) {
         p_end_time: endTime,
         p_lesson_fee: lessonFee,
         p_capacity: capacity,
+        p_target_levels: targetLevels,
       }
     );
 
@@ -342,39 +373,76 @@ export async function POST(request: NextRequest) {
       console.error("レッスン募集登録RPCエラー:", error);
 
       return NextResponse.json(
-        { error: "レッスン募集の登録に失敗しました。時間をおいて再度お試しください。" },
+        {
+          error:
+            "レッスン募集の登録に失敗しました。時間をおいて再度お試しください。",
+        },
         { status: 500 }
       );
     }
 
-    if (!data || data.success !== true) {
+    if (!result || result.success !== true) {
       const errorMessage =
-        typeof data?.error === "string"
-          ? data.error
+        typeof result?.error === "string"
+          ? result.error
           : "レッスン募集を登録できませんでした";
-
-      const status =
-        errorMessage.includes("コインが不足") ? 400 : 400;
 
       return NextResponse.json(
         {
           success: false,
           error: errorMessage,
-          required_coins: data?.required_coins,
-          available_coins: data?.available_coins,
+          required_coins: result?.required_coins,
+          available_coins: result?.available_coins,
         },
-        { status }
+        { status: 400 }
       );
+    }
+
+    // 登録された募集の詳細を取得して返す
+    const { data: offer, error: offerError } = await supabase
+      .from("lesson_offers")
+      .select(`
+        id,
+        performer_id,
+        title,
+        description,
+        instruments,
+        genres,
+        area,
+        lesson_date,
+        start_time,
+        end_time,
+        lesson_fee,
+        capacity,
+        target_levels,
+        status,
+        created_at,
+        reserved_coins
+      `)
+      .eq("id", result.offer_id)
+      .single();
+
+    if (offerError || !offer) {
+      console.error("登録済みレッスン募集の再取得エラー:", offerError);
+
+      // 登録自体は成功しているため、RPC結果から最低限の情報を返します。
+      return NextResponse.json({
+        success: true,
+        offer: {
+          id: result.offer_id,
+          target_levels: targetLevels,
+          reserved_coins: result.reserved_coins,
+        },
+        reserved_coins: result.reserved_coins,
+        message: result.message,
+      });
     }
 
     return NextResponse.json({
       success: true,
-      offer: {
-        id: data.offer_id,
-        reserved_coins: data.reserved_coins,
-      },
-      reserved_coins: data.reserved_coins,
-      message: data.message,
+      offer,
+      reserved_coins: result.reserved_coins,
+      message: result.message,
     });
   } catch (error) {
     console.error("レッスン募集登録APIエラー:", error);

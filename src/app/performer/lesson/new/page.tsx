@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -17,6 +16,8 @@ const genreOptions = [
   "童謡・唱歌", "アニメ・ゲーム音楽", "映画音楽",
   "民謡", "邦楽", "ロック", "フォーク", "ゴスペル",
 ];
+
+const targetLevelOptions = ["初心者", "アマ", "プロ"];
 
 const prefectures = [
   "北海道",
@@ -56,6 +57,12 @@ export default function NewLessonOfferPage() {
   const [otherInstrument, setOtherInstrument] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
   const [otherGenre, setOtherGenre] = useState("");
+
+  const [targetLevels, setTargetLevels] = useState<string[]>([
+    "初心者",
+    "アマ",
+    "プロ",
+  ]);
 
   const [lessonDate, setLessonDate] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -115,11 +122,18 @@ export default function NewLessonOfferPage() {
       return;
     }
 
+    if (targetLevels.length === 0) {
+      alert("対象ランクを1つ以上選択してください");
+      return;
+    }
+
     if (
       (lessonDate || startTime || endTime) &&
       (!lessonDate || !startTime || !endTime)
     ) {
-      alert("日時を設定する場合は、日付・開始時間・終了時間をすべて入力してください");
+      alert(
+        "日時を設定する場合は、日付・開始時間・終了時間をすべて入力してください"
+      );
       return;
     }
 
@@ -147,7 +161,9 @@ export default function NewLessonOfferPage() {
     }
 
     if (!lineUserId) {
-      alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
+      alert(
+        "LINEユーザー情報を取得中です。少し待ってから再度お試しください。"
+      );
       return;
     }
 
@@ -177,6 +193,7 @@ export default function NewLessonOfferPage() {
           description: description.trim(),
           instruments: finalInstruments,
           genres: finalGenres,
+          targetLevels,
           area,
           lessonDate: lessonDate || null,
           startTime: startTime || null,
@@ -255,6 +272,37 @@ export default function NewLessonOfferPage() {
                 rows={5}
                 className={`${inputClass} resize-none`}
               />
+            </div>
+
+            <div>
+              <h3 className="font-bold text-sm text-gray-800 mb-2">
+                対象ランク <span className="text-red-500">＊必須</span>
+              </h3>
+              <p className="text-xs text-gray-500 mb-3">
+                このレッスンを受講できる演奏者のランクを選択してください。複数選択できます。
+              </p>
+
+              <div className="grid grid-cols-3 gap-2">
+                {targetLevelOptions.map((item) => (
+                  <label
+                    key={item}
+                    className={`${checkboxClass} justify-center ${
+                      targetLevels.includes(item)
+                        ? "border-black bg-gray-100 font-bold"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={targetLevels.includes(item)}
+                      onChange={() =>
+                        toggleChoice(item, targetLevels, setTargetLevels)
+                      }
+                    />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
             </div>
 
             <div>
