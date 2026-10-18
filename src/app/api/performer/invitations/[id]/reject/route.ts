@@ -190,7 +190,7 @@ export async function POST(
       const messages = [
         {
           type: "flex",
-          altText: "演奏者が演奏依頼を辞退しました",
+          altText: "演奏者がオファーを辞退しました",
           contents: {
             type: "bubble",
             body: {
@@ -200,7 +200,7 @@ export async function POST(
               contents: [
                 {
                   type: "text",
-                  text: "演奏依頼について",
+                  text: "オファーについて",
                   weight: "bold",
                   size: "xl",
                 },

@@ -47,7 +47,7 @@ const EMPTY_OPTIONS: FilterOptions = {
 };
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
-  performance: "演奏依頼",
+  performance: "オファー",
   live: "ライブ募集",
   festival: "フェス募集",
   session: "セッション募集",
@@ -438,7 +438,7 @@ export default function PerformerRequestsPage() {
               </h1>
               <p className="mt-2 text-sm leading-6 text-gray-500">
                 {requestType === "performance"
-                  ? "自分に合った演奏依頼を探しましょう。"
+                  ? "自分に合ったオファーを探しましょう。"
                   : "ライブ・フェス・セッション・施設レンタルの募集を探しましょう。"}
               </p>
             </div>

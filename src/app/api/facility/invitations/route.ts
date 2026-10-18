@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
       const messages = [
         {
           type: "flex",
-          altText: "施設から演奏依頼が届きました",
+          altText: "施設からオファーが届きました",
           contents: {
             type: "bubble",
             body: {
@@ -232,14 +232,14 @@ export async function POST(request: NextRequest) {
               contents: [
                 {
                   type: "text",
-                  text: "🎵 演奏依頼が届きました",
+                  text: "🎵 オファーが届きました",
                   weight: "bold",
                   size: "xl",
                   wrap: true,
                 },
                 {
                   type: "text",
-                  text: `${facilityName}から演奏依頼が届いています。`,
+                  text: `${facilityName}からオファーが届いています。`,
                   margin: "md",
                   wrap: true,
                 },
@@ -316,7 +316,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "演奏依頼を送信しました",
+      message: "オファーを送信しました",
       application,
       notificationSent,
       balance: result.balance_after,

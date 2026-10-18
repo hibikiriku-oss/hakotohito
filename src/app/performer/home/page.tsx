@@ -98,7 +98,7 @@ export default function PerformerHomePage() {
                 </p>
 
                 <p className="mt-1 text-sm text-gray-300">
-                  自分に合った演奏依頼を探す
+                  自分に合ったオファーを探す
                 </p>
               </div>
 
@@ -106,7 +106,7 @@ export default function PerformerHomePage() {
             </div>
           </button>
 
-          {/* 施設からの演奏依頼を確認する */}
+          {/* 施設からのオファーを確認する */}
           <button
             onClick={() => router.push("/performer/invitations")}
             className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-5 py-5 text-left shadow-sm active:bg-blue-100"
@@ -114,7 +114,7 @@ export default function PerformerHomePage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-lg font-bold text-gray-900">
-                  ✉️ 演奏依頼を確認する
+                  ✉️ オファーを確認する
                 </p>
 
                 <p className="mt-1 text-sm text-gray-600">

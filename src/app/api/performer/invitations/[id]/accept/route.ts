@@ -217,7 +217,7 @@ export async function POST(
         {
           type: "flex",
           altText:
-            "演奏依頼が承諾され、マッチングが成立しました",
+            "オファーが承諾され、マッチングが成立しました",
           contents: {
             type: "bubble",
             body: {

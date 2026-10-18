@@ -331,7 +331,7 @@ export default function FacilityPage() {
 
                   <p className="text-xs text-gray-500 leading-5">
                     施設名・施設種類・住所は必須項目です。
-                    登録後は施設ホーム画面から演奏依頼を作成できます。
+                    登録後は施設ホーム画面からオファーを登録できます。
                   </p>
                 </div>
               </div>

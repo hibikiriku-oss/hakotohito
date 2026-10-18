@@ -254,7 +254,7 @@ export default function PerformerInvitationDetailPage() {
             </div>
 
             <h1 className="text-xl font-bold text-gray-900 mb-3">
-              依頼詳細を表示できません
+              オファー詳細を表示できません
             </h1>
 
             <div className="bg-red-50 border border-red-100 text-red-700 rounded-2xl p-4 text-sm leading-6">
@@ -268,7 +268,7 @@ export default function PerformerInvitationDetailPage() {
               }
               className="w-full mt-5 bg-black text-white rounded-2xl py-4 font-bold"
             >
-              依頼一覧に戻る
+              オファー一覧に戻る
             </button>
           </div>
         </div>
@@ -296,7 +296,7 @@ export default function PerformerInvitationDetailPage() {
               }
               className="w-full mt-6 bg-black text-white rounded-2xl py-4 font-bold"
             >
-              依頼一覧に戻る
+              オファー一覧に戻る
             </button>
           </div>
         </div>
@@ -342,7 +342,7 @@ export default function PerformerInvitationDetailPage() {
           }
           className="inline-flex items-center text-sm font-bold text-gray-600 py-2 mb-3"
         >
-          ← 依頼一覧に戻る
+          ← オファー一覧に戻る
         </button>
 
         {/* メインカード */}
@@ -352,7 +352,7 @@ export default function PerformerInvitationDetailPage() {
           <div className="bg-black text-white px-5 py-6">
             <div className="flex items-center justify-between gap-3 mb-3">
               <span className="text-xs font-bold tracking-wider text-gray-300">
-                施設からの演奏依頼
+                施設からのオファー
               </span>
 
               <span className="text-xs font-bold bg-white/10 border border-white/10 rounded-full px-3 py-1">
@@ -662,7 +662,7 @@ export default function PerformerInvitationDetailPage() {
                   </p>
 
                   <p className="text-xs mt-1 text-gray-500">
-                    依頼一覧から他の依頼を確認できます。
+                    オファー一覧からほかのオファーを確認できます。
                   </p>
                 </div>
 
@@ -673,7 +673,7 @@ export default function PerformerInvitationDetailPage() {
                   }
                   className="w-full bg-black text-white rounded-2xl py-4 font-bold"
                 >
-                  依頼一覧に戻る
+                  オファー一覧に戻る
                 </button>
               </div>
             )}

@@ -216,7 +216,7 @@ export default function FacilityPerformerInvitePage() {
         );
       }
 
-      setSuccess("演奏依頼を送信しました");
+      setSuccess("オファーを送信しました");
 
       setTimeout(() => {
         router.push("/facility/performers");

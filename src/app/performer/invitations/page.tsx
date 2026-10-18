@@ -221,7 +221,7 @@ export default function PerformerInvitationsPage() {
             </p>
 
             <h1 className="text-2xl font-bold text-gray-900 mt-1">
-              演奏依頼
+              オファー
             </h1>
 
             <p className="text-sm text-gray-500 mt-2">
@@ -251,7 +251,7 @@ export default function PerformerInvitationsPage() {
           </div>
         )}
 
-        {/* 依頼一覧 */}
+        {/* オファー一覧 */}
         {invitations.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center shadow-sm">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-3xl">
@@ -259,7 +259,7 @@ export default function PerformerInvitationsPage() {
             </div>
 
             <h2 className="font-bold text-lg text-gray-900 mt-5">
-              まだ演奏依頼はありません
+              まだオファーはありません
             </h2>
 
             <p className="text-sm leading-6 text-gray-500 mt-2">
@@ -271,7 +271,7 @@ export default function PerformerInvitationsPage() {
               onClick={() => router.push("/performer/requests")}
               className="w-full mt-6 bg-black text-white rounded-xl py-3.5 font-bold"
             >
-              演奏依頼を探す
+              オファーを探す
             </button>
           </div>
         ) : (
@@ -290,7 +290,7 @@ export default function PerformerInvitationsPage() {
                       </p>
 
                       <h2 className="font-bold text-lg leading-7 text-gray-900 break-words">
-                        {invitation.request?.title || "演奏依頼"}
+                        {invitation.request?.title || "オファー"}
                       </h2>
                     </div>
 

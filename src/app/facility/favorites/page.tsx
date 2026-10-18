@@ -311,7 +311,7 @@ export default function FacilityFavoritesPage() {
 
             <p className="mt-2 text-sm leading-6 text-gray-500">
               気になる演奏者を保存して、
-              次の演奏依頼につなげましょう。
+              次のオファーにつなげましょう。
             </p>
           </div>
         </header>
