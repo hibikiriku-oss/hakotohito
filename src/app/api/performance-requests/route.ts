@@ -434,12 +434,76 @@ export async function GET(request: NextRequest) {
       });
     }
 
+
     const total = filteredRequests.length;
     const from = (page - 1) * limit;
     const requests = filteredRequests.slice(from, from + limit);
 
+    // ログイン中の演奏者の応募状況を取得
+    let requestsWithApplicationStatus = requests.map((item) => ({
+      ...item,
+      application_status: null as string | null,
+    }));
+
+    if (lineUserId && requests.length > 0) {
+      const { data: user, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("line_user_id", lineUserId)
+        .maybeSingle();
+
+      if (userError) {
+        throw new Error(`ユーザー取得エラー: ${userError.message}`);
+      }
+
+      if (user) {
+        const { data: performer, error: performerError } = await supabase
+          .from("performers")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (performerError) {
+          throw new Error(
+            `演奏者プロフィール取得エラー: ${performerError.message}`
+          );
+        }
+
+        if (performer) {
+          const requestIds = requests.map((item) => item.id);
+
+          const { data: applications, error: applicationsError } =
+            await supabase
+              .from("applications")
+              .select("request_id, status")
+              .eq("performer_id", performer.id)
+              .in("request_id", requestIds);
+
+          if (applicationsError) {
+            throw new Error(
+              `応募状況取得エラー: ${applicationsError.message}`
+            );
+          }
+
+          const applicationStatusByRequestId = new Map(
+            (applications || []).map((application) => [
+              application.request_id,
+              application.status,
+            ])
+          );
+
+          requestsWithApplicationStatus = requests.map((item) => ({
+            ...item,
+            application_status:
+              applicationStatusByRequestId.get(item.id) ?? null,
+          }));
+        }
+      }
+    }
+
+
     return NextResponse.json({
-      requests,
+      requests: requestsWithApplicationStatus,
       total,
       page,
       limit,

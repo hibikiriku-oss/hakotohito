@@ -30,6 +30,7 @@ type PerformanceRequest = {
   status: string;
   created_at: string;
   facilities: Facility | null;
+  application_status: string | null;
 };
 
 type FilterOptions = {
@@ -781,6 +782,14 @@ export default function PerformerRequestsPage() {
                   REQUEST_TYPE_LABELS[request.request_type] ||
                   "募集";
 
+                const applicationStatusLabel =
+                  request.application_status === "pending" ||
+                  request.application_status === "accepted"
+                    ? "応募済み"
+                    : request.application_status === "rejected"
+                      ? "見送り"
+                      : null;
+
                 return (
                   <button
                     key={request.id}
@@ -792,6 +801,7 @@ export default function PerformerRequestsPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
                             request.request_type === "performance"
@@ -803,6 +813,19 @@ export default function PerformerRequestsPage() {
                         >
                           {typeLabel}
                         </span>
+
+                        {applicationStatusLabel && (
+                          <span
+                            className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              request.application_status === "rejected"
+                                ? "bg-gray-100 text-gray-600"
+                                : "bg-green-50 text-green-700"
+                            }`}
+                          >
+                            {applicationStatusLabel}
+                          </span>
+                        )}
+                      </div>
                         <h3 className="mt-2 text-lg font-bold leading-7 text-gray-900">
                           {request.title}
                         </h3>
