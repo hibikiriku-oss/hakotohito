@@ -188,6 +188,14 @@ export async function GET(request: NextRequest) {
     const requestedTimeEnd = searchParams.get("timeEnd") || "";
     const rewardOnly = searchParams.get("rewardOnly") === "true";
     const sort = searchParams.get("sort") || "newest";
+    const requestType = searchParams.get("requestType") || "performance";
+
+    if (!["performance", "events"].includes(requestType)) {
+      return NextResponse.json(
+        { error: "募集タイプの指定が正しくありません" },
+        { status: 400 }
+      );
+    }
 
     if (
       dateType &&
@@ -279,6 +287,10 @@ export async function GET(request: NextRequest) {
           instruments,
           genres,
           reward,
+          request_type,
+          max_participants,
+          participation_fee,
+          rental_fee,
           target_levels,
           status,
           created_at,
@@ -291,6 +303,17 @@ export async function GET(request: NextRequest) {
         .eq("status", "open")
         // 応募期限当日は表示。日本時間で翌日になったら除外。
         .gte("application_deadline", today);
+
+      if (requestType === "performance") {
+        query = query.eq("request_type", "performance");
+      } else {
+        query = query.in("request_type", [
+          "live",
+          "festival",
+          "session",
+          "rental",
+        ]);
+      }
 
       if (escapedKeyword.trim()) {
         query = query.or(

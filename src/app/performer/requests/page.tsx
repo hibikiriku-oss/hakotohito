@@ -10,6 +10,8 @@ type Facility = {
   address: string;
 };
 
+type RequestType = "performance" | "events";
+
 type PerformanceRequest = {
   id: string;
   title: string;
@@ -21,6 +23,10 @@ type PerformanceRequest = {
   instruments: string[];
   genres: string[];
   reward: number | null;
+  request_type: string;
+  max_participants: number | null;
+  participation_fee: number | null;
+  rental_fee: number | null;
   status: string;
   created_at: string;
   facilities: Facility | null;
@@ -40,6 +46,14 @@ const EMPTY_OPTIONS: FilterOptions = {
   genres: [],
 };
 
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  performance: "演奏依頼",
+  live: "ライブ募集",
+  festival: "フェス募集",
+  session: "セッション募集",
+  rental: "施設レンタル",
+};
+
 export default function PerformerRequestsPage() {
   const router = useRouter();
 
@@ -51,6 +65,9 @@ export default function PerformerRequestsPage() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [lineUserId, setLineUserId] = useState("");
+
+  const [requestType, setRequestType] =
+    useState<RequestType>("performance");
 
   const [keyword, setKeyword] = useState("");
   const [debouncedKeyword, setDebouncedKeyword] = useState("");
@@ -159,6 +176,7 @@ export default function PerformerRequestsPage() {
           page: String(page),
           limit: String(PAGE_SIZE),
           sort,
+          requestType,
           keyword: debouncedKeyword.trim(),
           area: areaFilter,
           instrument: instrumentFilter,
@@ -167,10 +185,15 @@ export default function PerformerRequestsPage() {
           dateType,
           dateFrom,
           dateTo,
-          timePreset,
-          timeStart: timePreset ? "" : timeStart,
-          timeEnd: timePreset ? "" : timeEnd,
-          rewardOnly: String(rewardOnly),
+          timePreset:
+            timePreset === "custom" ? "" : timePreset,
+          timeStart:
+            timePreset === "custom" ? timeStart : "",
+          timeEnd:
+            timePreset === "custom" ? timeEnd : "",
+          rewardOnly: String(
+            requestType === "performance" && rewardOnly
+          ),
         });
 
         const response = await fetch(
@@ -217,6 +240,7 @@ export default function PerformerRequestsPage() {
     };
   }, [
     lineUserId,
+    requestType,
     page,
     sort,
     debouncedKeyword,
@@ -270,8 +294,16 @@ export default function PerformerRequestsPage() {
     setPage(1);
   };
 
+  const changeRequestType = (nextType: RequestType) => {
+    setRequestType(nextType);
+    setPage(1);
+    setLoading(true);
+    setError("");
+  };
+
   const clearFilters = () => {
     setKeyword("");
+    setDebouncedKeyword("");
     setAreaFilter("");
     setInstrumentFilter("");
     setGenreFilter("");
@@ -299,6 +331,11 @@ export default function PerformerRequestsPage() {
     setReloadKey((current) => current + 1);
   };
 
+  const pageTitle =
+    requestType === "performance"
+      ? "🎵 演奏案件を探す"
+      : "🎪 イベント・レンタル募集";
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50">
@@ -311,12 +348,12 @@ export default function PerformerRequestsPage() {
             ← ホームへ戻る
           </button>
           <h1 className="mt-4 text-2xl font-bold text-gray-900">
-            🎵 演奏案件を探す
+            {pageTitle}
           </h1>
           <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
             <div className="text-3xl">🎵</div>
             <p className="mt-3 text-sm text-gray-500">
-              案件を読み込んでいます…
+              募集を読み込んでいます…
             </p>
           </div>
         </div>
@@ -336,8 +373,34 @@ export default function PerformerRequestsPage() {
             ← ホームへ戻る
           </button>
           <h1 className="mt-4 text-2xl font-bold text-gray-900">
-            🎵 演奏案件を探す
+            {pageTitle}
           </h1>
+
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => changeRequestType("performance")}
+              className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                requestType === "performance"
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-gray-200 bg-white text-gray-600"
+              }`}
+            >
+              🎵 演奏案件
+            </button>
+            <button
+              type="button"
+              onClick={() => changeRequestType("events")}
+              className={`rounded-xl border px-3 py-3 text-sm font-semibold ${
+                requestType === "events"
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-gray-200 bg-white text-gray-600"
+              }`}
+            >
+              🎪 イベント・レンタル
+            </button>
+          </div>
+
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
             <p className="text-sm text-red-600">{error}</p>
           </div>
@@ -371,10 +434,12 @@ export default function PerformerRequestsPage() {
           <div className="mt-4 flex items-start justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                🎵 演奏案件を探す
+                {pageTitle}
               </h1>
               <p className="mt-2 text-sm leading-6 text-gray-500">
-                自分に合った演奏依頼を探しましょう。
+                {requestType === "performance"
+                  ? "自分に合った演奏依頼を探しましょう。"
+                  : "ライブ・フェス・セッション・施設レンタルの募集を探しましょう。"}
               </p>
             </div>
             <div className="shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5">
@@ -384,11 +449,36 @@ export default function PerformerRequestsPage() {
           </div>
         </header>
 
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => changeRequestType("performance")}
+            className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+              requestType === "performance"
+                ? "border-blue-600 bg-blue-600 text-white"
+                : "border-gray-200 bg-white text-gray-600"
+            }`}
+          >
+            🎵 演奏案件
+          </button>
+          <button
+            type="button"
+            onClick={() => changeRequestType("events")}
+            className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+              requestType === "events"
+                ? "border-blue-600 bg-blue-600 text-white"
+                : "border-gray-200 bg-white text-gray-600"
+            }`}
+          >
+            🎪 イベント・レンタル
+          </button>
+        </div>
+
         <section className="mt-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-gray-900">
-                🔎 案件を絞り込む
+                🔎 募集を絞り込む
               </h2>
               <p className="mt-1 text-xs text-gray-500">
                 条件を指定して検索できます。
@@ -414,7 +504,7 @@ export default function PerformerRequestsPage() {
                 onChange={(event) =>
                   updateFilter(() => setKeyword(event.target.value))
                 }
-                placeholder="案件名・説明から検索"
+                placeholder="募集名・説明から検索"
                 className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none focus:border-gray-400 focus:bg-white"
               />
             </div>
@@ -555,7 +645,7 @@ export default function PerformerRequestsPage() {
 
             <div className="border-t border-gray-100 pt-4">
               <h3 className="text-sm font-bold text-gray-800">
-                🕐 演奏時間の条件
+                🕐 開催時間の条件
               </h3>
               <label className="mb-2 mt-3 block text-xs font-semibold text-gray-600">
                 時間帯
@@ -605,28 +695,30 @@ export default function PerformerRequestsPage() {
                 </div>
               )}
               <p className="mt-2 text-xs leading-5 text-gray-500">
-                指定した時間帯と演奏案件の時間が重なる案件を表示します。
+                指定した時間帯と募集の開催時間が重なるものを表示します。
               </p>
             </div>
 
-            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-              <input
-                type="checkbox"
-                checked={rewardOnly}
-                onChange={(event) =>
-                  updateFilter(() => setRewardOnly(event.target.checked))
-                }
-                className="h-5 w-5 rounded border-gray-300"
-              />
-              <div>
-                <p className="text-sm font-semibold text-gray-800">
-                  💰 謝礼ありの案件のみ
-                </p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  謝礼が設定されている案件を表示
-                </p>
-              </div>
-            </label>
+            {requestType === "performance" && (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={rewardOnly}
+                  onChange={(event) =>
+                    updateFilter(() => setRewardOnly(event.target.checked))
+                  }
+                  className="h-5 w-5 rounded border-gray-300"
+                />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">
+                    💰 謝礼ありの案件のみ
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    謝礼が設定されている案件を表示
+                  </p>
+                </div>
+              </label>
+            )}
           </div>
         </section>
 
@@ -634,11 +726,13 @@ export default function PerformerRequestsPage() {
           <div className="mb-3 flex items-end justify-between gap-3">
             <div>
               <h2 className="text-base font-bold text-gray-900">
-                募集中の案件
+                {requestType === "performance"
+                  ? "募集中の演奏案件"
+                  : "募集中のイベント・レンタル"}
               </h2>
               <p className="mt-1 text-xs text-gray-500">
                 {total === 0
-                  ? "0件の案件"
+                  ? "0件の募集"
                   : `${firstItem}〜${lastItem}件 / 全${total}件`}
               </p>
             </div>
@@ -667,10 +761,10 @@ export default function PerformerRequestsPage() {
             <div className="rounded-2xl border border-gray-200 bg-white p-7 text-center shadow-sm">
               <div className="text-3xl">🔍</div>
               <p className="mt-3 text-sm font-medium text-gray-700">
-                条件に一致する案件がありません。
+                条件に一致する募集がありません。
               </p>
               <p className="mt-1 text-xs leading-5 text-gray-400">
-                検索条件を変更して、もう一度お試しください。
+                別の募集タイプを選ぶか、検索条件を変更してみてください。
               </p>
               <button
                 type="button"
@@ -682,92 +776,151 @@ export default function PerformerRequestsPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {requests.map((request) => (
-                <button
-                  key={request.id}
-                  type="button"
-                  onClick={() =>
-                    router.push(`/performer/requests/${request.id}`)
-                  }
-                  className="group w-full rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm active:bg-gray-50"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="text-lg font-bold leading-7 text-gray-900">
-                        {request.title}
-                      </h3>
-                      {request.facilities && (
-                        <p className="mt-1.5 text-sm text-gray-500">
-                          🏢 {request.facilities.name}
-                        </p>
+              {requests.map((request) => {
+                const typeLabel =
+                  REQUEST_TYPE_LABELS[request.request_type] ||
+                  "募集";
+
+                return (
+                  <button
+                    key={request.id}
+                    type="button"
+                    onClick={() =>
+                      router.push(`/performer/requests/${request.id}`)
+                    }
+                    className="group w-full rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm active:bg-gray-50"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            request.request_type === "performance"
+                              ? "bg-blue-50 text-blue-700"
+                              : request.request_type === "rental"
+                                ? "bg-purple-50 text-purple-700"
+                                : "bg-orange-50 text-orange-700"
+                          }`}
+                        >
+                          {typeLabel}
+                        </span>
+                        <h3 className="mt-2 text-lg font-bold leading-7 text-gray-900">
+                          {request.title}
+                        </h3>
+                        {request.facilities && (
+                          <p className="mt-1.5 text-sm text-gray-500">
+                            🏢 {request.facilities.name}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 text-lg text-gray-300">→</span>
+                    </div>
+
+                    <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3">
+                      <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
+                        <span>📅</span>
+                        <span>{request.performance_date}</span>
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
+                        <span>🕐</span>
+                        <span>
+                          {request.start_time.slice(0, 5)}
+                          {" ～ "}
+                          {request.end_time.slice(0, 5)}
+                        </span>
+                      </div>
+                      {request.area && (
+                        <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
+                          <span>📍</span>
+                          <span>{request.area}</span>
+                        </div>
                       )}
                     </div>
-                    <span className="shrink-0 text-lg text-gray-300">→</span>
-                  </div>
 
-                  <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-800">
-                      <span>📅</span>
-                      <span>{request.performance_date}</span>
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
-                      <span>🕐</span>
-                      <span>
-                        {request.start_time.slice(0, 5)}
-                        {" ～ "}
-                        {request.end_time.slice(0, 5)}
-                      </span>
-                    </div>
-                    {request.area && (
-                      <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
-                        <span>📍</span>
-                        <span>{request.area}</span>
+                    {request.request_type !== "performance" && (
+                      <div className="mt-3 space-y-2 rounded-xl border border-gray-100 px-4 py-3">
+                        {request.max_participants != null && (
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="text-gray-500">
+                              👥 最大参加人数
+                            </span>
+                            <span className="font-semibold text-gray-800">
+                              {request.max_participants}人
+                            </span>
+                          </div>
+                        )}
+
+                        {["live", "festival", "session"].includes(
+                          request.request_type
+                        ) &&
+                          request.participation_fee != null && (
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="text-gray-500">
+                                🎟️ 参加費
+                              </span>
+                              <span className="font-bold text-gray-900">
+                                {request.participation_fee.toLocaleString()}円
+                              </span>
+                            </div>
+                          )}
+
+                        {request.request_type === "rental" &&
+                          request.rental_fee != null && (
+                            <div className="flex items-center justify-between gap-3 text-sm">
+                              <span className="text-gray-500">
+                                🏠 施設レンタル料金
+                              </span>
+                              <span className="font-bold text-gray-900">
+                                {request.rental_fee.toLocaleString()}円
+                              </span>
+                            </div>
+                          )}
                       </div>
                     )}
-                  </div>
 
-                  {(request.instruments || []).length > 0 && (
-                    <div className="mt-4 flex flex-wrap gap-1.5">
-                      {request.instruments.map((instrument) => (
-                        <span
-                          key={instrument}
-                          className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
-                        >
-                          🎹 {instrument}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                    {(request.instruments || []).length > 0 && (
+                      <div className="mt-4 flex flex-wrap gap-1.5">
+                        {request.instruments.map((instrument) => (
+                          <span
+                            key={instrument}
+                            className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600"
+                          >
+                            🎹 {instrument}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                  {(request.genres || []).length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {request.genres.map((genre) => (
-                        <span
-                          key={genre}
-                          className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                        >
-                          🎵 {genre}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                    {(request.genres || []).length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {request.genres.map((genre) => (
+                          <span
+                            key={genre}
+                            className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                          >
+                            🎵 {genre}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                  {request.reward !== null && (
-                    <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
-                      <span className="text-xs text-gray-500">謝礼</span>
-                      <span className="font-bold text-gray-900">
-                        💰 {request.reward.toLocaleString()}円
+                    {request.request_type === "performance" &&
+                      request.reward !== null && (
+                        <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
+                          <span className="text-xs text-gray-500">謝礼</span>
+                          <span className="font-bold text-gray-900">
+                            💰 {request.reward.toLocaleString()}円
+                          </span>
+                        </div>
+                      )}
+
+                    <div className="mt-4 flex items-center justify-end border-t border-gray-100 pt-3">
+                      <span className="text-sm font-semibold text-gray-500">
+                        詳細を見る →
                       </span>
                     </div>
-                  )}
-
-                  <div className="mt-4 flex items-center justify-end border-t border-gray-100 pt-3">
-                    <span className="text-sm font-semibold text-gray-500">
-                      詳細を見る →
-                    </span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
             </div>
           )}
 

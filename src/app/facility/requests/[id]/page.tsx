@@ -17,6 +17,7 @@ type PerformanceRequest = {
   genres: string[];
   reward: number | null;
   status: "open" | "matched" | "closed";
+  request_type: "performance" | "live" | "festival" | "session" | "rental";
 };
 
 type Match = {
@@ -43,6 +44,12 @@ export default function FacilityRequestDetailPage() {
 
   const [error, setError] =
     useState("");
+
+  const [lineUserId, setLineUserId] = useState("");
+
+  const [cancelling, setCancelling] = useState(false);
+
+  const [cancelMessage, setCancelMessage] = useState("");
 
   useEffect(() => {
     async function initialize() {
@@ -71,6 +78,8 @@ export default function FacilityRequestDetailPage() {
 
         const profile =
           await liff.getProfile();
+
+        setLineUserId(profile.userId);
 
         // 案件情報を取得
         const response = await fetch(
@@ -153,6 +162,66 @@ export default function FacilityRequestDetailPage() {
       initialize();
     }
   }, [requestId]);
+
+async function handleCancelEvent() {
+  if (!request || !lineUserId || cancelling) {
+    return;
+  }
+
+  const confirmed = window.confirm(
+    "このイベント全体をキャンセルしますか？\n\n" +
+      "成立済みのマッチングもキャンセルされ、対象の手数料が返金されます。\n" +
+      "この操作は取り消せません。"
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setCancelling(true);
+    setCancelMessage("");
+
+    const response = await fetch(
+      `/api/facility/requests/${request.id}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          "x-line-user-id": lineUserId,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(
+        data.error || "イベントのキャンセルに失敗しました"
+      );
+    }
+
+    const refund = Number(data.refundAmount ?? 0);
+
+    setCancelMessage(
+      `キャンセルしました。返金額：${refund.toLocaleString()}コイン`
+    );
+
+    window.alert(
+      `イベント全体をキャンセルしました。\n返金額：${refund.toLocaleString()}コイン`
+    );
+
+    router.push("/facility/requests");
+    router.refresh();
+  } catch (err) {
+    setCancelMessage(
+      err instanceof Error
+        ? err.message
+        : "キャンセルに失敗しました"
+    );
+  } finally {
+    setCancelling(false);
+  }
+}
 
   function formatDate(
     date: string
@@ -581,6 +650,40 @@ export default function FacilityRequestDetailPage() {
 
           </section>
         )}
+
+{/* イベント全体のキャンセル */}
+{["live", "festival", "session", "rental"].includes(
+  request.request_type
+) &&
+  request.status !== "closed" && (
+    <section className="mt-6 bg-red-50 border border-red-200 rounded-2xl p-5">
+      <h2 className="font-bold text-red-800">
+        ⚠️ イベント全体のキャンセル
+      </h2>
+
+      <p className="text-sm text-red-700 mt-2 leading-relaxed">
+        成立済みのマッチングもキャンセルされます。
+        実行前に内容を確認してください。
+      </p>
+
+      <button
+        type="button"
+        onClick={handleCancelEvent}
+        disabled={cancelling || !lineUserId}
+        className="w-full mt-4 bg-red-600 text-white rounded-xl py-3.5 font-bold disabled:opacity-50"
+      >
+        {cancelling
+          ? "キャンセル処理中…"
+          : "イベント全体をキャンセル"}
+      </button>
+
+      {cancelMessage && (
+        <p className="text-sm text-red-700 mt-3">
+          {cancelMessage}
+        </p>
+      )}
+    </section>
+  )}
 
         {/* 編集 */}
         {request.status ===
