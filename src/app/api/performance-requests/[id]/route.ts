@@ -133,6 +133,31 @@ export async function PATCH(
 
     const body = await request.json();
 
+    const VALID_TARGET_LEVELS = ["beginner", "amateur", "pro"] as const;
+    type TargetLevel = (typeof VALID_TARGET_LEVELS)[number];
+
+    if (
+      !Array.isArray(body.target_levels) ||
+      body.target_levels.length === 0 ||
+      !body.target_levels.every(
+        (level: unknown): level is TargetLevel =>
+          typeof level === "string" &&
+          VALID_TARGET_LEVELS.includes(level as TargetLevel)
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "募集対象ランクを1つ以上選択してください。選択できるランクは初心者・アマチュア・プロです。",
+        },
+        { status: 400 }
+      );
+    }
+
+    const normalizedTargetLevels = Array.from(
+      new Set<TargetLevel>(body.target_levels)
+    );
+
     const title =
       typeof body.title === "string" ? body.title.trim() : "";
 
@@ -317,6 +342,7 @@ export async function PATCH(
         instruments,
         genres,
         reward,
+        target_levels: normalizedTargetLevels,
         participation_fee:
           ["live", "festival", "session"].includes(requestType)
             ? participationFee

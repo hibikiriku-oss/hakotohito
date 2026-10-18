@@ -19,6 +19,7 @@ type PerformanceRequest = {
   request_type: string;
   participation_fee: number | null;
   rental_fee: number | null;
+  target_levels: string[] | null;
   status: "open" | "matched" | "closed";
 };
 
@@ -66,6 +67,11 @@ export default function FacilityRequestEditPage() {
   const [reward, setReward] = useState("");
   const [participationFee, setParticipationFee] = useState("");
   const [rentalFee, setRentalFee] = useState("");
+  const [targetLevels, setTargetLevels] = useState<string[]>([
+    "beginner",
+    "amateur",
+    "pro",
+  ]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -146,6 +152,20 @@ export default function FacilityRequestEditPage() {
           ? String(loadedRequest.rental_fee)
           : ""
       );
+
+      // 旧案件で募集対象ランクが未設定の場合は、従来の応募仕様に合わせて全ランクを選択する。
+      const validTargetLevels = ["beginner", "amateur", "pro"];
+      const savedTargetLevels = Array.isArray(loadedRequest.target_levels)
+        ? loadedRequest.target_levels.filter((level) =>
+            validTargetLevels.includes(level)
+          )
+        : [];
+
+      setTargetLevels(
+        savedTargetLevels.length > 0
+          ? Array.from(new Set(savedTargetLevels))
+          : validTargetLevels
+      );
     } catch (err) {
       console.error(err);
       setError(
@@ -185,6 +205,11 @@ export default function FacilityRequestEditPage() {
 
     if (!title.trim()) {
       setError("オファータイトルを入力してください");
+      return;
+    }
+
+    if (targetLevels.length === 0) {
+      setError("募集対象ランクを1つ以上選択してください");
       return;
     }
 
@@ -287,6 +312,7 @@ export default function FacilityRequestEditPage() {
               reward.trim() === "" ? null : Number(reward),
             participation_fee: participationFeeNumber,
             rental_fee: rentalFeeNumber,
+            target_levels: targetLevels,
           }),
         }
       );
@@ -533,6 +559,43 @@ export default function FacilityRequestEditPage() {
               <p className="text-xs text-gray-400 mt-2">
                 複数ある場合は「,」で区切ってください。
               </p>
+            </div>
+          </section>
+
+          <section className="bg-white border border-gray-200 rounded-2xl p-5">
+            <h2 className="font-bold text-gray-900">
+              募集対象ランク
+            </h2>
+            <p className="text-xs text-gray-500 mt-1 mb-4">
+              応募できる演奏者のランクを選択してください。複数選択できます。
+            </p>
+            <div className="space-y-3">
+              {[
+                { value: "beginner", label: "初心者" },
+                { value: "amateur", label: "アマチュア" },
+                { value: "pro", label: "プロ" },
+              ].map((level) => (
+                <label
+                  key={level.value}
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 p-3"
+                >
+                  <input
+                    type="checkbox"
+                    checked={targetLevels.includes(level.value)}
+                    onChange={(event) => {
+                      setTargetLevels((current) =>
+                        event.target.checked
+                          ? [...current, level.value]
+                          : current.filter((item) => item !== level.value)
+                      );
+                    }}
+                    className="h-4 w-4 accent-black"
+                  />
+                  <span className="text-sm font-medium text-gray-800">
+                    {level.label}
+                  </span>
+                </label>
+              ))}
             </div>
           </section>
 
