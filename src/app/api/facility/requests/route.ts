@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
         instruments,
         genres,
         reward,
+        request_type,
         status,
         created_at
       `)

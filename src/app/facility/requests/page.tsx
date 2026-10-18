@@ -4,6 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 
+type RequestType =
+  | "performance"
+  | "live"
+  | "festival"
+  | "session"
+  | "rental";
+
 type PerformanceRequest = {
   id: string;
   title: string;
@@ -16,6 +23,7 @@ type PerformanceRequest = {
   instruments: string[];
   genres: string[];
   reward: number | null;
+  request_type: RequestType | null;
   status: string;
   display_status: string;
   latest_match_status: string | null;
@@ -39,6 +47,18 @@ type SortOption =
 
 const PAGE_SIZE = 10;
 
+const REQUEST_TYPE_OPTIONS: {
+  value: "all" | RequestType;
+  label: string;
+}[] = [
+  { value: "all", label: "すべて" },
+  { value: "performance", label: "演奏案件" },
+  { value: "live", label: "ライブ" },
+  { value: "festival", label: "フェス" },
+  { value: "session", label: "セッション" },
+  { value: "rental", label: "レンタル" },
+];
+
 const STATUS_OPTIONS: {
   value: StatusFilter;
   label: string;
@@ -60,6 +80,18 @@ const SORT_OPTIONS: {
   { value: "created_asc", label: "登録日時が古い順" },
 ];
 
+function getRequestTypeLabel(
+  requestType: RequestType | null
+) {
+  const option = REQUEST_TYPE_OPTIONS.find(
+    (item) => item.value === requestType
+  );
+
+  return option && option.value !== "all"
+    ? option.label
+    : "演奏案件";
+}
+
 function getEffectiveStatus(
   request: PerformanceRequest
 ): StatusFilter | "other" {
@@ -72,7 +104,6 @@ function getEffectiveStatus(
     .filter(Boolean)
     .map((value) => String(value).toLowerCase());
 
-  // キャンセル済みの案件を優先して判定
   if (
     values.some(
       (value) =>
@@ -83,30 +114,15 @@ function getEffectiveStatus(
     return "cancelled";
   }
 
-  if (
-    values.some(
-      (value) =>
-        value === "completed"
-    )
-  ) {
+  if (values.some((value) => value === "completed")) {
     return "completed";
   }
 
-  if (
-    values.some(
-      (value) =>
-        value === "matched"
-    )
-  ) {
+  if (values.some((value) => value === "matched")) {
     return "matched";
   }
 
-  if (
-    values.some(
-      (value) =>
-        value === "open"
-    )
-  ) {
+  if (values.some((value) => value === "open")) {
     return "open";
   }
 
@@ -160,6 +176,7 @@ function formatDate(date: string) {
   if (!date) return "日付未設定";
 
   const parts = date.split("-");
+
   if (parts.length === 3) {
     return `${parts[0]}年${Number(parts[1])}月${Number(
       parts[2]
@@ -178,6 +195,8 @@ export default function FacilityRequestsPage() {
   const [error, setError] = useState("");
 
   const [searchText, setSearchText] = useState("");
+  const [requestTypeFilter, setRequestTypeFilter] =
+    useState<"all" | RequestType>("all");
   const [statusFilter, setStatusFilter] =
     useState<StatusFilter>("all");
   const [sortOption, setSortOption] =
@@ -187,8 +206,7 @@ export default function FacilityRequestsPage() {
   useEffect(() => {
     async function initialize() {
       try {
-        const liffId =
-          process.env.NEXT_PUBLIC_LIFF_ID;
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
           throw new Error(
@@ -222,8 +240,7 @@ export default function FacilityRequestsPage() {
 
         if (!response.ok) {
           throw new Error(
-            data.error ||
-              "案件の取得に失敗しました"
+            data.error || "案件の取得に失敗しました"
           );
         }
 
@@ -251,7 +268,12 @@ export default function FacilityRequestsPage() {
   // 検索・絞り込み・並べ替えを変更したら1ページ目に戻る
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchText, statusFilter, sortOption]);
+  }, [
+    searchText,
+    requestTypeFilter,
+    statusFilter,
+    sortOption,
+  ]);
 
   const filteredRequests = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -270,14 +292,21 @@ export default function FacilityRequestsPage() {
         keyword === "" ||
         searchableText.includes(keyword);
 
-      const effectiveStatus =
-        getEffectiveStatus(request);
+      const matchesRequestType =
+        requestTypeFilter === "all" ||
+        request.request_type === requestTypeFilter;
+
+      const effectiveStatus = getEffectiveStatus(request);
 
       const matchesStatus =
         statusFilter === "all" ||
         effectiveStatus === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      return (
+        matchesSearch &&
+        matchesRequestType &&
+        matchesStatus
+      );
     });
 
     return filtered.sort((a, b) => {
@@ -311,7 +340,13 @@ export default function FacilityRequestsPage() {
 
       return safeACreated - safeBCreated;
     });
-  }, [requests, searchText, statusFilter, sortOption]);
+  }, [
+    requests,
+    searchText,
+    requestTypeFilter,
+    statusFilter,
+    sortOption,
+  ]);
 
   const totalPages = Math.max(
     1,
@@ -328,6 +363,14 @@ export default function FacilityRequestsPage() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
+
+  function resetFilters() {
+    setSearchText("");
+    setRequestTypeFilter("all");
+    setStatusFilter("all");
+    setSortOption("date_asc");
+    setCurrentPage(1);
+  }
 
   function goToPage(page: number) {
     setCurrentPage(
@@ -404,7 +447,6 @@ export default function FacilityRequestsPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 py-6">
-        {/* ヘッダー */}
         <header className="pb-5">
           <button
             onClick={() => router.push("/facility/home")}
@@ -435,7 +477,6 @@ export default function FacilityRequestsPage() {
           </div>
         </header>
 
-        {/* 新規依頼作成 */}
         <button
           onClick={() => router.push("/facility/request")}
           className="w-full bg-black text-white rounded-2xl p-4 font-bold shadow-sm active:scale-[0.99] transition"
@@ -446,7 +487,6 @@ export default function FacilityRequestsPage() {
           </div>
         </button>
 
-        {/* 検索・絞り込み・並べ替え */}
         {requests.length > 0 && (
           <section className="mt-5 bg-white border border-gray-200 rounded-2xl p-4">
             <h2 className="text-sm font-bold text-gray-900 mb-3">
@@ -470,6 +510,35 @@ export default function FacilityRequestsPage() {
               placeholder="例：ピアノ、クラシック、名古屋"
               className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-900 outline-none focus:border-gray-500"
             />
+
+            <div className="mt-4">
+              <label
+                htmlFor="request-type"
+                className="block text-xs font-medium text-gray-600 mb-1.5"
+              >
+                募集タイプ
+              </label>
+
+              <select
+                id="request-type"
+                value={requestTypeFilter}
+                onChange={(event) =>
+                  setRequestTypeFilter(
+                    event.target.value as "all" | RequestType
+                  )
+                }
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-900"
+              >
+                {REQUEST_TYPE_OPTIONS.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                  >
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <div className="mt-4">
               <label
@@ -535,12 +604,7 @@ export default function FacilityRequestsPage() {
               </p>
 
               <button
-                onClick={() => {
-                  setSearchText("");
-                  setStatusFilter("all");
-                  setSortOption("date_asc");
-                  setCurrentPage(1);
-                }}
+                onClick={resetFilters}
                 className="text-xs font-bold text-gray-600 underline underline-offset-2"
               >
                 条件をリセット
@@ -549,7 +613,6 @@ export default function FacilityRequestsPage() {
           </section>
         )}
 
-        {/* 案件一覧 */}
         {requests.length === 0 ? (
           <div className="mt-5 bg-white border border-gray-200 rounded-2xl p-7 text-center">
             <div className="text-4xl">🎵</div>
@@ -583,12 +646,7 @@ export default function FacilityRequestsPage() {
             </p>
 
             <button
-              onClick={() => {
-                setSearchText("");
-                setStatusFilter("all");
-                setSortOption("date_asc");
-                setCurrentPage(1);
-              }}
+              onClick={resetFilters}
               className="mt-4 rounded-xl bg-gray-100 px-5 py-3 text-sm font-bold text-gray-700"
             >
               条件をリセット
@@ -615,8 +673,7 @@ export default function FacilityRequestsPage() {
 
             <div className="mt-3 space-y-3">
               {visibleRequests.map((request) => {
-                const status =
-                  getEffectiveStatus(request);
+                const status = getEffectiveStatus(request);
 
                 return (
                   <button
@@ -628,11 +685,16 @@ export default function FacilityRequestsPage() {
                     }
                     className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
                   >
-                    {/* タイトル・ステータス */}
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-base font-bold text-gray-900 leading-relaxed">
-                        {request.title}
-                      </h3>
+                      <div className="min-w-0">
+                        <span className="inline-block mb-2 text-xs font-bold bg-purple-50 text-purple-700 border border-purple-100 rounded-full px-2.5 py-1">
+                          {getRequestTypeLabel(request.request_type)}
+                        </span>
+
+                        <h3 className="text-base font-bold text-gray-900 leading-relaxed">
+                          {request.title}
+                        </h3>
+                      </div>
 
                       <span
                         className={`shrink-0 text-xs font-bold border rounded-full px-3 py-1 ${getStatusClass(
@@ -643,14 +705,11 @@ export default function FacilityRequestsPage() {
                       </span>
                     </div>
 
-                    {/* 日時・場所 */}
                     <div className="mt-4 bg-gray-50 rounded-xl p-3">
                       <div className="flex items-center gap-2">
                         <span className="text-base">📅</span>
                         <span className="text-sm font-medium text-gray-800">
-                          {formatDate(
-                            request.performance_date
-                          )}
+                          {formatDate(request.performance_date)}
                         </span>
                       </div>
 
@@ -673,18 +732,14 @@ export default function FacilityRequestsPage() {
                       )}
                     </div>
 
-                    {/* 募集期限 */}
                     <div className="mt-3 flex items-center gap-2">
                       <span className="text-base">⏳</span>
                       <span className="text-sm text-gray-700">
                         募集期限：
-                        {formatDate(
-                          request.application_deadline
-                        )}
+                        {formatDate(request.application_deadline)}
                       </span>
                     </div>
 
-                    {/* 楽器・ジャンル */}
                     {((request.instruments ?? []).length > 0 ||
                       (request.genres ?? []).length > 0) && (
                       <div className="flex flex-wrap gap-1.5 mt-3">
@@ -710,7 +765,6 @@ export default function FacilityRequestsPage() {
                       </div>
                     )}
 
-                    {/* 謝礼 */}
                     {request.reward !== null &&
                       request.reward !== undefined && (
                         <div className="mt-4 flex items-center justify-between">
@@ -724,7 +778,6 @@ export default function FacilityRequestsPage() {
                         </div>
                       )}
 
-                    {/* 詳細リンク */}
                     <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
                       <span className="text-xs text-gray-400">
                         案件の詳細・応募者を確認
@@ -739,7 +792,6 @@ export default function FacilityRequestsPage() {
               })}
             </div>
 
-            {/* ページネーション */}
             {totalPages > 1 && (
               <nav
                 aria-label="案件一覧ページ"
@@ -761,9 +813,7 @@ export default function FacilityRequestsPage() {
                     key={page}
                     onClick={() => goToPage(page)}
                     aria-current={
-                      currentPage === page
-                        ? "page"
-                        : undefined
+                      currentPage === page ? "page" : undefined
                     }
                     className={`min-w-9 rounded-xl border px-3 py-2 text-sm font-bold ${
                       currentPage === page
@@ -787,7 +837,6 @@ export default function FacilityRequestsPage() {
           </>
         )}
 
-        {/* フッター */}
         <button
           onClick={() => router.push("/facility/home")}
           className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-medium text-gray-600"
