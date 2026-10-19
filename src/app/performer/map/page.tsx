@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -46,20 +45,20 @@ function escapeHtml(value: string) {
       '"': "&quot;",
       "'": "&#39;",
     };
+
     return entities[char];
   });
 }
 
 function formatTime(value?: string | null) {
-  if (!value) return "";
-  return value.slice(0, 5);
+  return value ? value.slice(0, 5) : "";
 }
 
 export default function PerformerMapPage() {
   const router = useRouter();
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
+
   const [status, setStatus] = useState("LINE認証を確認しています...");
   const [error, setError] = useState("");
   const [total, setTotal] = useState(0);
@@ -71,22 +70,48 @@ export default function PerformerMapPage() {
 
     async function initialize() {
       try {
-        // LINE認証
+        // LINE認証を初期化
         await liff.init({
           liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
           withLoginOnExternalBrowser: true,
         });
 
+        if (cancelled) return;
+
+        // 未ログインの場合はLINEログインへ
         if (!liff.isLoggedIn()) {
           liff.login();
           return;
         }
 
-        const profile = await liff.getProfile();
+        let profile;
+
+        try {
+          profile = await liff.getProfile();
+        } catch (profileError) {
+          console.error("LINEプロフィール取得エラー:", profileError);
+
+          const message =
+            profileError instanceof Error
+              ? profileError.message
+              : String(profileError);
+
+          if (
+            /access token expired|invalid access token/i.test(message)
+          ) {
+            setStatus("LINEの認証を更新しています...");
+
+            liff.logout();
+            liff.login();
+            return;
+          }
+
+          throw profileError;
+        }
 
         if (cancelled || !mapRef.current) return;
 
-        // Google Mapsを読み込む
+        // Google Maps APIキーを確認
         const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
         if (!apiKey) {
@@ -95,7 +120,11 @@ export default function PerformerMapPage() {
           );
         }
 
-        setOptions({ key: apiKey, v: "weekly" });
+        // Google Mapsを読み込む
+        setOptions({
+          key: apiKey,
+          v: "weekly",
+        });
 
         const mapsLibrary: any = await importLibrary("maps");
         const geocodingLibrary: any = await importLibrary("geocoding");
@@ -110,8 +139,7 @@ export default function PerformerMapPage() {
           fullscreenControl: true,
         });
 
-        mapInstanceRef.current = map;
-
+        // 地図検索APIを呼び出す
         const response = await fetch("/api/map-search", {
           headers: {
             "x-line-user-id": profile.userId,
@@ -131,7 +159,7 @@ export default function PerformerMapPage() {
 
         setDate(data.date);
         setTotal(data.total);
-        setStatus("地図上の位置を検索しています...");
+        setStatus("募集の位置を検索しています...");
 
         const items: MapItem[] = [
           ...(data.performances || []),
@@ -140,17 +168,18 @@ export default function PerformerMapPage() {
 
         const geocoder = new geocodingLibrary.Geocoder();
         const infoWindow = new mapsLibrary.InfoWindow();
+
         let displayedCount = 0;
 
         for (const item of items) {
           if (cancelled) return;
 
+          // 演奏案件は施設住所、レッスンは登録エリアを使用
           const address =
             item.map_type === "performance"
               ? item.map_address || item.facilities?.address
               : item.area;
 
-          // 住所やエリアがない募集にはピンを立てない
           if (!address?.trim()) continue;
 
           try {
@@ -166,6 +195,7 @@ export default function PerformerMapPage() {
             if (!location) continue;
 
             const isPerformance = item.map_type === "performance";
+
             const detailPath = isPerformance
               ? `/performer/requests/${encodeURIComponent(item.id)}`
               : `/performer/lesson/${encodeURIComponent(item.id)}`;
@@ -196,30 +226,37 @@ export default function PerformerMapPage() {
               const typeLabel = isPerformance
                 ? "演奏案件"
                 : "レッスン募集";
+
               const facilityName = item.facilities?.name
                 ? `<p>施設：${escapeHtml(item.facilities.name)}</p>`
                 : "";
+
               const dateValue = isPerformance
                 ? item.performance_date
                 : item.lesson_date;
+
               const dateText = dateValue
-                ? `<p>日付：${escapeHtml(dateValue)}`
-                : "<p>日付：未指定";
+                ? escapeHtml(dateValue)
+                : "未指定";
+
               const timeText =
                 item.start_time || item.end_time
-                  ? ` ${escapeHtml(formatTime(item.start_time))}〜${escapeHtml(formatTime(item.end_time))}`
-                  : "";
+                  ? `${escapeHtml(formatTime(item.start_time))}〜${escapeHtml(formatTime(item.end_time))}`
+                  : "時間未指定";
+
               const price =
                 isPerformance && item.reward != null
                   ? `<p>謝礼：${item.reward.toLocaleString("ja-JP")}円</p>`
                   : !isPerformance && item.lesson_fee != null
                     ? `<p>レッスン料：${item.lesson_fee.toLocaleString("ja-JP")}円</p>`
                     : "";
+
               const applicationText = item.is_applied
                 ? `<p style="color:#2563eb;font-weight:bold">応募済み${item.application_status ? `（${escapeHtml(item.application_status)}）` : ""}</p>`
                 : "";
+
               const approximationText = !isPerformance
-                ? '<p style="color:#64748b;font-size:12px">※エリアをもとにしたおおよその位置です。</p>'
+                ? '<p style="color:#64748b;font-size:12px">※登録エリアをもとにしたおおよその位置です。</p>'
                 : "";
 
               const content = `
@@ -227,7 +264,8 @@ export default function PerformerMapPage() {
                   <strong>${title}</strong>
                   <p>${typeLabel}</p>
                   ${facilityName}
-                  ${dateText}${timeText}</p>
+                  <p>日付：${dateText}</p>
+                  <p>時間：${timeText}</p>
                   <p>場所：${locationText}</p>
                   ${price}
                   ${applicationText}
@@ -239,13 +277,16 @@ export default function PerformerMapPage() {
               `;
 
               infoWindow.setContent(content);
-              infoWindow.open({ map, anchor: marker });
+              infoWindow.open({
+                map,
+                anchor: marker,
+              });
             });
 
             markersRef.current.push(marker);
             displayedCount++;
           } catch (geocodeError) {
-            // 1件の住所を特定できなくても、ほかのピンは表示する
+            // 1件の住所が特定できなくても、ほかの募集の処理を続ける
             console.warn(
               "住所を地図上で特定できませんでした:",
               address,
@@ -281,11 +322,12 @@ export default function PerformerMapPage() {
         console.error("地図検索エラー:", err);
 
         if (!cancelled) {
-          setError(
+          const message =
             err instanceof Error
               ? err.message
-              : "地図の読み込みに失敗しました。"
-          );
+              : String(err);
+
+          setError(message || "地図の読み込みに失敗しました。");
           setStatus("地図を表示できませんでした。");
         }
       }
@@ -301,7 +343,6 @@ export default function PerformerMapPage() {
       }
 
       markersRef.current = [];
-      mapInstanceRef.current = null;
     };
   }, []);
 
@@ -368,6 +409,7 @@ export default function PerformerMapPage() {
         <p>検索対象：{total}件</p>
         <p>地図表示：{shown}件</p>
         <p>{status}</p>
+
         {error && (
           <p style={{ color: "#dc2626", marginTop: 8 }}>
             エラー：{error}
