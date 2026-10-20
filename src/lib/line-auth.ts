@@ -35,6 +35,13 @@ export async function verifyLineIdToken(
     });
 
     if (!response.ok) {
+      const errorBody = await response.text();
+
+      console.error("LINE IDトークン検証失敗", {
+        status: response.status,
+        body: errorBody,
+      });
+
       return null;
     }
 
