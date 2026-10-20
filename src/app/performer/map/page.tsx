@@ -178,6 +178,9 @@ export default function PerformerMapPage() {
         const infoWindow = new mapsLibrary.InfoWindow();
 
         let displayedCount = 0;
+        let missingAddressCount = 0;
+        let geocodeFailedCount = 0;
+        let geocodeSuccessCount = 0;
 
         for (const item of items) {
           if (cancelled) return;
@@ -190,7 +193,19 @@ export default function PerformerMapPage() {
                 item.performers?.areas?.find((area) => area?.trim())?.trim() ||
                 item.performers?.area?.trim();
 
-          if (!address?.trim()) continue;
+          if (!address?.trim()) {
+            missingAddressCount++;
+            console.warn("[地図診断] 住所・エリアなし:", {
+              id: item.id,
+              type: item.map_type,
+              title: item.title,
+              area: item.area,
+              performerArea: item.performers?.area,
+              performerAreas: item.performers?.areas,
+              facilityAddress: item.facilities?.address,
+            });
+            continue;
+          }
 
           try {
             const result = await geocoder.geocode({
@@ -203,7 +218,18 @@ export default function PerformerMapPage() {
             const location =
               result.results?.[0]?.geometry?.location;
 
-            if (!location) continue;
+            if (!location) {
+              geocodeFailedCount++;
+              console.warn("[地図診断] 座標を取得できません:", {
+                id: item.id,
+                title: item.title,
+                address,
+                geocodeStatus: result.status,
+              });
+              continue;
+            }
+
+            geocodeSuccessCount++;
 
             const isPerformance =
               item.map_type === "performance";
@@ -317,6 +343,14 @@ export default function PerformerMapPage() {
         if (cancelled) return;
 
         setShown(displayedCount);
+
+        console.log("[地図診断] 集計結果:", {
+          検索対象: items.length,
+          住所なし: missingAddressCount,
+          住所検索成功: geocodeSuccessCount,
+          住所検索失敗: geocodeFailedCount,
+          地図表示: displayedCount,
+        });
 
         if (displayedCount > 0) {
           const bounds = new mapsLibrary.LatLngBounds();
