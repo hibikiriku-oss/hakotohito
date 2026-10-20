@@ -147,7 +147,15 @@ export default function PerformerMapPage() {
         });
 
         // 地図検索APIを呼び出す
-        const response = await fetch("/api/map-search", {
+        const requestedDate = new URLSearchParams(
+          window.location.search
+        ).get("date");
+
+        const searchUrl = requestedDate
+          ? `/api/map-search?date=${encodeURIComponent(requestedDate)}`
+          : "/api/map-search";
+
+        const response = await fetch(searchUrl, {
           headers: {
             "x-line-user-id": profile.userId,
           },
@@ -442,7 +450,7 @@ export default function PerformerMapPage() {
           marginBottom: 12,
         }}
       >
-        今日の演奏案件とレッスン募集を地図で確認できます。
+        対象日を選択して、演奏案件やレッスン募集を地図で確認できます。
       </p>
 
       <div
@@ -474,7 +482,54 @@ export default function PerformerMapPage() {
           fontSize: 14,
         }}
       >
-        <p>対象日：{date || "読み込み中..."}</p>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 8,
+            marginBottom: 8,
+          }}
+        >
+          <label htmlFor="map-target-date" style={{ fontWeight: "bold" }}>
+            対象日：
+          </label>
+
+          <input
+            id="map-target-date"
+            type="date"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+            style={{
+              padding: "8px",
+              border: "1px solid #cbd5e1",
+              borderRadius: 8,
+              background: "#fff",
+              color: "#222",
+            }}
+          />
+
+          <button
+            type="button"
+            disabled={!date}
+            onClick={() => {
+              window.location.assign(
+                `/performer/map?date=${encodeURIComponent(date)}`
+              );
+            }}
+            style={{
+              padding: "8px 14px",
+              border: "none",
+              borderRadius: 8,
+              background: date ? "#2563eb" : "#94a3b8",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: date ? "pointer" : "not-allowed",
+            }}
+          >
+            この日付で検索
+          </button>
+        </div>
         <p>検索対象：{total}件</p>
         <p>地図表示：{shown}件</p>
         <p>{status}</p>

@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -6,7 +7,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function getJapanToday() {
+function getJapanToday(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
     year: "numeric",
@@ -19,6 +20,19 @@ function getJapanToday() {
   );
 
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isValidDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const parsed = new Date(`${value}T00:00:00Z`);
+
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
 }
 
 async function getCurrentPerformerId(lineUserId: string) {
@@ -48,12 +62,31 @@ export async function GET(request: NextRequest) {
 
     if (!lineUserId) {
       return NextResponse.json(
-        { success: false, error: "LINEユーザー情報を取得できません。" },
+        {
+          success: false,
+          error: "LINEユーザー情報を取得できません。",
+        },
         { status: 401 }
       );
     }
 
-    const today = getJapanToday();
+    const requestedDate = request.nextUrl.searchParams.get("date");
+    let selectedDate = getJapanToday();
+
+    if (requestedDate !== null) {
+      if (!isValidDate(requestedDate)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "対象日が正しくありません。",
+          },
+          { status: 400 }
+        );
+      }
+
+      selectedDate = requestedDate;
+    }
+
     const performerId = await getCurrentPerformerId(lineUserId);
 
     if (!performerId) {
@@ -84,7 +117,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 今日以降の演奏案件を取得
+    // 選択した日付の演奏案件を取得
     const { data: performanceRequests, error: requestsError } =
       await supabase
         .from("performance_requests")
@@ -108,7 +141,7 @@ export async function GET(request: NextRequest) {
             address
           )
         `)
-        .gte("performance_date", today)
+        .eq("performance_date", selectedDate)
         .order("performance_date", { ascending: true });
 
     if (requestsError) throw requestsError;
@@ -136,11 +169,13 @@ export async function GET(request: NextRequest) {
       });
 
     // 自分が応募したレッスン募集を取得
-    const { data: lessonApplications, error: lessonApplicationsError } =
-      await supabase
-        .from("lesson_applications")
-        .select("lesson_offer_id, status")
-        .eq("applicant_performer_id", performerId);
+    const {
+      data: lessonApplications,
+      error: lessonApplicationsError,
+    } = await supabase
+      .from("lesson_applications")
+      .select("lesson_offer_id, status")
+      .eq("applicant_performer_id", performerId);
 
     if (lessonApplicationsError) throw lessonApplicationsError;
 
@@ -153,7 +188,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 今日以降のレッスンと、日付未設定のレッスンを取得
+    // 選択した日付のレッスン募集と、日付未設定の募集を取得
     const { data: lessonOffers, error: lessonOffersError } =
       await supabase
         .from("lesson_offers")
@@ -179,8 +214,13 @@ export async function GET(request: NextRequest) {
             areas
           )
         `)
-        .or(`lesson_date.gte.${today},lesson_date.is.null`)
-        .order("lesson_date", { ascending: true, nullsFirst: false });
+        .or(
+          `lesson_date.eq.${selectedDate},lesson_date.is.null`
+        )
+        .order("lesson_date", {
+          ascending: true,
+          nullsFirst: false,
+        });
 
     if (lessonOffersError) throw lessonOffersError;
 
@@ -201,11 +241,12 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      date: today,
+      date: selectedDate,
       performances: visiblePerformanceRequests,
       lessons: visibleLessonOffers,
       total:
-        visiblePerformanceRequests.length + visibleLessonOffers.length,
+        visiblePerformanceRequests.length +
+        visibleLessonOffers.length,
     });
   } catch (error) {
     console.error("地図検索APIエラー:", error);
