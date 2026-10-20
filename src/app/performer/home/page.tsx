@@ -167,6 +167,28 @@ export default function PerformerHomePage() {
           </button>
         </section>
 
+        {/* 地図で案件を探す */}
+        <section className="mt-4">
+          <button
+            onClick={() => router.push("/performer/map")}
+            className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-left shadow-sm active:bg-emerald-100"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-lg font-bold text-gray-900">
+                  🗺️ 地図で案件を探す
+                </p>
+
+                <p className="mt-1 text-sm text-gray-600">
+                  演奏案件やレッスンを地図から探す
+                </p>
+              </div>
+
+              <span className="text-2xl text-gray-400">→</span>
+            </div>
+          </button>
+        </section>
+
         {/* その他のメニュー */}
         <section className="mt-8">
           <p className="mb-3 px-1 text-sm font-semibold text-gray-500">
