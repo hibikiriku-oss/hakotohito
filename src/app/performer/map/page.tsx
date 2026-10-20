@@ -360,7 +360,7 @@ export default function PerformerMapPage() {
         });
 
         if (displayedCount > 0) {
-          const bounds = new mapsLibrary.LatLngBounds();
+          const bounds = new (window as any).google.maps.LatLngBounds();
 
           for (const marker of markersRef.current) {
             const position = marker.getPosition();
