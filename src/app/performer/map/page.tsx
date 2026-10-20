@@ -256,7 +256,6 @@ export default function PerformerMapPage() {
                 strokeColor: "#ffffff",
                 strokeWeight: 2,
                 scale: 1,
-                labelOrigin: new mapsLibrary.Point(0, -1),
               },
             });
 
