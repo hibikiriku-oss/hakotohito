@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -21,9 +22,6 @@ export default function Home() {
 
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
-        console.log("② LIFF ID:", liffId);
-        console.log("③ 現在のURL:", window.location.href);
-
         if (!liffId) {
           throw new Error(
             "NEXT_PUBLIC_LIFF_ID が設定されていません。"
@@ -35,21 +33,14 @@ export default function Home() {
           withLoginOnExternalBrowser: true,
         });
 
-        console.log("④ LIFF初期化完了");
-        console.log("⑤ LINEアプリ内:", liff.isInClient());
-        console.log("⑥ ログイン状態:", liff.isLoggedIn());
+        console.log("② LIFF初期化完了");
 
         if (!liff.isLoggedIn()) {
-          console.log("⑦ LINEログイン開始");
           liff.login();
           return;
         }
 
-        console.log("⑧ LINEログイン済み");
-
         const lineProfile = await liff.getProfile();
-
-        console.log("⑨ プロフィール取得成功", lineProfile);
 
         setProfile({
           userId: lineProfile.userId,
@@ -57,16 +48,15 @@ export default function Home() {
           pictureUrl: lineProfile.pictureUrl,
         });
 
+        console.log("③ LINEプロフィール取得成功");
       } catch (err) {
         console.error("LIFF ERROR:", err);
 
-        const message =
+        setError(
           err instanceof Error
             ? err.message
-            : String(err);
-
-        setError(message);
-
+            : String(err)
+        );
       } finally {
         setLoading(false);
       }
@@ -75,7 +65,6 @@ export default function Home() {
     initLiff();
   }, []);
 
-  // ★ここに移動
   const selectUserType = async (
     userType: "performer" | "facility"
   ) => {
@@ -85,7 +74,17 @@ export default function Home() {
     }
 
     try {
-      console.log("ユーザー種別登録開始:", userType);
+      // 登録処理の直前にIDトークンを取得する
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        alert(
+          "LINEの本人確認情報を取得できませんでした。LINEに再ログインしてください。"
+        );
+        return;
+      }
+
+      console.log("④ ユーザー種別登録開始:", userType);
 
       const response = await fetch("/api/users", {
         method: "POST",
@@ -93,18 +92,14 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          lineUserId: profile.userId,
+          idToken,
           displayName: profile.displayName,
           pictureUrl: profile.pictureUrl,
           userType,
         }),
       });
 
-      console.log("APIレスポンス:", response.status);
-
       const data = await response.json();
-
-      console.log("API結果:", data);
 
       if (!response.ok) {
         alert(data.error || "登録に失敗しました");
@@ -116,9 +111,8 @@ export default function Home() {
       } else {
         window.location.href = "/facility";
       }
-
-    } catch (error) {
-      console.error("APIエラー:", error);
+    } catch (err) {
+      console.error("ユーザー登録エラー:", err);
       alert("通信エラーが発生しました");
     }
   };
@@ -126,10 +120,7 @@ export default function Home() {
   if (loading) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-6">
-        <h1 className="text-xl font-bold">
-          読み込み中…
-        </h1>
-
+        <h1 className="text-xl font-bold">読み込み中…</h1>
         <p className="mt-4 text-sm text-gray-500">
           LINEとの接続を確認しています
         </p>
@@ -141,7 +132,6 @@ export default function Home() {
     return (
       <main className="min-h-screen p-6">
         <div className="max-w-md mx-auto">
-
           <h1 className="text-xl font-bold text-red-600">
             エラーが発生しました
           </h1>
@@ -151,16 +141,6 @@ export default function Home() {
               {error}
             </pre>
           </div>
-
-          <div className="mt-6 text-sm">
-            <p>現在のURL：</p>
-            <p className="break-all">
-              {typeof window !== "undefined"
-                ? window.location.href
-                : ""}
-            </p>
-          </div>
-
         </div>
       </main>
     );
@@ -177,7 +157,6 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-md mx-auto">
-
         <h1 className="text-2xl font-bold mb-2">
           🎵 演奏マッチング
         </h1>
@@ -191,7 +170,6 @@ export default function Home() {
           <p className="text-sm text-gray-500">
             LINEアカウント
           </p>
-
           <p className="text-lg font-bold">
             {profile.displayName}
           </p>
@@ -202,7 +180,6 @@ export default function Home() {
         </h2>
 
         <div className="space-y-3">
-
           <button
             onClick={() => selectUserType("performer")}
             className="w-full bg-black text-white rounded-xl p-4"
@@ -216,9 +193,7 @@ export default function Home() {
           >
             🏢 演奏を依頼したい
           </button>
-
         </div>
-
       </div>
     </main>
   );
