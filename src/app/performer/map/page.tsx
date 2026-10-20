@@ -246,7 +246,7 @@ export default function PerformerMapPage() {
               ? `/performer/requests/${encodeURIComponent(item.id)}`
               : `/performer/lesson/${encodeURIComponent(item.id)}`;
 
-            const marker = new mapsLibrary.Marker({
+            const marker = new (window as any).google.maps.Marker({
               map,
               position: location,
               title: item.title,
