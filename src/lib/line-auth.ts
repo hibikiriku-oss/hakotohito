@@ -16,6 +16,11 @@ export async function verifyLineIdToken(
   const channelId = process.env.LINE_LOGIN_CHANNEL_ID;
 
   if (!channelId || !idToken) {
+    console.error("LINE IDトークン検証を開始できません", {
+      hasChannelId: Boolean(channelId),
+      hasIdToken: Boolean(idToken),
+    });
+
     return null;
   }
 
@@ -48,17 +53,28 @@ export async function verifyLineIdToken(
     const result =
       (await response.json()) as LineVerifyResponse;
 
+    const checks = {
+      hasSub: Boolean(result.sub),
+      audienceMatches: result.aud === channelId,
+      issuerMatches: result.iss === "https://access.line.me",
+      expirationIsNumber: typeof result.exp === "number",
+      tokenNotExpired:
+        typeof result.exp === "number" &&
+        result.exp > Math.floor(Date.now() / 1000),
+    };
+
     if (
-      !result.sub ||
-      result.aud !== channelId ||
-      result.iss !== "https://access.line.me" ||
-      typeof result.exp !== "number" ||
-      result.exp <= Math.floor(Date.now() / 1000)
+      !checks.hasSub ||
+      !checks.audienceMatches ||
+      !checks.issuerMatches ||
+      !checks.expirationIsNumber ||
+      !checks.tokenNotExpired
     ) {
+      console.error("LINE IDトークン検証条件不一致", checks);
       return null;
     }
 
-    return { userId: result.sub };
+    return { userId: result.sub! };
   } catch (error) {
     console.error("LINE IDトークン検証エラー:", error);
     return null;
