@@ -1,3 +1,4 @@
+﻿
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -25,6 +26,10 @@ type MapItem = {
     facility_type?: string | null;
     address?: string | null;
   } | null;
+  performers?: {
+    area?: string | null;
+    areas?: string[] | null;
+  } | null;
 };
 
 type MapSearchResponse = {
@@ -36,7 +41,7 @@ type MapSearchResponse = {
   error?: string;
 };
 
-function escapeHtml(value: string) {
+function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     const entities: Record<string, string> = {
       "&": "&amp;",
@@ -50,7 +55,7 @@ function escapeHtml(value: string) {
   });
 }
 
-function formatTime(value?: string | null) {
+function formatTime(value?: string | null): string {
   return value ? value.slice(0, 5) : "";
 }
 
@@ -112,7 +117,8 @@ export default function PerformerMapPage() {
         if (cancelled || !mapRef.current) return;
 
         // Google Maps APIキーを確認
-        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+        const apiKey =
+          process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
         if (!apiKey) {
           throw new Error(
@@ -127,7 +133,8 @@ export default function PerformerMapPage() {
         });
 
         const mapsLibrary: any = await importLibrary("maps");
-        const geocodingLibrary: any = await importLibrary("geocoding");
+        const geocodingLibrary: any =
+          await importLibrary("geocoding");
 
         if (cancelled || !mapRef.current) return;
 
@@ -151,7 +158,8 @@ export default function PerformerMapPage() {
 
         if (!response.ok || !data.success) {
           throw new Error(
-            data.error || "地図検索データを取得できませんでした。"
+            data.error ||
+              "地図検索データを取得できませんでした。"
           );
         }
 
@@ -159,7 +167,7 @@ export default function PerformerMapPage() {
 
         setDate(data.date);
         setTotal(data.total);
-        setStatus("募集の位置を検索しています...");
+        setStatus("案件の位置を検索しています...");
 
         const items: MapItem[] = [
           ...(data.performances || []),
@@ -178,7 +186,9 @@ export default function PerformerMapPage() {
           const address =
             item.map_type === "performance"
               ? item.map_address || item.facilities?.address
-              : item.area;
+              : item.area?.trim() ||
+                item.performers?.areas?.find((area) => area?.trim())?.trim() ||
+                item.performers?.area?.trim();
 
           if (!address?.trim()) continue;
 
@@ -190,11 +200,13 @@ export default function PerformerMapPage() {
 
             if (cancelled) return;
 
-            const location = result.results?.[0]?.geometry?.location;
+            const location =
+              result.results?.[0]?.geometry?.location;
 
             if (!location) continue;
 
-            const isPerformance = item.map_type === "performance";
+            const isPerformance =
+              item.map_type === "performance";
 
             const detailPath = isPerformance
               ? `/performer/requests/${encodeURIComponent(item.id)}`
@@ -211,7 +223,9 @@ export default function PerformerMapPage() {
               },
               icon: {
                 path: "M 0,-18 C -10,-18 -17,-10 -17,0 C -17,10 0,25 0,25 C 0,25 17,10 17,0 C 17,-10 10,-18 0,-18 Z",
-                fillColor: isPerformance ? "#2563eb" : "#16a34a",
+                fillColor: isPerformance
+                  ? "#2563eb"
+                  : "#16a34a",
                 fillOpacity: 1,
                 strokeColor: "#ffffff",
                 strokeWeight: 2,
@@ -221,14 +235,16 @@ export default function PerformerMapPage() {
             });
 
             marker.addListener("click", () => {
-              const title = escapeHtml(item.title || "タイトルなし");
+              const title = escapeHtml(
+                item.title || "タイトルなし"
+              );
               const locationText = escapeHtml(address);
               const typeLabel = isPerformance
                 ? "演奏案件"
                 : "レッスン募集";
 
               const facilityName = item.facilities?.name
-                ? `<p>施設：${escapeHtml(item.facilities.name)}</p>`
+                ? `<p>施設名：${escapeHtml(item.facilities.name)}</p>`
                 : "";
 
               const dateValue = isPerformance
@@ -239,16 +255,19 @@ export default function PerformerMapPage() {
                 ? escapeHtml(dateValue)
                 : "未指定";
 
+              const startTime = formatTime(item.start_time);
+              const endTime = formatTime(item.end_time);
+
               const timeText =
-                item.start_time || item.end_time
-                  ? `${escapeHtml(formatTime(item.start_time))}〜${escapeHtml(formatTime(item.end_time))}`
+                startTime || endTime
+                  ? `${escapeHtml(startTime || "未指定")} ～ ${escapeHtml(endTime || "未指定")}`
                   : "時間未指定";
 
               const price =
                 isPerformance && item.reward != null
                   ? `<p>謝礼：${item.reward.toLocaleString("ja-JP")}円</p>`
                   : !isPerformance && item.lesson_fee != null
-                    ? `<p>レッスン料：${item.lesson_fee.toLocaleString("ja-JP")}円</p>`
+                    ? `<p>レッスン料金：${item.lesson_fee.toLocaleString("ja-JP")}円</p>`
                     : "";
 
               const applicationText = item.is_applied
@@ -286,7 +305,7 @@ export default function PerformerMapPage() {
             markersRef.current.push(marker);
             displayedCount++;
           } catch (geocodeError) {
-            // 1件の住所が特定できなくても、ほかの募集の処理を続ける
+            // 1件の位置が特定できなくても、残りの案件を処理する
             console.warn(
               "住所を地図上で特定できませんでした:",
               address,
@@ -303,7 +322,8 @@ export default function PerformerMapPage() {
           const bounds = new mapsLibrary.LatLngBounds();
 
           for (const marker of markersRef.current) {
-            bounds.extend(marker.getPosition());
+            const position = marker.getPosition();
+            if (position) bounds.extend(position);
           }
 
           map.fitBounds(bounds);
@@ -315,7 +335,7 @@ export default function PerformerMapPage() {
 
         setStatus(
           displayedCount > 0
-            ? "地図を表示できました！"
+            ? "地図を表示しました。"
             : "表示できる場所が見つかりませんでした。"
         );
       } catch (err) {
@@ -327,7 +347,9 @@ export default function PerformerMapPage() {
               ? err.message
               : String(err);
 
-          setError(message || "地図の読み込みに失敗しました。");
+          setError(
+            message || "地図の読み込みに失敗しました。"
+          );
           setStatus("地図を表示できませんでした。");
         }
       }
@@ -370,11 +392,23 @@ export default function PerformerMapPage() {
         ← 演奏者ホームへ戻る
       </button>
 
-      <h1 style={{ fontSize: 24, fontWeight: "bold", marginBottom: 8 }}>
+      <h1
+        style={{
+          fontSize: 24,
+          fontWeight: "bold",
+          marginBottom: 8,
+        }}
+      >
         地図から探す
       </h1>
 
-      <p style={{ fontSize: 14, color: "#555", marginBottom: 12 }}>
+      <p
+        style={{
+          fontSize: 14,
+          color: "#555",
+          marginBottom: 12,
+        }}
+      >
         今日の演奏案件とレッスン募集を地図で確認できます。
       </p>
 
@@ -388,12 +422,14 @@ export default function PerformerMapPage() {
         }}
       >
         <span>
-          <strong style={{ color: "#2563eb" }}>●</strong> 演奏案件
+          <strong style={{ color: "#2563eb" }}>●</strong>{" "}
+          演奏案件
         </span>
         <span>
-          <strong style={{ color: "#16a34a" }}>●</strong> レッスン募集
+          <strong style={{ color: "#16a34a" }}>●</strong>{" "}
+          レッスン募集
         </span>
-        <span>演＝演奏案件／レ＝レッスン</span>
+        <span>マーカーを押すと案件の詳細を確認できます。</span>
       </div>
 
       <div
@@ -437,7 +473,7 @@ export default function PerformerMapPage() {
         }}
       >
         ※レッスン募集は登録されたエリアをもとに位置を表示するため、正確な所在地とは限りません。
-        住所やエリアが登録されていない募集は地図に表示されません。
+        住所やエリアが登録されていない案件は地図に表示されません。
       </p>
     </main>
   );
