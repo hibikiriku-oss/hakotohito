@@ -69,7 +69,9 @@ export default function AdminCoinsPage() {
         });
 
         if (!liff.isLoggedIn()) {
-          liff.login();
+          liff.login({
+            redirectUri: window.location.href,
+          });
           return;
         }
 
