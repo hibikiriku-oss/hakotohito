@@ -17,6 +17,82 @@ const ALLOWED_CATEGORIES = [
   "other",
 ] as const;
 
+export async function GET(request: NextRequest) {
+  try {
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice(7).trim()
+      : "";
+
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
+        { status: 401 }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
+        { status: 401 }
+      );
+    }
+
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .maybeSingle();
+
+    if (userError) {
+      console.error("問い合わせ履歴のユーザー取得エラー:", userError.message);
+
+      return NextResponse.json(
+        { error: "ユーザー情報を取得できませんでした。" },
+        { status: 500 }
+      );
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "ユーザー登録が見つかりません。先に登録してください。" },
+        { status: 403 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from("inquiries")
+      .select(
+        "id, category, subject, message, status, admin_reply, replied_at, created_at, updated_at"
+      )
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error("問い合わせ履歴取得エラー:", error.message);
+
+      return NextResponse.json(
+        { error: "問い合わせ履歴を取得できませんでした。" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      inquiries: data ?? [],
+    });
+  } catch (error) {
+    console.error("問い合わせ履歴APIエラー:", error);
+
+    return NextResponse.json(
+      { error: "サーバーエラーが発生しました。" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
