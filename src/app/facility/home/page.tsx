@@ -222,7 +222,22 @@ export default function FacilityHomePage() {
                 気になる演奏者を確認
               </p>
             </button>
+            
+            {/* お問い合わせ */}
+            <button
+              onClick={() => router.push("/inquiry")}
+              className="bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-sm active:scale-[0.99] transition"
+            >
+              <div className="text-2xl">💬</div>
 
+              <div className="font-bold text-gray-900 mt-3">
+                お問い合わせ
+              </div>
+
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                ご質問・不具合の報告
+              </p>
+            </button>
           </div>
         </section>
 

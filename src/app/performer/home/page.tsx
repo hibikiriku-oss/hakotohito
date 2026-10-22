@@ -227,6 +227,22 @@ export default function PerformerHomePage() {
                 プロフィールを編集
               </p>
             </button>
+
+            {/* お問い合わせ */}
+            <button
+              onClick={() => router.push("/inquiry")}
+              className="rounded-2xl bg-white border border-gray-200 p-5 text-left shadow-sm active:bg-gray-50"
+            >
+              <div className="text-2xl">💬</div>
+
+              <p className="mt-3 font-bold text-gray-900">
+                お問い合わせ
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-gray-500">
+                ご質問・不具合の報告
+              </p>
+            </button>
           </div>
         </section>
 
