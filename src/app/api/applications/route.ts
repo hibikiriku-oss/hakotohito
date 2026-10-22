@@ -237,15 +237,9 @@ export async function POST(request: NextRequest) {
     // 応募前の必要コイン確認
     // ==============================
 
-    // 応募料10コイン + 謝礼の1%（端数切り上げ）
-    const rewardAmount = Number(performanceRequest.reward ?? 0);
-
-    const rewardFee =
-      Number.isFinite(rewardAmount) && rewardAmount > 0
-        ? Math.ceil(rewardAmount * 0.01)
-        : 0;
-
-    const requiredCoins = 10 + rewardFee;
+    // 応募料は10コイン。
+    // 報酬の1%手数料は演奏完了時に処理する。
+    const requiredCoins = 10;
 
     // 最新の残高を取得
     const {
@@ -268,13 +262,23 @@ export async function POST(request: NextRequest) {
 
     const currentBalance = Number(latestUser.coin_balance ?? 0);
 
+    if (currentBalance < 0) {
+      return NextResponse.json(
+        {
+          error:
+            "コイン残高がマイナスのため、新しい案件には応募できません。" +
+            "コインをチャージするなどして残高を0以上にしてください。",
+        },
+        { status: 400 }
+      );
+    }
+
     if (currentBalance < requiredCoins) {
       return NextResponse.json(
         {
           error:
-            `コイン不足のため応募できません。` +
-            `この案件への応募には${requiredCoins}コイン必要です` +
-            `（応募料10コイン＋成立時手数料${rewardFee}コイン）。` +
+            "コイン不足のため応募できません。" +
+            `この案件への応募には${requiredCoins}コイン必要です。` +
             `現在の残高は${currentBalance}コインです。` +
             "チャージしてから再度お試しください。",
         },

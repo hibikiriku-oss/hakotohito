@@ -19,6 +19,16 @@ type CompletionMatch = {
   completion_method: string | null;
 };
 
+type CompletionResult = {
+  success?: boolean;
+  alreadyCompleted?: boolean;
+  feeCharged?: boolean;
+  feeAmount?: number;
+  error?: string;
+  errorMessage?: string;
+  message?: string;
+};
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,7 +44,6 @@ export async function POST(
       );
     }
 
-    // LINEユーザーを取得
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
@@ -48,7 +57,6 @@ export async function POST(
       );
     }
 
-    // 施設プロフィールを取得
     const { data: facility, error: facilityError } = await supabase
       .from("facilities")
       .select("id")
@@ -62,7 +70,6 @@ export async function POST(
       );
     }
 
-    // マッチングと案件の施設所有者を確認
     const { data: rawMatch, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -100,7 +107,10 @@ export async function POST(
       ? match.performance_requests[0]
       : match.performance_requests;
 
-    if (!performanceRequest || performanceRequest.facility_id !== facility.id) {
+    if (
+      !performanceRequest ||
+      performanceRequest.facility_id !== facility.id
+    ) {
       return NextResponse.json(
         { error: "このマッチングを操作する権限がありません" },
         { status: 403 }
@@ -132,12 +142,15 @@ export async function POST(
 
     if (match.completion_disputed_at) {
       return NextResponse.json(
-        { error: "演奏完了について異議申し立てがあるため、処理できません" },
+        {
+          error:
+            "演奏完了について異議申し立てがあるため、処理できません",
+        },
         { status: 409 }
       );
     }
 
-    // 施設側の報告日時を記録。既存の報告は上書きしない。
+    // 施設側の完了報告を記録。既存の報告日時は上書きしない。
     if (!match.facility_completion_reported_at) {
       const { data: reportRows, error: reportError } = await supabase
         .from("matches")
@@ -160,33 +173,77 @@ export async function POST(
       }
 
       if (!reportRows || reportRows.length === 0) {
-        return NextResponse.json(
-          { error: "報告を登録できませんでした。画面を再読み込みしてください" },
-          { status: 409 }
-        );
+        // 同時操作の可能性があるため、最新状態を確認する。
+        const { data: currentMatch, error: currentError } =
+          await supabase
+            .from("matches")
+            .select("*")
+            .eq("id", matchId)
+            .maybeSingle();
+
+        if (currentError || !currentMatch) {
+          return NextResponse.json(
+            { error: "最新の演奏状況を取得できませんでした" },
+            { status: 500 }
+          );
+        }
+
+        if (
+          currentMatch.performance_status === "completed" ||
+          currentMatch.completed_at
+        ) {
+          return NextResponse.json({
+            success: true,
+            completed: true,
+            message: "この演奏はすでに完了しています",
+            match: currentMatch,
+          });
+        }
+
+        if (
+          currentMatch.status !== "active" ||
+          currentMatch.performance_status !== "scheduled" ||
+          currentMatch.completion_disputed_at
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                "マッチングの状態が変更されたため、報告を登録できませんでした",
+            },
+            { status: 409 }
+          );
+        }
+
+        if (!currentMatch.facility_completion_reported_at) {
+          return NextResponse.json(
+            {
+              error:
+                "報告を登録できませんでした。画面を再読み込みしてください",
+            },
+            { status: 409 }
+          );
+        }
       }
     }
 
-    // 最新の報告状況を確認
-    const {
-      data: latestRawMatch,
-      error: latestError,
-    } = await supabase
-      .from("matches")
-      .select(`
-        id,
-        request_id,
-        performer_id,
-        status,
-        performance_status,
-        completed_at,
-        performer_completion_reported_at,
-        facility_completion_reported_at,
-        completion_disputed_at,
-        completion_method
-      `)
-      .eq("id", matchId)
-      .single();
+    // 最新の双方の報告状況を取得する。
+    const { data: latestRawMatch, error: latestError } =
+      await supabase
+        .from("matches")
+        .select(`
+          id,
+          request_id,
+          performer_id,
+          status,
+          performance_status,
+          completed_at,
+          performer_completion_reported_at,
+          facility_completion_reported_at,
+          completion_disputed_at,
+          completion_method
+        `)
+        .eq("id", matchId)
+        .single();
 
     const latestMatch =
       latestRawMatch as unknown as CompletionMatch | null;
@@ -199,79 +256,96 @@ export async function POST(
     }
 
     if (
+      latestMatch.performance_status === "completed" ||
+      latestMatch.completed_at
+    ) {
+      return NextResponse.json({
+        success: true,
+        completed: true,
+        message: "この演奏はすでに完了しています",
+        match: latestMatch,
+      });
+    }
+
+    if (
       latestMatch.status !== "active" ||
+      latestMatch.performance_status !== "scheduled" ||
       latestMatch.completion_disputed_at
     ) {
       return NextResponse.json(
-        { error: "マッチングの状態が変更されたため、処理を中止しました" },
+        {
+          error:
+            "マッチングの状態が変更されたため、処理を中止しました",
+        },
         { status: 409 }
       );
     }
 
-    // 双方が報告済みなら完了を確定
+    // 双方が報告済みなら、DB関数で完了確定と手数料処理を一括実行する。
     if (
       latestMatch.performer_completion_reported_at &&
       latestMatch.facility_completion_reported_at
     ) {
-      const { data: completedRows, error: completeError } = await supabase
-        .from("matches")
-        .update({
-          performance_status: "completed",
-          completed_at: new Date().toISOString(),
-          completion_method: "mutual_confirmation",
-        })
-        .eq("id", matchId)
-        .eq("status", "active")
-        .eq("performance_status", "scheduled")
-        .not("performer_completion_reported_at", "is", null)
-        .not("facility_completion_reported_at", "is", null)
-        .is("completion_disputed_at", null)
-        .select("*");
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "complete_match_with_fee",
+        {
+          p_match_id: matchId,
+          p_completion_mode: "mutual",
+        }
+      );
 
-      if (completeError) {
-        console.error("演奏完了確定エラー:", completeError);
+      if (rpcError) {
+        console.error("演奏完了RPCエラー:", rpcError);
         return NextResponse.json(
           { error: "演奏完了の確定に失敗しました" },
           { status: 500 }
         );
       }
 
-      if (completedRows && completedRows.length > 0) {
-        return NextResponse.json({
-          success: true,
-          completed: true,
-          message: "双方の報告により演奏が完了しました",
-          match: completedRows[0],
-        });
+      const result = rpcData as CompletionResult | null;
+
+      if (!result?.success) {
+        const errorMessage =
+          result?.errorMessage ||
+          result?.error ||
+          "演奏完了を確定できませんでした。画面を再読み込みしてください";
+
+        console.error("演奏完了RPCが失敗しました:", result);
+
+        return NextResponse.json(
+          { error: errorMessage },
+          { status: 409 }
+        );
       }
 
-      // 別の処理が先に完了した場合を確認
-      const { data: currentMatch, error: currentError } = await supabase
-        .from("matches")
-        .select("*")
-        .eq("id", matchId)
-        .single();
+      const { data: completedMatch, error: completedMatchError } =
+        await supabase
+          .from("matches")
+          .select("*")
+          .eq("id", matchId)
+          .single();
 
-      if (currentError || !currentMatch) {
+      if (completedMatchError || !completedMatch) {
+        console.error(
+          "完了後のマッチング取得エラー:",
+          completedMatchError
+        );
         return NextResponse.json(
-          { error: "最新の演奏状況を取得できませんでした" },
+          { error: "完了後の演奏状況を取得できませんでした" },
           { status: 500 }
         );
       }
 
-      if (currentMatch.performance_status === "completed") {
-        return NextResponse.json({
-          success: true,
-          completed: true,
-          message: "演奏が完了しました",
-          match: currentMatch,
-        });
-      }
-
-      return NextResponse.json(
-        { error: "演奏完了を確定できませんでした。画面を再読み込みしてください" },
-        { status: 409 }
-      );
+      return NextResponse.json({
+        success: true,
+        completed: true,
+        alreadyCompleted: result.alreadyCompleted ?? false,
+        feeCharged: result.feeCharged ?? false,
+        feeAmount: result.feeAmount ?? 0,
+        message:
+          result.message || "双方の報告により演奏が完了しました",
+        match: completedMatch,
+      });
     }
 
     return NextResponse.json({
