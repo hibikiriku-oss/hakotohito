@@ -28,6 +28,7 @@ type LessonOffer = {
   instruments?: string[] | null;
   genres?: string[] | null;
   area?: string | null;
+  address?: string | null;
   lesson_date?: string | null;
   start_time?: string | null;
   end_time?: string | null;
@@ -333,7 +334,12 @@ export default function LessonDetailPage() {
             <p className="text-sm text-gray-500">開催エリア</p>
             <p>{offer.area || "未設定"}</p>
           </div>
-
+          {offer.address && (
+            <div>
+              <p className="text-sm text-gray-500">詳しい開催住所</p>
+              <p>{offer.address}</p>
+            </div>
+          )}
           <div>
             <p className="text-sm text-gray-500">開催日</p>
             <p>{formatDate(offer.lesson_date)}</p>

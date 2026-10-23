@@ -27,6 +27,7 @@ type LessonOffer = {
   instruments: string[] | null;
   genres: string[] | null;
   area: string | null;
+  address?: string | null;
   lesson_date: string | null;
   start_time: string | null;
   end_time: string | null;
@@ -515,6 +516,12 @@ export default function LessonListPage() {
                       <span className="font-bold">📍 エリア：</span>
                       {offer.area || "未指定・オンライン等"}
                     </p>
+                    {offer.address && (
+                      <p>
+                        <span className="font-bold">🏠 詳しい住所：</span>
+                        {offer.address}
+                      </p>
+                    )}
                     <p>
                       <span className="font-bold">📅 日時：</span>
                       {formatDate(offer.lesson_date)}

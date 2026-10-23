@@ -80,9 +80,7 @@ const SORT_OPTIONS: {
   { value: "created_asc", label: "登録日時が古い順" },
 ];
 
-function getRequestTypeLabel(
-  requestType: RequestType | null
-) {
+function getRequestTypeLabel(requestType: RequestType | null) {
   const option = REQUEST_TYPE_OPTIONS.find(
     (item) => item.value === requestType
   );
@@ -106,9 +104,7 @@ function getEffectiveStatus(
 
   if (
     values.some(
-      (value) =>
-        value === "cancelled" ||
-        value === "canceled"
+      (value) => value === "cancelled" || value === "canceled"
     )
   ) {
     return "cancelled";
@@ -157,9 +153,7 @@ function getStatusClass(status: string) {
   return "bg-gray-100 text-gray-500 border-gray-200";
 }
 
-function getPerformanceTimestamp(
-  request: PerformanceRequest
-) {
+function getPerformanceTimestamp(request: PerformanceRequest) {
   const date = request.performance_date || "";
   const time = request.start_time || "00:00";
 
@@ -189,10 +183,11 @@ function formatDate(date: string) {
 export default function FacilityRequestsPage() {
   const router = useRouter();
 
-  const [requests, setRequests] =
-    useState<PerformanceRequest[]>([]);
+  const [requests, setRequests] = useState<PerformanceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [searchText, setSearchText] = useState("");
   const [requestTypeFilter, setRequestTypeFilter] =
@@ -226,15 +221,12 @@ export default function FacilityRequestsPage() {
 
         const profile = await liff.getProfile();
 
-        const response = await fetch(
-          "/api/facility/requests",
-          {
-            headers: {
-              "x-line-user-id": profile.userId,
-            },
-            cache: "no-store",
-          }
-        );
+        const response = await fetch("/api/facility/requests", {
+          headers: {
+            "x-line-user-id": profile.userId,
+          },
+          cache: "no-store",
+        });
 
         const data = await response.json();
 
@@ -245,9 +237,7 @@ export default function FacilityRequestsPage() {
         }
 
         setRequests(
-          Array.isArray(data.requests)
-            ? data.requests
-            : []
+          Array.isArray(data.requests) ? data.requests : []
         );
       } catch (error) {
         console.error("案件取得エラー:", error);
@@ -265,15 +255,9 @@ export default function FacilityRequestsPage() {
     initialize();
   }, []);
 
-  // 検索・絞り込み・並べ替えを変更したら1ページ目に戻る
   useEffect(() => {
     setCurrentPage(1);
-  }, [
-    searchText,
-    requestTypeFilter,
-    statusFilter,
-    sortOption,
-  ]);
+  }, [searchText, requestTypeFilter, statusFilter, sortOption]);
 
   const filteredRequests = useMemo(() => {
     const keyword = searchText.trim().toLowerCase();
@@ -289,8 +273,7 @@ export default function FacilityRequestsPage() {
         .toLowerCase();
 
       const matchesSearch =
-        keyword === "" ||
-        searchableText.includes(keyword);
+        keyword === "" || searchableText.includes(keyword);
 
       const matchesRequestType =
         requestTypeFilter === "all" ||
@@ -327,12 +310,8 @@ export default function FacilityRequestsPage() {
       const aCreated = new Date(a.created_at).getTime();
       const bCreated = new Date(b.created_at).getTime();
 
-      const safeACreated = Number.isNaN(aCreated)
-        ? 0
-        : aCreated;
-      const safeBCreated = Number.isNaN(bCreated)
-        ? 0
-        : bCreated;
+      const safeACreated = Number.isNaN(aCreated) ? 0 : aCreated;
+      const safeBCreated = Number.isNaN(bCreated) ? 0 : bCreated;
 
       if (sortOption === "created_desc") {
         return safeBCreated - safeACreated;
@@ -381,6 +360,67 @@ export default function FacilityRequestsPage() {
       top: 0,
       behavior: "smooth",
     });
+  }
+
+  async function handleDelete(request: PerformanceRequest) {
+    const status = getEffectiveStatus(request);
+
+    if (status !== "open") {
+      setDeleteError("募集中の案件のみ削除できます。");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `「${request.title}」を削除しますか？\n\n応募履歴またはマッチング履歴がある案件は削除できません。この操作は取り消せません。`
+    );
+
+    if (!confirmed) return;
+
+    setDeletingId(request.id);
+    setDeleteError("");
+
+    try {
+      if (!liff.isLoggedIn()) {
+        throw new Error("LINEにログインしてから操作してください。");
+      }
+
+      const profile = await liff.getProfile();
+
+      const response = await fetch(
+        `/api/performance-requests/${encodeURIComponent(request.id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "x-line-user-id": profile.userId,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "案件の削除に失敗しました。"
+        );
+      }
+
+      setRequests((previous) =>
+        previous.filter((item) => item.id !== request.id)
+      );
+
+      setDeleteError("");
+    } catch (error) {
+      console.error("案件削除エラー:", error);
+
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : "案件の削除に失敗しました。"
+      );
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   if (loading) {
@@ -487,6 +527,22 @@ export default function FacilityRequestsPage() {
           </div>
         </button>
 
+        {deleteError && (
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            <p className="font-bold">削除できませんでした</p>
+            <p className="mt-1">{deleteError}</p>
+            <button
+              onClick={() => setDeleteError("")}
+              className="mt-2 text-xs underline"
+            >
+              メッセージを閉じる
+            </button>
+          </div>
+        )}
+
         {requests.length > 0 && (
           <section className="mt-5 bg-white border border-gray-200 rounded-2xl p-4">
             <h2 className="text-sm font-bold text-gray-900 mb-3">
@@ -504,9 +560,7 @@ export default function FacilityRequestsPage() {
               id="request-search"
               type="search"
               value={searchText}
-              onChange={(event) =>
-                setSearchText(event.target.value)
-              }
+              onChange={(event) => setSearchText(event.target.value)}
               placeholder="例：ピアノ、クラシック、名古屋"
               className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-900 outline-none focus:border-gray-500"
             />
@@ -530,10 +584,7 @@ export default function FacilityRequestsPage() {
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-900"
               >
                 {REQUEST_TYPE_OPTIONS.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                  >
+                  <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
@@ -559,10 +610,7 @@ export default function FacilityRequestsPage() {
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-900"
               >
                 {STATUS_OPTIONS.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                  >
+                  <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
@@ -581,17 +629,12 @@ export default function FacilityRequestsPage() {
                 id="request-sort"
                 value={sortOption}
                 onChange={(event) =>
-                  setSortOption(
-                    event.target.value as SortOption
-                  )
+                  setSortOption(event.target.value as SortOption)
                 }
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-900"
               >
                 {SORT_OPTIONS.map((option) => (
-                  <option
-                    key={option.value}
-                    value={option.value}
-                  >
+                  <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
@@ -616,16 +659,13 @@ export default function FacilityRequestsPage() {
         {requests.length === 0 ? (
           <div className="mt-5 bg-white border border-gray-200 rounded-2xl p-7 text-center">
             <div className="text-4xl">🎵</div>
-
             <h2 className="font-bold text-gray-900 mt-4">
               まだオファーがありません
             </h2>
-
             <p className="text-sm text-gray-500 mt-2 leading-relaxed">
               演奏してほしい日時や内容を登録すると、
               演奏者を募集できます。
             </p>
-
             <button
               onClick={() => router.push("/facility/request")}
               className="w-full mt-5 bg-black text-white rounded-xl p-4 font-bold"
@@ -636,15 +676,12 @@ export default function FacilityRequestsPage() {
         ) : filteredRequests.length === 0 ? (
           <div className="mt-5 bg-white border border-gray-200 rounded-2xl p-7 text-center">
             <div className="text-3xl">🔎</div>
-
             <h2 className="font-bold text-gray-900 mt-3">
               該当する案件がありません
             </h2>
-
             <p className="text-sm text-gray-500 mt-2">
               検索キーワードや絞り込み条件を変更してください。
             </p>
-
             <button
               onClick={resetFilters}
               className="mt-4 rounded-xl bg-gray-100 px-5 py-3 text-sm font-bold text-gray-700"
@@ -658,7 +695,6 @@ export default function FacilityRequestsPage() {
               <h2 className="text-sm font-bold text-gray-800">
                 依頼案件一覧
               </h2>
-
               <span className="text-xs text-gray-500">
                 {filteredRequests.length}件中{" "}
                 {(currentPage - 1) * PAGE_SIZE + 1}
@@ -674,120 +710,138 @@ export default function FacilityRequestsPage() {
             <div className="mt-3 space-y-3">
               {visibleRequests.map((request) => {
                 const status = getEffectiveStatus(request);
+                const canDelete = status === "open";
+                const isDeleting = deletingId === request.id;
 
                 return (
-                  <button
+                  <article
                     key={request.id}
-                    onClick={() =>
-                      router.push(
-                        `/facility/requests/${request.id}`
-                      )
-                    }
-                    className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
+                    className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="inline-block mb-2 text-xs font-bold bg-purple-50 text-purple-700 border border-purple-100 rounded-full px-2.5 py-1">
-                          {getRequestTypeLabel(request.request_type)}
-                        </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(
+                          `/facility/requests/${request.id}`
+                        )
+                      }
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="inline-block mb-2 text-xs font-bold bg-purple-50 text-purple-700 border border-purple-100 rounded-full px-2.5 py-1">
+                            {getRequestTypeLabel(request.request_type)}
+                          </span>
 
-                        <h3 className="text-base font-bold text-gray-900 leading-relaxed">
-                          {request.title}
-                        </h3>
-                      </div>
+                          <h3 className="text-base font-bold text-gray-900 leading-relaxed">
+                            {request.title}
+                          </h3>
+                        </div>
 
-                      <span
-                        className={`shrink-0 text-xs font-bold border rounded-full px-3 py-1 ${getStatusClass(
-                          status
-                        )}`}
-                      >
-                        {getStatusLabel(status)}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 bg-gray-50 rounded-xl p-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">📅</span>
-                        <span className="text-sm font-medium text-gray-800">
-                          {formatDate(request.performance_date)}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-base">🕐</span>
-                        <span className="text-sm font-medium text-gray-800">
-                          {(request.start_time || "").slice(0, 5)}
-                          {" ～ "}
-                          {(request.end_time || "").slice(0, 5)}
+                        <span
+                          className={`shrink-0 text-xs font-bold border rounded-full px-3 py-1 ${getStatusClass(
+                            status
+                          )}`}
+                        >
+                          {getStatusLabel(status)}
                         </span>
                       </div>
 
-                      {request.area && (
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-base">📍</span>
-                          <span className="text-sm text-gray-700">
-                            {request.area}
+                      <div className="mt-4 bg-gray-50 rounded-xl p-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📅</span>
+                          <span className="text-sm font-medium text-gray-800">
+                            {formatDate(request.performance_date)}
                           </span>
                         </div>
-                      )}
-                    </div>
 
-                    <div className="mt-3 flex items-center gap-2">
-                      <span className="text-base">⏳</span>
-                      <span className="text-sm text-gray-700">
-                        募集期限：
-                        {formatDate(request.application_deadline)}
-                      </span>
-                    </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-base">🕐</span>
+                          <span className="text-sm font-medium text-gray-800">
+                            {(request.start_time || "").slice(0, 5)}
+                            {" ～ "}
+                            {(request.end_time || "").slice(0, 5)}
+                          </span>
+                        </div>
 
-                    {((request.instruments ?? []).length > 0 ||
-                      (request.genres ?? []).length > 0) && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {(request.instruments ?? []).map(
-                          (instrument) => (
+                        {request.area && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className="text-base">📍</span>
+                            <span className="text-sm text-gray-700">
+                              {request.area}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="text-base">⏳</span>
+                        <span className="text-sm text-gray-700">
+                          募集期限：
+                          {formatDate(request.application_deadline)}
+                        </span>
+                      </div>
+
+                      {((request.instruments ?? []).length > 0 ||
+                        (request.genres ?? []).length > 0) && (
+                        <div className="flex flex-wrap gap-1.5 mt-3">
+                          {(request.instruments ?? []).map(
+                            (instrument) => (
+                              <span
+                                key={`instrument-${instrument}`}
+                                className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
+                              >
+                                🎹 {instrument}
+                              </span>
+                            )
+                          )}
+
+                          {(request.genres ?? []).map((genre) => (
                             <span
-                              key={`instrument-${instrument}`}
+                              key={`genre-${genre}`}
                               className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
                             >
-                              🎹 {instrument}
+                              🎵 {genre}
                             </span>
-                          )
-                        )}
-
-                        {(request.genres ?? []).map((genre) => (
-                          <span
-                            key={`genre-${genre}`}
-                            className="text-xs bg-gray-100 text-gray-600 rounded-full px-2.5 py-1"
-                          >
-                            🎵 {genre}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {request.reward !== null &&
-                      request.reward !== undefined && (
-                        <div className="mt-4 flex items-center justify-between">
-                          <span className="text-sm text-gray-500">
-                            謝礼
-                          </span>
-
-                          <span className="font-bold text-gray-900">
-                            {request.reward.toLocaleString()}円
-                          </span>
+                          ))}
                         </div>
                       )}
 
-                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-                      <span className="text-xs text-gray-400">
-                        案件の詳細・応募者を確認
-                      </span>
+                      {request.reward !== null &&
+                        request.reward !== undefined && (
+                          <div className="mt-4 flex items-center justify-between">
+                            <span className="text-sm text-gray-500">
+                              謝礼
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {request.reward.toLocaleString()}円
+                            </span>
+                          </div>
+                        )}
 
-                      <span className="text-sm font-bold text-gray-700">
-                        詳細を見る →
-                      </span>
-                    </div>
-                  </button>
+                      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                        <span className="text-xs text-gray-400">
+                          案件の詳細・応募者を確認
+                        </span>
+                        <span className="text-sm font-bold text-gray-700">
+                          詳細を見る →
+                        </span>
+                      </div>
+                    </button>
+
+                    {canDelete && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <button
+                          type="button"
+                          disabled={deletingId !== null}
+                          onClick={() => handleDelete(request)}
+                          className="w-full rounded-xl border border-red-200 bg-white px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isDeleting ? "削除しています…" : "🗑️ この案件を削除"}
+                        </button>
+                      </div>
+                    )}
+                  </article>
                 );
               })}
             </div>

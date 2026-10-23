@@ -416,13 +416,20 @@ export async function DELETE(
     const { data: existingRequest, error: existingError } =
       await supabase
         .from("performance_requests")
-        .select(
-          "id, facility_id, status, request_type, participation_fee, rental_fee"
-        )
+        .select("id, facility_id, status")
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
-    if (existingError || !existingRequest) {
+    if (existingError) {
+      console.error("削除対象案件取得エラー:", existingError);
+
+      return NextResponse.json(
+        { error: "案件情報の確認に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    if (!existingRequest) {
       return NextResponse.json(
         { error: "案件が見つかりません" },
         { status: 404 }
@@ -440,12 +447,68 @@ export async function DELETE(
       return NextResponse.json(
         {
           error:
-            "募集終了またはマッチング済みの案件は削除できません",
+            "募集中の案件のみ削除できます。募集終了またはマッチング済みの案件は削除できません。",
         },
         { status: 409 }
       );
     }
 
+    // 応募履歴がある案件は削除しない
+    const { count: applicationCount, error: applicationsError } =
+      await supabase
+        .from("applications")
+        .select("id", { count: "exact", head: true })
+        .eq("request_id", id);
+
+    if (applicationsError) {
+      console.error("応募履歴確認エラー:", applicationsError);
+
+      return NextResponse.json(
+        { error: "応募履歴を確認できないため、削除を中止しました" },
+        { status: 500 }
+      );
+    }
+
+    if ((applicationCount ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "応募履歴がある案件は削除できません。応募状況をご確認ください。",
+        },
+        { status: 409 }
+      );
+    }
+
+    // マッチング履歴がある案件は削除しない
+    const { count: matchCount, error: matchesError } =
+      await supabase
+        .from("matches")
+        .select("id", { count: "exact", head: true })
+        .eq("request_id", id);
+
+    if (matchesError) {
+      console.error("マッチング履歴確認エラー:", matchesError);
+
+      return NextResponse.json(
+        {
+          error:
+            "マッチング履歴を確認できないため、削除を中止しました",
+        },
+        { status: 500 }
+      );
+    }
+
+    if ((matchCount ?? 0) > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "マッチング履歴がある案件は削除できません。",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 削除直前にも施設IDとステータスを条件に含める
     const { data, error } = await supabase
       .from("performance_requests")
       .delete()
@@ -468,7 +531,7 @@ export async function DELETE(
       return NextResponse.json(
         {
           error:
-            "この案件は削除できません。マッチング済み、または募集終了している可能性があります。",
+            "案件を削除できませんでした。案件の状態を再確認してください。",
         },
         { status: 409 }
       );

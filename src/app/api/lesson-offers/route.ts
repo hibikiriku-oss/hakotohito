@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -120,6 +119,7 @@ export async function GET(request: NextRequest) {
         instruments,
         genres,
         area,
+        address,
         lesson_date,
         start_time,
         end_time,
@@ -241,6 +241,16 @@ export async function POST(request: NextRequest) {
     const area =
       typeof body.area === "string" ? body.area.trim() : "";
 
+    const address =
+      typeof body.address === "string" ? body.address.trim() : "";
+
+    if (address.length > 500) {
+      return NextResponse.json(
+        { error: "住所は500文字以内で入力してください" },
+        { status: 400 }
+      );
+    }
+
     const instruments = normalizeStringArray(body.instruments);
     const genres = normalizeStringArray(body.genres);
     const targetLevels = normalizeTargetLevels(body.targetLevels);
@@ -350,9 +360,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 対象ランクの保存とコイン仮押さえをDB関数でまとめて処理
+    // 対象ランク・住所の保存とコイン仮押さえをDB関数で処理
     const { data: result, error } = await supabase.rpc(
-      "create_lesson_offer_with_levels",
+      "create_lesson_offer_with_levels_and_address",
       {
         p_performer_id: performer.id,
         p_title: title,
@@ -366,6 +376,7 @@ export async function POST(request: NextRequest) {
         p_lesson_fee: lessonFee,
         p_capacity: capacity,
         p_target_levels: targetLevels,
+        p_address: address || null,
       }
     );
 
@@ -409,6 +420,7 @@ export async function POST(request: NextRequest) {
         instruments,
         genres,
         area,
+        address,
         lesson_date,
         start_time,
         end_time,
@@ -430,6 +442,8 @@ export async function POST(request: NextRequest) {
         success: true,
         offer: {
           id: result.offer_id,
+          area: area || null,
+          address: address || null,
           target_levels: targetLevels,
           reserved_coins: result.reserved_coins,
         },

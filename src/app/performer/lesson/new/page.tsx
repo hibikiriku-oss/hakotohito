@@ -52,7 +52,7 @@ export default function NewLessonOfferPage() {
 
   const [prefecture, setPrefecture] = useState("愛知県");
   const [municipality, setMunicipality] = useState("");
-
+  const [address, setAddress] = useState("");
   const [instruments, setInstruments] = useState<string[]>([]);
   const [otherInstrument, setOtherInstrument] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
@@ -210,8 +210,8 @@ export default function NewLessonOfferPage() {
           genres: finalGenres,
           targetLevels,
           area,
-          lessonDate: lessonDate || null,
-          startTime: startTime || null,
+          address: address.trim(),
+          lessonDate: lessonDate || null,          startTime: startTime || null,
           endTime: endTime || null,
           lessonFee: feeNumber,
           capacity: capacityNumber,
@@ -367,6 +367,17 @@ export default function NewLessonOfferPage() {
                 onChange={(e) => setMunicipality(e.target.value)}
                 placeholder="例：名古屋市千種区、豊田市"
                 className={`${inputClass} mt-3`}
+              />
+                            <label className="font-bold text-sm text-gray-800 mt-4 mb-2 block">
+                詳しい開催住所（任意）
+              </label>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                maxLength={500}
+                placeholder="例：○○市○○町1-2-3、○○音楽教室"
+                className={inputClass}
               />
               <p className="text-xs text-gray-400 mt-2">
                 オンラインレッスンの場合は、エリアを空欄にしても登録できます。

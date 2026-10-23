@@ -75,6 +75,15 @@ export default function Home() {
 
     try {
       // 登録処理の直前にIDトークンを取得する
+      
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      console.log("LIFFログイン状態:", liff.isLoggedIn());
+      console.log("IDトークン取得可否:", Boolean(liff.getIDToken()));
+
       const idToken = liff.getIDToken();
 
       if (!idToken) {
