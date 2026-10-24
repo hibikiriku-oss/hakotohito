@@ -288,7 +288,15 @@ export default function PerformerHomePage() {
                 <button
                   key={item.key}
                   type="button"
-                  onClick={() => openMenu(item.key)}
+                  onClick={() => {
+                    if (item.key === "matches") {
+                      router.push("/performer/matches");
+                    } else if (item.key === "bands") {
+                      router.push("/performer/bands");
+                    } else {
+                      openMenu(item.key);
+                    }
+                  }}
                   className={`w-full rounded-2xl border px-5 py-5 text-left shadow-sm transition active:scale-[0.99] ${item.style}`}
                 >
                   <div className="flex items-center gap-4">

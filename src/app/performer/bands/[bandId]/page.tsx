@@ -31,7 +31,8 @@ export default function BandDetailPage() {
   const [members, setMembers] = useState<BandMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
+  const [disbanding, setDisbanding] = useState(false);
+  const [actionError, setActionError] = useState("");
   const loadBand = useCallback(async () => {
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
@@ -75,6 +76,64 @@ export default function BandDetailPage() {
     setBand(data.band);
     setMembers(Array.isArray(data.members) ? data.members : []);
   }, [bandId]);
+
+  async function handleDisband() {
+    if (!band || disbanding) return;
+
+    const confirmed = window.confirm(
+      `本当に「${band.name}」を解散しますか？\n\n` +
+        "・すべてのメンバーが所属解除されます\n" +
+        "・未回答の招待はキャンセルされます\n" +
+        "・過去の応募、マッチング、コイン履歴は保持されます\n\n" +
+        "解散後、このバンドを元に戻すことはできません。"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDisbanding(true);
+      setActionError("");
+
+      const token = liff.getIDToken();
+
+      if (!token) {
+        throw new Error(
+          "LINEの認証情報を取得できません。LINEアプリから開き直してください"
+        );
+      }
+
+      const response = await fetch(`/api/bands/${bandId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "バンドの解散に失敗しました"
+        );
+      }
+
+      window.alert(
+        data.message || "バンドを解散しました。"
+      );
+
+      router.replace("/performer/bands");
+    } catch (err) {
+      console.error("バンド解散エラー:", err);
+
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "バンドの解散に失敗しました"
+      );
+    } finally {
+      setDisbanding(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -356,6 +415,38 @@ export default function BandDetailPage() {
             </div>
           )}
         </section>
+
+        {isLeader && (
+          <section className="mt-6 rounded-3xl border border-red-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-red-700">
+              ⚠️ バンドの解散
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-gray-600">
+              バンドの活動を終了します。メンバー全員が所属解除され、未回答の招待はキャンセルされます。過去の応募・マッチング・コイン履歴は残ります。
+            </p>
+
+            {actionError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-700"
+              >
+                {actionError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleDisband}
+              disabled={disbanding}
+              className="mt-4 w-full rounded-2xl bg-red-600 py-4 font-bold text-white active:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {disbanding
+                ? "解散処理中..."
+                : "⚠️ このバンドを解散する"}
+            </button>
+          </section>
+        )}
 
         <button
           type="button"

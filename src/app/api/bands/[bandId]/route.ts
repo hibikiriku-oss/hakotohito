@@ -259,3 +259,147 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  context: RouteContext
+) {
+  try {
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "サーバーの設定に問題があります" },
+        { status: 500 }
+      );
+    }
+
+    const { bandId } = await context.params;
+
+    if (!isUuid(bandId)) {
+      return NextResponse.json(
+        { error: "バンドIDが正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    // LINE IDトークンを検証
+    const authorization = request.headers.get("authorization");
+    const tokenMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+    const idToken = tokenMatch?.[1]?.trim();
+
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "LINEの認証情報がありません。再ログインしてください",
+        },
+        { status: 401 }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 認証されたLINEユーザーを取得
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .maybeSingle();
+
+    if (userError) {
+      console.error("バンド解散のユーザー取得エラー:", userError);
+
+      return NextResponse.json(
+        { error: "ユーザー情報を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "ユーザー情報が見つかりません" },
+        { status: 404 }
+      );
+    }
+
+    // 演奏者プロフィールを取得
+    const { data: performer, error: performerError } =
+      await supabase
+        .from("performers")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (performerError) {
+      console.error("バンド解散の演奏者取得エラー:", performerError);
+
+      return NextResponse.json(
+        { error: "演奏者情報を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    if (!performer) {
+      return NextResponse.json(
+        { error: "演奏者プロフィールが見つかりません" },
+        { status: 404 }
+      );
+    }
+
+    // データベース関数側でもリーダー権限を確認する
+    const { data: resultData, error: disbandError } =
+      await supabase.rpc("disband_band", {
+        p_band_id: bandId,
+        p_performer_id: performer.id,
+      });
+
+    if (disbandError) {
+      console.error("バンド解散処理エラー:", disbandError);
+
+      return NextResponse.json(
+        { error: "バンドの解散処理に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    const result = Array.isArray(resultData)
+      ? resultData[0]
+      : resultData;
+
+    if (!result || result.success !== true) {
+      const message =
+        result?.error_message || "バンドを解散できませんでした";
+
+      const statusCode =
+        message.includes("リーダーだけ")
+          ? 403
+          : message.includes("見つかりません")
+            ? 404
+            : 400;
+
+      return NextResponse.json(
+        { error: message },
+        { status: statusCode }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "バンドを解散しました。",
+    });
+  } catch (error) {
+    console.error("バンド解散APIエラー:", error);
+
+    return NextResponse.json(
+      { error: "サーバーエラーが発生しました" },
+      { status: 500 }
+    );
+  }
+}
