@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 
@@ -14,6 +14,15 @@ type Band = {
   joinedAt: string;
 };
 
+type PerformerCandidate = {
+  id: string;
+  name: string;
+  instruments?: string[];
+  genres?: string[];
+  area?: string | null;
+  areas?: string[];
+};
+
 const inputClass =
   "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-black focus:bg-white";
 
@@ -23,10 +32,18 @@ export default function PerformerBandsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bands, setBands] = useState<Band[]>([]);
+  const [performers, setPerformers] = useState<PerformerCandidate[]>([]);
+  const [performerId, setPerformerId] = useState("");
+  const [selectedBandId, setSelectedBandId] = useState("");
+  const [selectedPerformerId, setSelectedPerformerId] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [error, setError] = useState("");
+  const [sendingInvitation, setSendingInvitation] = useState(false);
   const [idToken, setIdToken] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const getToken = useCallback(async () => {
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
@@ -58,7 +75,6 @@ export default function PerformerBandsPage() {
 
   const loadBands = useCallback(async (token: string) => {
     const response = await fetch("/api/bands", {
-      method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -71,7 +87,50 @@ export default function PerformerBandsPage() {
       throw new Error(data.error || "バンド一覧の取得に失敗しました");
     }
 
-    setBands(Array.isArray(data.bands) ? data.bands : []);
+    const items: Band[] = Array.isArray(data.bands) ? data.bands : [];
+
+    setBands(items);
+    setSelectedBandId((previous) =>
+      items.some((band) => band.id === previous)
+        ? previous
+        : items[0]?.id || ""
+    );
+
+    return items;
+  }, []);
+
+  const loadPerformers = useCallback(async (token: string) => {
+    const meResponse = await fetch("/api/bands/invitations", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const meData = await meResponse.json();
+
+    if (!meResponse.ok) {
+      throw new Error(
+        meData.error || "自分の演奏者情報を取得できませんでした"
+      );
+    }
+
+    setPerformerId(meData.performerId);
+
+    const response = await fetch("/api/performers", {
+      cache: "no-store",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "演奏者一覧の取得に失敗しました");
+    }
+
+    setPerformers(
+      Array.isArray(data.performers) ? data.performers : []
+    );
   }, []);
 
   useEffect(() => {
@@ -86,7 +145,11 @@ export default function PerformerBandsPage() {
         }
 
         setIdToken(token);
-        await loadBands(token);
+
+        await Promise.all([
+          loadBands(token),
+          loadPerformers(token),
+        ]);
       } catch (err) {
         console.error("バンド画面初期化エラー:", err);
 
@@ -109,9 +172,43 @@ export default function PerformerBandsPage() {
     return () => {
       cancelled = true;
     };
-  }, [getToken, loadBands]);
+  }, [getToken, loadBands, loadPerformers]);
 
-  const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
+  const filteredPerformers = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+
+    return performers
+      .filter((performer) => performer.id !== performerId)
+      .filter((performer) => {
+        if (!query) {
+          return true;
+        }
+
+        const areas =
+          performer.areas?.length
+            ? performer.areas
+            : performer.area
+              ? [performer.area]
+              : [];
+
+        const searchable = [
+          performer.name,
+          ...(performer.instruments || []),
+          ...(performer.genres || []),
+          ...areas,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return searchable.includes(query);
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  }, [performers, performerId, searchText]);
+
+  const handleCreate = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
 
     if (!name.trim()) {
@@ -122,8 +219,8 @@ export default function PerformerBandsPage() {
     try {
       setCreating(true);
       setError("");
+      setNotice("");
 
-      // 期限切れなどに備え、作成直前にもトークンを取得する
       const token = await getToken();
 
       if (!token) {
@@ -153,9 +250,12 @@ export default function PerformerBandsPage() {
       setName("");
       setDescription("");
 
-      await loadBands(token);
+      if (data.band?.id) {
+        setSelectedBandId(data.band.id);
+      }
 
-      alert(`「${data.band.name}」を作成しました！`);
+      await loadBands(token);
+      setNotice(`「${data.band.name}」を作成しました！`);
     } catch (err) {
       console.error("バンド作成エラー:", err);
       setError(
@@ -165,6 +265,100 @@ export default function PerformerBandsPage() {
       );
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleInvite = async (
+    event: React.FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    if (!selectedBandId || !selectedPerformerId) {
+      setError("バンドと招待する演奏者を選択してください");
+      return;
+    }
+
+    if (inviteMessage.trim().length > 500) {
+      setError("招待メッセージは500文字以内で入力してください");
+      return;
+    }
+
+    try {
+      setSendingInvitation(true);
+      setError("");
+      setNotice("");
+
+      const token = await getToken();
+
+      if (!token) {
+        return;
+      }
+
+      setIdToken(token);
+
+      const response = await fetch("/api/bands/invitations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bandId: selectedBandId,
+          inviteePerformerId: selectedPerformerId,
+          message: inviteMessage.trim() || null,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "招待を送信できませんでした");
+      }
+
+      const invitee = performers.find(
+        (performer) => performer.id === selectedPerformerId
+      );
+      const band = bands.find((item) => item.id === selectedBandId);
+
+      setSelectedPerformerId("");
+      setInviteMessage("");
+      setNotice(
+        `「${band?.name || data.band.name}」への招待を${
+          invitee?.name || "選択した演奏者"
+        }さんに送信しました。`
+      );
+    } catch (err) {
+      console.error("バンド招待エラー:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "招待を送信できませんでした"
+      );
+    } finally {
+      setSendingInvitation(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    try {
+      setError("");
+      setNotice("");
+
+      const token = await getToken();
+
+      if (!token) {
+        return;
+      }
+
+      setIdToken(token);
+      await Promise.all([loadBands(token), loadPerformers(token)]);
+      setNotice("情報を更新しました");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "情報の更新に失敗しました"
+      );
     }
   };
 
@@ -193,7 +387,7 @@ export default function PerformerBandsPage() {
           </h1>
 
           <p className="mt-2 text-sm leading-6 text-gray-500">
-            仲間とバンドを作り、一緒に演奏案件へ応募できるようにします。
+            バンドを作り、仲間を招待して一緒に活動しましょう。
           </p>
         </header>
 
@@ -203,6 +397,15 @@ export default function PerformerBandsPage() {
             className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
           >
             {error}
+          </div>
+        )}
+
+        {notice && (
+          <div
+            role="status"
+            className="mb-5 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800"
+          >
+            {notice}
           </div>
         )}
 
@@ -247,7 +450,7 @@ export default function PerformerBandsPage() {
                 id="band-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                rows={4}
+                rows={3}
                 maxLength={2000}
                 placeholder="演奏ジャンルや活動内容など"
                 className={`${inputClass} resize-none`}
@@ -264,6 +467,148 @@ export default function PerformerBandsPage() {
           </form>
         </section>
 
+        <section className="mb-5 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-gray-900">
+            👥 メンバーを招待
+          </h2>
+
+          <p className="mb-4 mt-2 text-sm leading-6 text-gray-500">
+            招待するバンドと演奏者を選んでください。招待が承認されるまでは、相手はメンバーになりません。
+          </p>
+
+          {bands.length === 0 && !loading ? (
+            <p className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-500">
+              招待を送るには、先にバンドを作成してください。
+            </p>
+          ) : (
+            <form onSubmit={handleInvite} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="invite-band"
+                  className="mb-2 block text-sm font-bold text-gray-800"
+                >
+                  招待するバンド
+                </label>
+
+                <select
+                  id="invite-band"
+                  value={selectedBandId}
+                  onChange={(event) => setSelectedBandId(event.target.value)}
+                  required
+                  className={inputClass}
+                >
+                  <option value="">バンドを選択してください</option>
+                  {bands.map((band) => (
+                    <option key={band.id} value={band.id}>
+                      {band.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="performer-search"
+                  className="mb-2 block text-sm font-bold text-gray-800"
+                >
+                  演奏者を検索
+                </label>
+
+                <input
+                  id="performer-search"
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  placeholder="名前・楽器・ジャンル・エリア"
+                  className={inputClass}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="invite-performer"
+                  className="mb-2 block text-sm font-bold text-gray-800"
+                >
+                  招待する演奏者
+                </label>
+
+                <select
+                  id="invite-performer"
+                  value={selectedPerformerId}
+                  onChange={(event) =>
+                    setSelectedPerformerId(event.target.value)
+                  }
+                  required
+                  className={inputClass}
+                >
+                  <option value="">演奏者を選択してください</option>
+
+                  {filteredPerformers.map((performer) => {
+                    const areas =
+                      performer.areas?.length
+                        ? performer.areas
+                        : performer.area
+                          ? [performer.area]
+                          : [];
+
+                    return (
+                      <option key={performer.id} value={performer.id}>
+                        {performer.name}
+                        {performer.instruments?.length
+                          ? ` / ${performer.instruments.join("・")}`
+                          : ""}
+                        {areas.length ? ` / ${areas.join("・")}` : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                {filteredPerformers.length === 0 && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    該当する演奏者がいません。検索条件を変えてください。
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="invite-message"
+                  className="mb-2 block text-sm font-bold text-gray-800"
+                >
+                  招待メッセージ（任意）
+                </label>
+
+                <textarea
+                  id="invite-message"
+                  value={inviteMessage}
+                  onChange={(event) => setInviteMessage(event.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="一緒に演奏しませんか？"
+                  className={`${inputClass} resize-none`}
+                />
+
+                <p className="mt-1 text-right text-xs text-gray-400">
+                  {inviteMessage.length}/500文字
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={
+                  loading ||
+                  sendingInvitation ||
+                  !idToken ||
+                  bands.length === 0 ||
+                  filteredPerformers.length === 0
+                }
+                className="w-full rounded-2xl bg-amber-500 py-4 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingInvitation ? "招待を送信中..." : "招待を送信する"}
+              </button>
+            </form>
+          )}
+        </section>
+
         <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold text-gray-900">
@@ -272,23 +617,7 @@ export default function PerformerBandsPage() {
 
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  setError("");
-                  const token = await getToken();
-
-                  if (token) {
-                    setIdToken(token);
-                    await loadBands(token);
-                  }
-                } catch (err) {
-                  setError(
-                    err instanceof Error
-                      ? err.message
-                      : "バンド一覧の更新に失敗しました"
-                  );
-                }
-              }}
+              onClick={handleRefresh}
               disabled={loading}
               className="text-sm font-bold text-gray-500 disabled:opacity-50"
             >
@@ -318,9 +647,7 @@ export default function PerformerBandsPage() {
                   className="rounded-2xl border border-gray-200 p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-bold text-gray-900">
-                      {band.name}
-                    </h3>
+                    <h3 className="font-bold text-gray-900">{band.name}</h3>
 
                     <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
                       {band.role === "leader" ? "リーダー" : "メンバー"}
