@@ -165,6 +165,27 @@ export default function PerformerHomePage() {
               <span className="text-2xl text-gray-400">→</span>
             </div>
           </button>
+
+          {/* バンドを管理する */}
+          <button
+            onClick={() => router.push("/performer/bands")}
+            className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 text-left shadow-sm active:bg-amber-100"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-lg font-bold text-gray-900">
+                  🎸 バンドを管理する
+                </p>
+
+                <p className="mt-1 text-sm text-gray-600">
+                  バンド作成・メンバー招待・バンド活動の管理
+                </p>
+              </div>
+
+              <span className="text-2xl text-gray-400">→</span>
+            </div>
+          </button>
+
         </section>
 
         {/* 地図で案件を探す */}
