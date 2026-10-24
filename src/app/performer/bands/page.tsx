@@ -117,7 +117,15 @@ export default function PerformerBandsPage() {
   const router = useRouter();
 
   const [view, setView] = useState<BandView>("menu");
+  useEffect(() => {
+    const requestedView = new URLSearchParams(
+      window.location.search
+    ).get("view");
 
+    if (requestedView === "participating") {
+      setView("participating");
+    }
+  }, []);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bands, setBands] = useState<Band[]>([]);

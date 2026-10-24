@@ -203,7 +203,7 @@ export default function BandDetailPage() {
         <div className="mx-auto max-w-md px-4 py-6">
           <button
             type="button"
-            onClick={() => router.push("/performer/bands")}
+            onClick={() => router.push("/performer/bands?view=participating")}
             className="text-sm font-bold text-gray-500"
           >
             ← バンド一覧へ戻る
@@ -217,7 +217,7 @@ export default function BandDetailPage() {
 
           <button
             type="button"
-            onClick={() => router.push("/performer/bands")}
+            onClick={() => router.push("/performer/bands?view=participating")}
             className="mt-5 w-full rounded-2xl border border-gray-200 bg-white py-4 font-bold text-gray-700"
           >
             バンド一覧へ戻る
@@ -234,7 +234,7 @@ export default function BandDetailPage() {
       <div className="mx-auto max-w-md px-4 py-6">
         <button
           type="button"
-          onClick={() => router.push("/performer/bands")}
+          onClick={() => router.push("/performer/bands?view=participating")}
           className="mb-5 text-sm font-bold text-gray-500"
         >
           ← バンド一覧へ戻る
@@ -342,7 +342,7 @@ export default function BandDetailPage() {
 
             <button
               type="button"
-              onClick={() => router.push("/performer/bands")}
+              onClick={() => router.push("/performer/bands?view=participating")}
               className="w-full rounded-2xl border border-blue-200 bg-blue-50 p-4 text-left shadow-sm active:bg-blue-100"
             >
               <div className="flex items-center gap-3">
@@ -450,7 +450,7 @@ export default function BandDetailPage() {
 
         <button
           type="button"
-          onClick={() => router.push("/performer/bands")}
+          onClick={() => router.push("/performer/bands?view=participating")}
           className="mt-6 w-full rounded-2xl border border-gray-200 bg-white py-4 font-bold text-gray-700"
         >
           ← バンド一覧へ戻る
