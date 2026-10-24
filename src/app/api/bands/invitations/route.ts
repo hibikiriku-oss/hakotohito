@@ -730,6 +730,23 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // 回答処理の前に、招待した側と対象バンドを取得する
+    const {
+      data: invitationContext,
+      error: invitationContextError,
+    } = await supabase
+      .from("band_invitations")
+      .select("id, band_id, inviter_performer_id")
+      .eq("id", input.invitationId)
+      .maybeSingle();
+
+    if (invitationContextError) {
+      console.error(
+        "招待通知用データの取得エラー:",
+        invitationContextError
+      );
+    }
+
     const { data, error } = await supabase.rpc(
       "respond_to_band_invitation",
       {
@@ -785,10 +802,197 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    let notificationSent = false;
+
+    // 招待した側へLINE通知を送信する
+    if (invitationContext) {
+      try {
+        const [
+          { data: inviterPerformer, error: inviterError },
+          { data: band, error: bandError },
+          { data: responder, error: responderError },
+        ] = await Promise.all([
+          supabase
+            .from("performers")
+            .select("user_id")
+            .eq("id", invitationContext.inviter_performer_id)
+            .maybeSingle(),
+
+          supabase
+            .from("bands")
+            .select("name")
+            .eq("id", invitationContext.band_id)
+            .maybeSingle(),
+
+          supabase
+            .from("performers")
+            .select("name")
+            .eq("id", auth.performerId)
+            .maybeSingle(),
+        ]);
+
+        if (inviterError || bandError || responderError) {
+          console.error("招待回答通知用の情報取得エラー:", {
+            inviterError,
+            bandError,
+            responderError,
+          });
+        } else if (inviterPerformer?.user_id) {
+          const { data: inviterUser, error: inviterUserError } =
+            await supabase
+              .from("users")
+              .select("line_user_id")
+              .eq("id", inviterPerformer.user_id)
+              .maybeSingle();
+
+          if (inviterUserError) {
+            console.error(
+              "招待回答通知先の取得エラー:",
+              inviterUserError
+            );
+          } else if (inviterUser?.line_user_id) {
+            const accepted = input.decision === "accepted";
+            const bandName = band?.name || "バンド名未設定";
+            const performerName = responder?.name || "演奏者";
+            const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+
+            const historyUrl = liffId
+              ? `https://liff.line.me/${liffId}/performer/bands?view=history`
+              : null;
+
+            const title = accepted
+              ? "✅ バンド参加依頼が承認されました"
+              : "📩 バンド参加依頼が辞退されました";
+
+            const notificationMessages: LineMessage[] = historyUrl
+              ? [
+                  {
+                    type: "flex",
+                    altText: title,
+                    contents: {
+                      type: "bubble",
+                      size: "kilo",
+                      header: {
+                        type: "box",
+                        layout: "vertical",
+                        backgroundColor: accepted
+                          ? "#15803D"
+                          : "#64748B",
+                        paddingAll: "16px",
+                        contents: [
+                          {
+                            type: "text",
+                            text: title,
+                            color: "#FFFFFF",
+                            weight: "bold",
+                            size: "lg",
+                            wrap: true,
+                          },
+                        ],
+                      },
+                      body: {
+                        type: "box",
+                        layout: "vertical",
+                        paddingAll: "16px",
+                        spacing: "md",
+                        contents: [
+                          {
+                            type: "text",
+                            text: "対象バンド",
+                            size: "xs",
+                            color: "#6B7280",
+                          },
+                          {
+                            type: "text",
+                            text: bandName,
+                            size: "lg",
+                            weight: "bold",
+                            color: "#111827",
+                            wrap: true,
+                          },
+                          {
+                            type: "text",
+                            text: `${performerName}さんから参加依頼への回答がありました。`,
+                            size: "sm",
+                            color: "#374151",
+                            wrap: true,
+                          },
+                          {
+                            type: "text",
+                            text: accepted
+                              ? "招待履歴から回答内容を確認できます。"
+                              : "募集履歴から回答内容を確認できます。",
+                            size: "sm",
+                            color: "#6B7280",
+                            wrap: true,
+                          },
+                        ],
+                      },
+                      footer: {
+                        type: "box",
+                        layout: "vertical",
+                        paddingAll: "16px",
+                        contents: [
+                          {
+                            type: "button",
+                            style: "primary",
+                            color: accepted ? "#15803D" : "#64748B",
+                            action: {
+                              type: "uri",
+                              label: "募集履歴を確認する",
+                              uri: historyUrl,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  },
+                ]
+              : [
+                  {
+                    type: "text",
+                    text:
+                      `${title}\n` +
+                      `バンド名：${bandName}\n` +
+                      `回答者：${performerName}\n` +
+                      "アプリの募集履歴から詳細を確認できます。",
+                  },
+                ];
+
+            const notificationResult = await sendLinePushMessage(
+              inviterUser.line_user_id,
+              notificationMessages
+            );
+
+            notificationSent = notificationResult.success;
+
+            if (!notificationResult.success) {
+              console.error(
+                "招待回答のLINE通知送信エラー:",
+                notificationResult.error
+              );
+            }
+          } else {
+            console.warn(
+              "招待回答通知先のLINEユーザーIDがありません:",
+              invitationContext.inviter_performer_id
+            );
+          }
+        }
+      } catch (notificationError) {
+        // 通知失敗によって、保存済みの回答を取り消さない
+        console.error(
+          "招待回答のLINE通知例外:",
+          notificationError
+        );
+      }
+    }
+
     const result = Array.isArray(data) ? data[0] : null;
 
     return NextResponse.json({
       success: true,
+      notificationSent,
       invitation: result
         ? {
             id: result.invitation_id,

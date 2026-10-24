@@ -124,7 +124,8 @@ export default function PerformerBandsPage() {
 
     if (
       requestedView === "participating" ||
-      requestedView === "requests"
+      requestedView === "requests" ||
+      requestedView === "history"
     ) {
       setView(requestedView);
     }
