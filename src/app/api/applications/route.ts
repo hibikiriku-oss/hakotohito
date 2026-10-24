@@ -494,7 +494,8 @@ export async function POST(request: NextRequest) {
 
           const detailUrl =
             "https://miniapp.line.me/2011785379-l5XCTbIf/facility/requests/" +
-            requestId;
+            requestId +
+            "/applications";
 
           const messages = [
             {
