@@ -1102,28 +1102,6 @@ export default function PerformerBandsPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      router.push(`/performer/bands/${band.id}/chat`)
-                    }
-                    className="mt-4 w-full rounded-2xl bg-black py-3 font-bold text-white active:opacity-80"
-                  >
-                    💬 バンドチャットを開く
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/performer/bands/${band.id}/transfers`
-                      )
-                    }
-                    className="mt-3 w-full rounded-2xl bg-amber-500 py-3 font-bold text-white active:bg-amber-600"
-                  >
-                    🪙 コインを送金
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
                       router.push(`/performer/bands/${band.id}`)
                     }
                     className="mt-3 w-full rounded-2xl border border-amber-200 bg-amber-50 py-3 font-bold text-amber-900 active:bg-amber-100"
