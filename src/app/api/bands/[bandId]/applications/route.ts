@@ -25,6 +25,30 @@ function getJapanToday(): string {
     day: "2-digit",
   }).formatToParts(new Date());
 
+function normalizeLevel(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const level = value.trim().toLowerCase();
+
+  const aliases: Record<string, string> = {
+    beginner: "beginner",
+    "初心者": "beginner",
+    "初級": "beginner",
+    "初級者": "beginner",
+
+    amateur: "amateur",
+    "アマチュア": "amateur",
+
+    pro: "pro",
+    "プロ": "pro",
+    "プロフェッショナル": "pro",
+  };
+
+  return aliases[level] ?? (level || null);
+}
+
   const year = parts.find((part) => part.type === "year")?.value;
   const month = parts.find((part) => part.type === "month")?.value;
   const day = parts.find((part) => part.type === "day")?.value;
@@ -124,6 +148,30 @@ async function getAuthenticatedPerformer(
     user,
     performer,
   };
+}
+
+function normalizeLevel(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const level = value.trim().toLowerCase();
+
+  const aliases: Record<string, string> = {
+    beginner: "beginner",
+    "初心者": "beginner",
+    "初級": "beginner",
+    "初級者": "beginner",
+
+    amateur: "amateur",
+    "アマチュア": "amateur",
+
+    pro: "pro",
+    "プロ": "pro",
+    "プロフェッショナル": "pro",
+  };
+
+  return aliases[level] ?? (level || null);
 }
 
 export async function POST(
@@ -367,11 +415,20 @@ export async function POST(
         pro: "プロ",
       };
 
-      const ineligibleMembers = (members ?? []).filter(
-        (member) =>
-          !member.status_level ||
-          !targetLevels.includes(member.status_level)
+      const normalizedTargetLevels = new Set(
+        (targetLevels as unknown[])
+          .map((level) => normalizeLevel(level))
+          .filter((level): level is string => level !== null)
       );
+
+      const ineligibleMembers = (members ?? []).filter((member) => {
+        const memberLevel = normalizeLevel(member.status_level);
+
+        return (
+          memberLevel === null ||
+          !normalizedTargetLevels.has(memberLevel)
+        );
+      });
 
       if (ineligibleMembers.length > 0) {
         const targetLevelNames = targetLevels
