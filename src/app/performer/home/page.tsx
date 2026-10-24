@@ -48,12 +48,12 @@ const menuConfig: Record<
     ],
   },
   matches: {
-    icon: "📅",
+    icon: "🎉",
     title: "マッチング",
     description: "成立した出演の予定と進行状況を確認できます。",
     items: [
       {
-        icon: "🎉",
+        icon: "📅",
         title: "マッチングを確認する",
         description: "演奏予定・演奏完了・キャンセル済み",
         path: "/performer/matches",
