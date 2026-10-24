@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +10,14 @@ type BandMember = {
   role: string;
 };
 
+type TransferHistory = {
+  id: string;
+  amount: number;
+  description: string;
+  balance_after: number;
+  created_at: string;
+};
+
 type TransferRequestRecord = {
   key: string;
   recipientPerformerId: string;
@@ -21,6 +28,22 @@ type TransferRequestRecord = {
 const inputClass =
   "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-black focus:bg-white";
 
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function BandTransfersPage() {
   const router = useRouter();
   const params = useParams();
@@ -29,6 +52,9 @@ export default function BandTransfersPage() {
   const [bandName, setBandName] = useState("");
   const [members, setMembers] = useState<BandMember[]>([]);
   const [coinBalance, setCoinBalance] = useState(0);
+  const [transferHistory, setTransferHistory] = useState<
+    TransferHistory[]
+  >([]);
 
   const [recipientPerformerId, setRecipientPerformerId] =
     useState("");
@@ -94,6 +120,11 @@ export default function BandTransfersPage() {
       setBandName(data.band?.name || "バンド");
       setMembers(Array.isArray(data.members) ? data.members : []);
       setCoinBalance(Number(data.coinBalance ?? 0));
+      setTransferHistory(
+        Array.isArray(data.transferHistory)
+          ? data.transferHistory
+          : []
+      );
     },
     [bandId]
   );
@@ -198,7 +229,7 @@ export default function BandTransfersPage() {
         return;
       }
 
-      // 同じ内容での再試行には同じキーを使用する
+      // 同じ内容の再試行には同じキーを利用する
       const sameRequest =
         requestRecord !== null &&
         requestRecord.recipientPerformerId === recipientPerformerId &&
@@ -239,7 +270,9 @@ export default function BandTransfersPage() {
         throw new Error(data.error || "送金に失敗しました");
       }
 
-      setCoinBalance(Number(data.senderBalance ?? coinBalance - amount));
+      setCoinBalance(
+        Number(data.senderBalance ?? coinBalance - amount)
+      );
       setNotice(
         data.message || `${amount}コインを送金しました`
       );
@@ -248,6 +281,22 @@ export default function BandTransfersPage() {
       setAmountInput("");
       setDescription("");
       setRequestRecord(null);
+
+      // 送金成功後に残高と履歴を再取得する。
+      // 更新に失敗しても、送金自体が成功した事実は維持する。
+      try {
+        await loadTransferInfo(token);
+      } catch (refreshError) {
+        console.error(
+          "送金後の残高・履歴更新エラー:",
+          refreshError
+        );
+
+        setNotice(
+          (data.message || `${amount}コインを送金しました`) +
+            " 送金は完了していますが、履歴の更新に失敗しました。画面を再読み込みしてください。"
+        );
+      }
     } catch (err) {
       console.error("バンド内コイン送金エラー:", err);
 
@@ -258,6 +307,30 @@ export default function BandTransfersPage() {
       );
     } finally {
       setTransferring(false);
+    }
+  }
+
+  async function handleRefresh() {
+    try {
+      setError("");
+      setNotice("");
+
+      const token = await getToken();
+
+      if (!token) {
+        return;
+      }
+
+      await loadTransferInfo(token);
+      setNotice("残高と送金履歴を更新しました");
+    } catch (err) {
+      console.error("送金履歴の更新エラー:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "送金履歴を更新できませんでした"
+      );
     }
   }
 
@@ -451,6 +524,98 @@ export default function BandTransfersPage() {
             </form>
           </section>
         )}
+
+        {/* このバンドでの送金・受取履歴 */}
+        <section className="mt-5 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-gray-900">
+              🧾 送金履歴
+            </h2>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={loading || transferring}
+              className="text-sm font-bold text-gray-500 disabled:opacity-50"
+            >
+              ↻ 更新
+            </button>
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            このバンドで自分が送金した履歴と受け取った履歴を表示します。
+          </p>
+
+          {loading ? (
+            <p className="py-6 text-center text-sm text-gray-500">
+              履歴を読み込んでいます...
+            </p>
+          ) : transferHistory.length === 0 ? (
+            <div className="py-7 text-center">
+              <p className="text-3xl">📄</p>
+              <p className="mt-3 text-sm font-bold text-gray-700">
+                送金履歴はありません
+              </p>
+              <p className="mt-2 text-xs leading-5 text-gray-400">
+                コインを送金したり受け取ったりすると、ここに表示されます。
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {transferHistory.map((transaction) => {
+                const received = transaction.amount > 0;
+
+                return (
+                  <article
+                    key={transaction.id}
+                    className="rounded-2xl border border-gray-200 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p
+                          className={`font-bold ${
+                            received
+                              ? "text-green-700"
+                              : "text-red-700"
+                          }`}
+                        >
+                          {received ? "コイン受取" : "コイン送金"}
+                        </p>
+
+                        <p className="mt-1 break-words text-sm leading-6 text-gray-700">
+                          {transaction.description}
+                        </p>
+                      </div>
+
+                      <p
+                        className={`shrink-0 text-lg font-bold tabular-nums ${
+                          received
+                            ? "text-green-700"
+                            : "text-red-700"
+                        }`}
+                      >
+                        {received ? "+" : ""}
+                        {transaction.amount.toLocaleString()}
+                        <span className="ml-1 text-xs">コイン</span>
+                      </p>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 text-xs text-gray-500">
+                      <span>
+                        {formatDateTime(transaction.created_at)}
+                      </span>
+
+                      <span>
+                        取引後残高：
+                        {transaction.balance_after.toLocaleString()}
+                      </span>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4">
           <p className="text-sm font-bold text-amber-900">

@@ -220,6 +220,28 @@ export async function GET(
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "ja"));
 
+    // このユーザーが、このバンドで行った送金・受取履歴を取得
+    const { data: transferHistory, error: historyError } =
+      await supabase
+        .from("coin_transactions")
+        .select(
+          "id, amount, description, balance_after, created_at"
+        )
+        .eq("user_id", user.id)
+        .eq("band_id", bandId)
+        .eq("transaction_type", "band_transfer")
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+    if (historyError) {
+      console.error("バンド送金履歴取得エラー:", historyError);
+
+      return NextResponse.json(
+        { error: "送金履歴を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       band: {
         id: band.id,
@@ -227,6 +249,7 @@ export async function GET(
       },
       members,
       coinBalance: user.coin_balance ?? 0,
+      transferHistory: transferHistory ?? [],
     });
   } catch (error) {
     console.error("送金画面のメンバー取得エラー:", error);
