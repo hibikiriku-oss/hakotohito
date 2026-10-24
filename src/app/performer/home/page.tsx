@@ -141,7 +141,7 @@ const mainMenus: Array<{
   },
   {
     key: "matches",
-    icon: "📅",
+    icon: "🎉",
     title: "マッチング",
     description: "演奏予定・進行状況を確認する",
     style: "border-emerald-200 bg-emerald-50 active:bg-emerald-100",
