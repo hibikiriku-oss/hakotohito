@@ -41,6 +41,27 @@ type LessonOffer = {
   performers?: Performer | Performer[] | null;
 };
 
+type LessonApplicant = {
+  id: string;
+  name: string;
+  instruments: string[];
+  genres: string[];
+  area: string | null;
+  areas: string[];
+  statusLevel: string | null;
+  pictureUrl: string | null;
+};
+
+type LessonApplication = {
+  id: string;
+  lessonOfferId: string;
+  message: string | null;
+  status: string;
+  matchedAt: string | null;
+  createdAt: string;
+  applicant: LessonApplicant | null;
+};
+
 function listText(values?: string[] | null) {
   return values?.length ? values.join("、") : "指定なし";
 }
@@ -59,6 +80,53 @@ function formatDate(value?: string | null) {
   });
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "未設定";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("ja-JP", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function applicationStatusLabel(status: string) {
+  switch (status) {
+    case "pending":
+      return "応募受付";
+    case "accepted":
+      return "承認済み";
+    case "matched":
+      return "マッチング成立";
+    case "rejected":
+      return "見送り";
+    case "cancelled":
+      return "キャンセル";
+    case "completed":
+      return "完了";
+    default:
+      return status || "状態未設定";
+  }
+}
+
+function applicationStatusClass(status: string) {
+  switch (status) {
+    case "matched":
+    case "accepted":
+      return "bg-green-100 text-green-800";
+    case "rejected":
+    case "cancelled":
+      return "bg-gray-100 text-gray-600";
+    default:
+      return "bg-blue-100 text-blue-800";
+  }
+}
+
 export default function LessonDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -71,6 +139,52 @@ export default function LessonDetailPage() {
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [applications, setApplications] = useState<LessonApplication[]>([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
+  const [applicationsError, setApplicationsError] = useState("");
+
+  const loadApplications = useCallback(
+    async (userId: string, lessonOfferId: string) => {
+      if (!userId || !lessonOfferId) return;
+
+      setApplicationsLoading(true);
+      setApplicationsError("");
+
+      try {
+        const response = await fetch(
+          `/api/lesson-offers/${lessonOfferId}/applications`,
+          {
+            headers: {
+              "x-line-user-id": userId,
+            },
+            cache: "no-store",
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(
+            data.error || "レッスン応募者を取得できませんでした"
+          );
+        }
+
+        setApplications(
+          Array.isArray(data.applications) ? data.applications : []
+        );
+      } catch (e) {
+        setApplicationsError(
+          e instanceof Error
+            ? e.message
+            : "レッスン応募者を取得できませんでした"
+        );
+        setApplications([]);
+      } finally {
+        setApplicationsLoading(false);
+      }
+    },
+    []
+  );
 
   const loadOffer = useCallback(async (userId: string) => {
     try {
@@ -93,6 +207,13 @@ export default function LessonDetailPage() {
       }
 
       setOffer(data.offer);
+
+      if (data.offer?.is_mine) {
+        await loadApplications(userId, data.offer.id);
+      } else {
+        setApplications([]);
+        setApplicationsError("");
+      }
     } catch (e) {
       setError(
         e instanceof Error
@@ -102,7 +223,7 @@ export default function LessonDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [offerId]);
+  }, [offerId, loadApplications]);
 
   useEffect(() => {
     let cancelled = false;
@@ -369,19 +490,164 @@ export default function LessonDetailPage() {
       </section>
 
       {offer.is_mine ? (
-        <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-          <p className="text-sm leading-6 text-amber-900">
-            これはあなたが募集しているレッスンです。
-            募集内容を変更する場合は、下のボタンから編集してください。
-          </p>
-          <button
-            type="button"
-            onClick={handleEdit}
-            className="w-full rounded-xl bg-black px-4 py-3 font-bold text-white"
-          >
-            ✏️ 募集内容を編集する
-          </button>
-        </section>
+        <>
+          <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm leading-6 text-amber-900">
+              これはあなたが募集しているレッスンです。
+              募集内容を変更する場合は、下のボタンから編集してください。
+            </p>
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="w-full rounded-xl bg-black px-4 py-3 font-bold text-white"
+            >
+              ✏️ 募集内容を編集する
+            </button>
+          </section>
+
+          <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  応募者一覧
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  このレッスンへの応募内容を確認できます。
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1 text-sm font-bold text-blue-700">
+                {applications.length}人
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => loadApplications(lineUserId, offer.id)}
+              disabled={applicationsLoading || !lineUserId}
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+            >
+              {applicationsLoading ? "更新中…" : "応募者一覧を更新"}
+            </button>
+
+            {applicationsError && (
+              <div
+                role="alert"
+                className="rounded-xl bg-red-50 p-3 text-sm leading-6 text-red-700"
+              >
+                {applicationsError}
+              </div>
+            )}
+
+            {applicationsLoading && applications.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">
+                応募者を読み込み中…
+              </p>
+            ) : applications.length === 0 ? (
+              <div className="rounded-xl bg-gray-50 p-5 text-center">
+                <p className="font-semibold text-gray-700">
+                  まだ応募はありません
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-500">
+                  応募が届くと、ここに応募者とメッセージが表示されます。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {applications.map((application) => {
+                  const applicant = application.applicant;
+                  const areas = applicant?.areas?.length
+                    ? applicant.areas
+                    : applicant?.area
+                      ? [applicant.area]
+                      : [];
+
+                  return (
+                    <article
+                      key={application.id}
+                      className="rounded-xl border border-gray-200 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          {applicant?.pictureUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={applicant.pictureUrl}
+                              alt=""
+                              className="h-12 w-12 shrink-0 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl">
+                              🎹
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h3 className="break-words font-bold text-gray-900">
+                              {applicant?.name || "応募者情報を取得できません"}
+                            </h3>
+                            <p className="mt-1 text-xs text-gray-500">
+                              応募日時：{formatDateTime(application.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${applicationStatusClass(application.status)}`}
+                        >
+                          {applicationStatusLabel(application.status)}
+                        </span>
+                      </div>
+
+                      {applicant && (
+                        <div className="mt-3 space-y-2 text-sm text-gray-600">
+                          <p>
+                            <span className="font-semibold text-gray-700">
+                              楽器：
+                            </span>
+                            {listText(applicant.instruments)}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-gray-700">
+                              ジャンル：
+                            </span>
+                            {listText(applicant.genres)}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-gray-700">
+                              エリア：
+                            </span>
+                            {areas.length ? areas.join("、") : "未設定"}
+                          </p>
+                          {applicant.statusLevel && (
+                            <p>
+                              <span className="font-semibold text-gray-700">
+                                レベル：
+                              </span>
+                              {applicant.statusLevel}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-4 rounded-lg bg-gray-50 p-3">
+                        <p className="text-xs font-bold text-gray-500">
+                          応募メッセージ
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700">
+                          {application.message || "メッセージはありません。"}
+                        </p>
+                      </div>
+
+                      {application.matchedAt && (
+                        <p className="mt-3 text-xs text-green-700">
+                          マッチング日時：{formatDateTime(application.matchedAt)}
+                        </p>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </>
       ) : isOpen ? (
         <section className="space-y-3 rounded-2xl border p-5">
           <h2 className="text-lg font-bold">このレッスンに応募する</h2>
