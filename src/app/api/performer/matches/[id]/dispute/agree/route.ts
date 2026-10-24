@@ -47,18 +47,62 @@ export async function POST(
       );
     }
 
+    // マッチングを取得し、個人かバンドかを確認する
     const { data: match, error: matchError } = await supabase
       .from("matches")
-      .select("id")
+      .select("id, performer_id, band_id")
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
-      .single();
+      .maybeSingle();
 
-    if (matchError || !match) {
+    if (matchError) {
+      console.error("取り下げ同意対象の取得エラー:", matchError);
+
+      return NextResponse.json(
+        { error: "マッチング情報の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    if (!match) {
       return NextResponse.json(
         { error: "マッチングが見つからないか、操作する権限がありません" },
         { status: 404 }
       );
+    }
+
+    if (match.band_id) {
+      // バンドマッチングは、現在のアクティブなリーダーだけが同意可能
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンド取り下げ同意権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドの取り下げ同意はリーダーのみ行えます" },
+          { status: 403 }
+        );
+      }
+    } else {
+      // 個人マッチングは従来どおり本人だけが同意可能
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、操作する権限がありません" },
+          { status: 404 }
+        );
+      }
     }
 
     const { data, error } = await supabase.rpc(

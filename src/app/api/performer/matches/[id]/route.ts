@@ -58,6 +58,7 @@ export async function GET(
         id,
         request_id,
         performer_id,
+        band_id,
         matched_at,
         status,
         performance_status,
@@ -92,7 +93,6 @@ export async function GET(
         )
       `)
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
       .single();
 
     if (matchError || !match) {
@@ -104,7 +104,84 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ match });
+    // バンドのマッチングか、個人のマッチングかを判定する
+    let band: {
+      id: string;
+      name: string | null;
+      description: string | null;
+    } | null = null;
+
+    let isBandLeader = false;
+
+    if (match.band_id) {
+      // バンドマッチングの場合、現在のアクティブメンバーか確認
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンド所属確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "マッチングの閲覧権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、閲覧する権限がありません" },
+          { status: 404 }
+        );
+      }
+
+      // バンド名を取得
+      const { data: bandData, error: bandError } = await supabase
+        .from("bands")
+        .select("id, name, description")
+        .eq("id", match.band_id)
+        .maybeSingle();
+
+      if (bandError) {
+        console.error("バンド情報取得エラー:", bandError);
+
+        return NextResponse.json(
+          { error: "バンド情報の取得に失敗しました" },
+          { status: 500 }
+        );
+      }
+
+      if (!bandData) {
+        return NextResponse.json(
+          { error: "バンド情報が見つかりません" },
+          { status: 404 }
+        );
+      }
+
+      band = bandData;
+      isBandLeader = membership.role === "leader";
+    } else {
+      // 個人マッチングは、従来どおり本人だけが閲覧可能
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、閲覧する権限がありません" },
+          { status: 404 }
+        );
+      }
+    }
+
+    // 画面側でバンド名と操作権限を利用できるようにする
+    const enrichedMatch = {
+      ...match,
+      band,
+      isBandLeader,
+    };
+
+return NextResponse.json({ match: enrichedMatch });
   } catch (error) {
     console.error("マッチング詳細APIエラー:", error);
 

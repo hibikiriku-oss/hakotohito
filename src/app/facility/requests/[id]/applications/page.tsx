@@ -19,12 +19,33 @@ type Performer = {
   users: User | null;
 };
 
+type BandMember = {
+  id?: string;
+  performer_id?: string;
+  name?: string | null;
+  display_name?: string | null;
+  users?: User | null;
+  performers?: Performer | null;
+};
+
+type BandInfo = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  status?: string;
+  members: BandMember[];
+};
+
 type Application = {
   id: string;
   message: string | null;
   status: string;
   created_at: string;
   performers: Performer | null;
+  source?: string | null;
+  band_id?: string | null;
+  applicationType?: "band" | "individual";
+  band?: BandInfo | null;
 };
 
 type PerformanceRequest = {
@@ -109,7 +130,7 @@ export default function FacilityRequestApplicationsPage() {
       }
 
       setPerformanceRequest(
-        result.performanceRequest
+        result.request ?? result.performanceRequest
       );
 
       setApplications(
@@ -238,82 +259,103 @@ export default function FacilityRequestApplicationsPage() {
   const handleAccept = async (
     application: Application
   ) => {
-    if (!application.performers) {
+    const isBandApplication =
+      application.applicationType === "band" ||
+      application.source === "band_apply" ||
+      Boolean(application.band_id);
+
+    const band = application.band ?? null;
+
+    if (isBandApplication && !band) {
+      setError(
+        "バンド情報を取得できません。画面を再読み込みしてください。"
+      );
       return;
     }
 
-    const performerName =
-      application.performers.name ||
-      application.performers.users
-        ?.display_name ||
-      "この演奏者";
+    if (!isBandApplication && !application.performers) {
+      return;
+    }
 
-    const confirmed =
-      window.confirm(
-        performerName +
-          " さんをこの案件の演奏者として採用しますか？"
-      );
+    const applicantName = isBandApplication
+      ? band?.name || "バンド名未設定"
+      : application.performers?.name ||
+        application.performers?.users?.display_name ||
+        "この演奏者";
+
+    const memberNames =
+      band?.members
+        ?.map(
+          (member) =>
+            member.name ||
+            member.performers?.name ||
+            member.users?.display_name ||
+            member.performers?.users?.display_name ||
+            member.display_name
+        )
+        .filter((name): name is string => Boolean(name))
+        .join("、") || "メンバー情報なし";
+
+    const confirmed = window.confirm(
+      isBandApplication
+        ? `バンド「${applicantName}」をこの案件の出演者として採用しますか？\n\nメンバー：${memberNames}`
+        : `${applicantName} さんをこの案件の演奏者として採用しますか？`
+    );
 
     if (!confirmed) {
       return;
     }
 
     try {
-      setAcceptingApplicationId(
-        application.id
-      );
-
+      setAcceptingApplicationId(application.id);
       setError("");
 
-      const response =
-        await fetch(
-          "/api/facility/requests/" +
-            requestId +
-            "/applications/" +
-            application.id +
-            "/accept",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              "x-line-user-id":
-                lineUserId,
-            },
-          }
-        );
+      const response = await fetch(
+        "/api/facility/requests/" +
+          requestId +
+          "/applications/" +
+          application.id +
+          "/accept",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-line-user-id": lineUserId,
+          },
+        }
+      );
 
-      const result =
-        await response.json();
+      const result = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.error ||
-            "演奏者の採用に失敗しました"
+          result.error || "応募の採用に失敗しました"
         );
       }
 
-      alert(
-        "採用しました。\n演奏者にLINE通知を送信しました。"
-      );
+      if (isBandApplication) {
+        alert(
+          result.notificationSent === true
+            ? `バンド「${applicantName}」を採用しました。\nバンドメンバーへのLINE通知も送信しました。`
+            : `バンド「${applicantName}」を採用しました。\nLINE通知の送信状況を確認してください。`
+        );
+      } else {
+        alert(
+          "採用しました。\n演奏者にLINE通知を送信しました。"
+        );
+      }
 
-      await loadApplications(
-        lineUserId
-      );
+      await loadApplications(lineUserId);
     } catch (err) {
       console.error(err);
 
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError(
-          "演奏者の採用に失敗しました"
-        );
+        setError("応募の採用に失敗しました");
       }
     } finally {
-      setAcceptingApplicationId(
-        null
-      );
+      setAcceptingApplicationId(null);
     }
   };
 
@@ -544,8 +586,132 @@ export default function FacilityRequestApplicationsPage() {
 
             {applications.map(
               (application) => {
-                const performer =
-                  application.performers;
+                const isBandApplication =
+                  application.applicationType === "band" ||
+                  application.source === "band_apply" ||
+                  Boolean(application.band_id);
+
+                const isPending =
+                  application.status === "pending";
+
+                const isAccepted =
+                  application.status === "accepted";
+
+                const isRejected =
+                  application.status === "rejected";
+
+                const performer = application.performers;
+
+                if (isBandApplication) {
+                  const band = application.band;
+                  const members = band?.members ?? [];
+
+                  return (
+                    <article
+                      key={application.id}
+                      className="bg-white border border-purple-100 rounded-2xl overflow-hidden shadow-sm"
+                    >
+                      <div className="p-5">
+                        <div className="flex items-start gap-3">
+                          <div className="w-16 h-16 rounded-2xl bg-purple-50 flex items-center justify-center text-3xl shrink-0">
+                            🎸
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-purple-700">
+                              バンド応募
+                            </p>
+
+                            <h2 className="text-lg font-bold text-gray-900 mt-1">
+                              {band?.name || "バンド名未設定"}
+                            </h2>
+
+                            {isPending && (
+                              <span className="inline-block mt-2 text-xs font-bold bg-yellow-50 text-yellow-700 border border-yellow-100 px-2.5 py-1 rounded-full">
+                                応募中
+                              </span>
+                            )}
+
+                            {isAccepted && (
+                              <span className="inline-block mt-2 text-xs font-bold bg-green-50 text-green-700 border border-green-100 px-2.5 py-1 rounded-full">
+                                採用
+                              </span>
+                            )}
+
+                            {isRejected && (
+                              <span className="inline-block mt-2 text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200 px-2.5 py-1 rounded-full">
+                                見送り
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {band?.description && (
+                          <p className="mt-4 text-sm leading-6 text-gray-600 whitespace-pre-wrap">
+                            {band.description}
+                          </p>
+                        )}
+
+                        <div className="mt-4 rounded-xl bg-purple-50 p-4">
+                          <p className="text-sm font-bold text-purple-900">
+                            参加メンバー（{members.length}人）
+                          </p>
+
+                          {members.length > 0 ? (
+                            <div className="mt-2 space-y-2">
+                              {members.map((member, index) => (
+                                <div
+                                  key={
+                                    member.id ||
+                                    member.performer_id ||
+                                    `${application.id}-${index}`
+                                  }
+                                  className="rounded-lg bg-white px-3 py-2 text-sm text-gray-700"
+                                >
+                                  {member.name ||
+                                    member.users?.display_name ||
+                                    member.display_name ||
+                                    "名前未登録"}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-sm text-gray-500">
+                              メンバー情報を確認できません。
+                            </p>
+                          )}
+                        </div>
+
+                        {application.message && (
+                          <div className="mt-4">
+                            <p className="text-xs font-bold text-gray-400">
+                              応募メッセージ
+                            </p>
+                            <p className="mt-1 text-sm leading-6 text-gray-700 whitespace-pre-wrap">
+                              {application.message}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {isPending && (
+                        <div className="border-t border-gray-100 bg-gray-50/70 p-4">
+                          <button
+                            onClick={() => handleAccept(application)}
+                            disabled={
+                              acceptingApplicationId === application.id
+                            }
+                            className="w-full bg-purple-700 text-white rounded-xl p-3.5 font-bold disabled:opacity-50 active:scale-[0.99] transition"
+                          >
+                            {acceptingApplicationId === application.id
+                              ? "採用処理中..."
+                              : "🎸 このバンドを採用する"}
+                          </button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                }
 
                 if (!performer) {
                   return null;
@@ -553,21 +719,8 @@ export default function FacilityRequestApplicationsPage() {
 
                 const performerName =
                   performer.name ||
-                  performer.users
-                    ?.display_name ||
+                  performer.users?.display_name ||
                   "名前未登録";
-
-                const isPending =
-                  application.status ===
-                  "pending";
-
-                const isAccepted =
-                  application.status ===
-                  "accepted";
-
-                const isRejected =
-                  application.status ===
-                  "rejected";
 
                 return (
                   <article

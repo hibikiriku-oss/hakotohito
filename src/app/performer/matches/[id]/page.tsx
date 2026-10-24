@@ -31,6 +31,13 @@ type Match = {
   id: string;
   request_id: string;
   performer_id: string;
+  band_id: string | null;
+  band: {
+    id: string;
+    name: string | null;
+    description: string | null;
+  } | null;
+  isBandLeader: boolean;
   matched_at: string;
   status: string;
   performance_status: "scheduled" | "completed" | "cancelled";
@@ -87,6 +94,7 @@ export default function PerformerMatchDetailPage() {
             headers: {
               "x-line-user-id": profile.userId,
             },
+            cache: "no-store",
           }
         );
 
@@ -106,6 +114,7 @@ export default function PerformerMatchDetailPage() {
             headers: {
               "x-line-user-id": profile.userId,
             },
+            cache: "no-store",
           }
         );
 
@@ -180,13 +189,13 @@ export default function PerformerMatchDetailPage() {
               "演奏完了を報告しました。施設側の確認を待っています。"
       );
 
-      // 報告結果だけで完了扱いにせず、最新の状態を取得する
       const refreshResponse = await fetch(
         `/api/performer/matches/${matchId}`,
         {
           headers: {
             "x-line-user-id": profile.userId,
           },
+          cache: "no-store",
         }
       );
 
@@ -194,7 +203,8 @@ export default function PerformerMatchDetailPage() {
 
       if (!refreshResponse.ok) {
         throw new Error(
-          refreshData.error || "最新の演奏状況を取得できませんでした"
+          refreshData.error ||
+            "最新の演奏状況を取得できませんでした"
         );
       }
 
@@ -214,8 +224,12 @@ export default function PerformerMatchDetailPage() {
   async function handleAgreeDispute() {
     if (!match || agreeingDispute) return;
 
-    if (match.completion_dispute_performer_agreed_at) {
-      setNotice("演奏者側はすでに同意済みです。施設側の同意を待っています。");
+    if (
+      match.completion_dispute_performer_agreed_at
+    ) {
+      setNotice(
+        "演奏者側はすでに同意済みです。施設側の同意を待っています。"
+      );
       return;
     }
 
@@ -231,6 +245,7 @@ export default function PerformerMatchDetailPage() {
       setNotice("");
 
       const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+
       if (!liffId) {
         throw new Error("LINE MINI Appの設定がありません");
       }
@@ -271,6 +286,7 @@ export default function PerformerMatchDetailPage() {
           headers: {
             "x-line-user-id": profile.userId,
           },
+          cache: "no-store",
         }
       );
 
@@ -285,7 +301,10 @@ export default function PerformerMatchDetailPage() {
 
       setMatch(refreshData.match);
     } catch (err) {
-      console.error("異議申し立て取り下げ同意エラー:", err);
+      console.error(
+        "異議申し立て取り下げ同意エラー:",
+        err
+      );
       setError(
         err instanceof Error
           ? err.message
@@ -350,6 +369,10 @@ export default function PerformerMatchDetailPage() {
           performance_status: "cancelled",
         };
       });
+
+      setNotice(
+        data.message || "マッチングをキャンセルしました。"
+      );
     } catch (err) {
       console.error("マッチングキャンセル処理エラー:", err);
       setError(
@@ -425,7 +448,9 @@ export default function PerformerMatchDetailPage() {
           </header>
 
           <div className="mt-6 rounded-2xl bg-red-50 border border-red-200 p-5">
-            <p className="text-sm leading-6 text-red-600">{error}</p>
+            <p className="text-sm leading-6 text-red-600">
+              {error}
+            </p>
           </div>
 
           <button
@@ -484,9 +509,16 @@ export default function PerformerMatchDetailPage() {
     );
   }
 
-  const isCancelled = match.performance_status === "cancelled";
-  const isCompleted = match.performance_status === "completed";
+  // 個人マッチングは本人が操作可能。
+  // バンドマッチングはAPIが返すリーダー情報に基づいて表示を制御する。
+  const canManageMatch = !match.band_id || match.isBandLeader;
+
+  const isCancelled =
+    match.performance_status === "cancelled";
+  const isCompleted =
+    match.performance_status === "completed";
   const isDisputed = Boolean(match.completion_disputed_at);
+
   const performerReported = Boolean(
     match.performer_completion_reported_at
   );
@@ -512,6 +544,53 @@ export default function PerformerMatchDetailPage() {
             {performanceRequest.title}
           </h1>
         </header>
+
+        {match.band && (
+          <section className="mt-4 rounded-2xl border border-purple-100 bg-purple-50 p-4">
+            <p className="text-xs font-bold text-purple-700">
+              🎸 バンド応募
+            </p>
+
+            <h2 className="mt-1 text-lg font-bold text-purple-900">
+              {match.band.name || "バンド名未設定"}
+            </h2>
+
+            {match.band.description && (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-purple-800">
+                {match.band.description}
+              </p>
+            )}
+
+            <p className="mt-2 text-xs text-purple-700">
+              {match.isBandLeader
+                ? "あなたはこのバンドのリーダーです"
+                : "バンドメンバーとして参加しています"}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/performer/bands/${match!.band!.id}/chat`
+                )
+              }
+              className="mt-3 w-full rounded-xl bg-purple-700 py-3 font-bold text-white"
+            >
+              💬 バンドチャットを開く
+            </button>
+          </section>
+        )}
+
+        {!canManageMatch && (
+          <div className="mt-4 rounded-xl border border-purple-100 bg-white p-4">
+            <p className="text-sm font-bold text-purple-900">
+              バンドメンバーとして参加しています
+            </p>
+            <p className="mt-1 text-sm leading-6 text-gray-600">
+              演奏完了報告・キャンセル・異議申し立て・施設評価などの操作は、バンドリーダーが代表して行います。
+            </p>
+          </div>
+        )}
 
         <section
           className={`mt-5 rounded-2xl border p-5 ${
@@ -653,7 +732,9 @@ export default function PerformerMatchDetailPage() {
             </div>
           ) : isCancelled ? (
             <div className="mt-4 rounded-xl bg-gray-100 p-4">
-              <p className="font-bold text-gray-600">キャンセル済み</p>
+              <p className="font-bold text-gray-600">
+                キャンセル済み
+              </p>
               <p className="mt-1 text-sm text-gray-500">
                 この出演はキャンセルされています。
               </p>
@@ -680,6 +761,7 @@ export default function PerformerMatchDetailPage() {
                   </div>
                 )}
               </div>
+
               <div className="mt-4 rounded-xl bg-white border border-amber-200 p-4">
                 <p className="font-bold text-gray-800">
                   🤝 取り下げへの同意状況
@@ -726,15 +808,23 @@ export default function PerformerMatchDetailPage() {
                       双方が取り下げに同意すると、異議申し立てが解除され、演奏完了の報告を再開できます。
                     </p>
 
-                    <button
-                      onClick={handleAgreeDispute}
-                      disabled={agreeingDispute}
-                      className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm disabled:opacity-50"
-                    >
-                      {agreeingDispute
-                        ? "同意を登録中..."
-                        : "🤝 取り下げに同意する"}
-                    </button>
+                    {canManageMatch ? (
+                      <button
+                        onClick={handleAgreeDispute}
+                        disabled={agreeingDispute}
+                        className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm disabled:opacity-50"
+                      >
+                        {agreeingDispute
+                          ? "同意を登録中..."
+                          : "🤝 取り下げに同意する"}
+                      </button>
+                    ) : (
+                      <div className="mt-4 rounded-lg bg-gray-50 p-3">
+                        <p className="text-sm text-gray-600">
+                          取り下げへの同意は、バンドリーダーが代表して行います。
+                        </p>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -792,7 +882,7 @@ export default function PerformerMatchDetailPage() {
                   {performerReported && facilityReported
                     ? "双方の報告が記録されています。最新の状態を再読み込みしてください。"
                     : performerReported
-                      ? "あなたは報告済みです。施設側の確認を待っています。"
+                      ? "演奏者側は報告済みです。施設側の確認を待っています。"
                       : facilityReported
                         ? "施設側から完了報告が届いています。演奏が完了していることを確認して報告してください。"
                         : "演奏終了後、双方が完了報告を行います。双方の報告がそろうと演奏完了が確定します。"}
@@ -800,15 +890,26 @@ export default function PerformerMatchDetailPage() {
               </div>
 
               {!performerReported ? (
-                <button
-                  onClick={handleComplete}
-                  disabled={completing || cancelling}
-                  className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm active:bg-green-700 disabled:opacity-50"
-                >
-                  {completing
-                    ? "報告中..."
-                    : "🎵 演奏完了を報告"}
-                </button>
+                canManageMatch ? (
+                  <button
+                    onClick={handleComplete}
+                    disabled={completing || cancelling}
+                    className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm active:bg-green-700 disabled:opacity-50"
+                  >
+                    {completing
+                      ? "報告中..."
+                      : "🎵 演奏完了を報告"}
+                  </button>
+                ) : (
+                  <div className="mt-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
+                    <p className="text-sm font-bold text-gray-700">
+                      演奏完了の報告はまだ行われていません
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      バンドリーダーが代表して報告します。
+                    </p>
+                  </div>
+                )
               ) : (
                 <div className="mt-4 rounded-xl bg-green-50 border border-green-200 p-4">
                   <p className="font-bold text-green-700">
@@ -822,35 +923,39 @@ export default function PerformerMatchDetailPage() {
                 </div>
               )}
 
-              <button
-                onClick={() =>
-                  router.push(
-                    `/performer/matches/${matchId}/dispute`
-                  )
-                }
-                disabled={completing || cancelling}
-                className="w-full mt-4 rounded-2xl border border-amber-400 bg-white px-5 py-3 text-sm font-semibold text-amber-800 active:bg-amber-50 disabled:opacity-50"
-              >
-                ⚠️ 演奏完了に異議を申し立てる
-              </button>
+              {canManageMatch && (
+                <>
+                  <button
+                    onClick={() =>
+                      router.push(
+                        `/performer/matches/${matchId}/dispute`
+                      )
+                    }
+                    disabled={completing || cancelling}
+                    className="w-full mt-4 rounded-2xl border border-amber-400 bg-white px-5 py-3 text-sm font-semibold text-amber-800 active:bg-amber-50 disabled:opacity-50"
+                  >
+                    ⚠️ 演奏完了に異議を申し立てる
+                  </button>
 
-              <p className="mt-2 text-center text-xs leading-5 text-gray-400">
-                演奏が完了していない場合や、報告内容に相違がある場合に利用してください。
-              </p>
+                  <p className="mt-2 text-center text-xs leading-5 text-gray-400">
+                    演奏が完了していない場合や、報告内容に相違がある場合に利用してください。
+                  </p>
 
-              <button
-                onClick={handleCancel}
-                disabled={completing || cancelling}
-                className="w-full mt-5 rounded-2xl border border-red-200 bg-white px-5 py-4 text-sm font-bold text-red-600 active:bg-red-50 disabled:opacity-50"
-              >
-                {cancelling
-                  ? "キャンセル中..."
-                  : "⚠️ 出演をキャンセルする"}
-              </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={completing || cancelling}
+                    className="w-full mt-5 rounded-2xl border border-red-200 bg-white px-5 py-4 text-sm font-bold text-red-600 active:bg-red-50 disabled:opacity-50"
+                  >
+                    {cancelling
+                      ? "キャンセル中..."
+                      : "⚠️ 出演をキャンセルする"}
+                  </button>
 
-              <p className="mt-2 text-center text-xs leading-5 text-gray-400">
-                ※ キャンセルすると、このマッチングでは出演できなくなります。
-              </p>
+                  <p className="mt-2 text-center text-xs leading-5 text-gray-400">
+                    ※ キャンセルすると、このマッチングでは出演できなくなります。
+                  </p>
+                </>
+              )}
             </>
           )}
         </section>
@@ -865,7 +970,9 @@ export default function PerformerMatchDetailPage() {
 
         {error && (
           <div className="mt-4 rounded-2xl bg-red-50 border border-red-200 p-4">
-            <p className="text-sm leading-6 text-red-600">{error}</p>
+            <p className="text-sm leading-6 text-red-600">
+              {error}
+            </p>
           </div>
         )}
 
@@ -957,35 +1064,40 @@ export default function PerformerMatchDetailPage() {
           </section>
         )}
 
-        {/* チャット */}
-        <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl">
-              💬
+        {/* 個人マッチングでは施設とのチャットを表示。
+            バンドマッチングはページ上部のバンドチャットを使用する。 */}
+        {!match.band && (
+          <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xl">
+                💬
+              </div>
+              <div>
+                <h2 className="font-bold text-gray-900">
+                  施設との連絡
+                </h2>
+                <p className="mt-1 text-sm leading-6 text-gray-500">
+                  演奏時間や当日の流れなどを施設と確認できます。
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-bold text-gray-900">
-                施設との連絡
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                演奏時間や当日の流れなどを施設と確認できます。
-              </p>
-            </div>
-          </div>
 
-          <button
-            onClick={() =>
-              router.push(`/performer/matches/${matchId}/chat`)
-            }
-            disabled={
-              match.status !== "active" ||
-              match.performance_status === "cancelled"
-            }
-            className="w-full mt-4 rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white active:bg-gray-800 disabled:bg-gray-300"
-          >
-            💬 施設に連絡する
-          </button>
-        </section>
+            <button
+              onClick={() =>
+                router.push(
+                  `/performer/matches/${matchId}/chat`
+                )
+              }
+              disabled={
+                match.status !== "active" ||
+                match.performance_status === "cancelled"
+              }
+              className="w-full mt-4 rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white active:bg-gray-800 disabled:bg-gray-300"
+            >
+              💬 施設に連絡する
+            </button>
+          </section>
+        )}
 
         {/* 評価 */}
         <section className="mt-4 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
@@ -994,16 +1106,29 @@ export default function PerformerMatchDetailPage() {
               ⭐
             </div>
             <div>
-              <h2 className="font-bold text-gray-900">施設を評価</h2>
+              <h2 className="font-bold text-gray-900">
+                施設を評価
+              </h2>
               <p className="mt-1 text-xs text-gray-500">
                 演奏後に施設への評価をお願いします。
               </p>
             </div>
           </div>
 
-          {reviewed ? (
+          {match.band_id && !canManageMatch ? (
             <div className="mt-4 rounded-xl bg-gray-50 p-4">
-              <p className="font-bold text-gray-700">評価済みです</p>
+              <p className="font-bold text-gray-700">
+                バンドリーダーが代表して施設を評価します
+              </p>
+              <p className="mt-1 text-sm leading-6 text-gray-500">
+                バンドの評価はリーダーに集約されます。
+              </p>
+            </div>
+          ) : reviewed ? (
+            <div className="mt-4 rounded-xl bg-gray-50 p-4">
+              <p className="font-bold text-gray-700">
+                評価済みです
+              </p>
               <p className="mt-1 text-sm leading-6 text-gray-500">
                 このマッチングはすでに評価しています。
               </p>
@@ -1011,7 +1136,9 @@ export default function PerformerMatchDetailPage() {
           ) : isCompleted ? (
             <button
               onClick={() =>
-                router.push(`/performer/matches/${matchId}/review`)
+                router.push(
+                  `/performer/matches/${matchId}/review`
+                )
               }
               className="w-full mt-4 rounded-2xl bg-black px-5 py-4 text-sm font-bold text-white active:bg-gray-800"
             >

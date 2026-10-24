@@ -10,6 +10,7 @@ type CompletionMatch = {
   id: string;
   request_id: string;
   performer_id: string;
+  band_id: string | null;
   status: string;
   performance_status: string;
   completed_at: string | null;
@@ -79,7 +80,7 @@ export async function POST(
     const { data: rawMatch, error: matchError } = await supabase
       .from("matches")
       .select(
-        "id, request_id, performer_id, status, performance_status, completed_at, performer_completion_reported_at, facility_completion_reported_at, completion_disputed_at"
+        "id, request_id, performer_id, band_id, status, performance_status, completed_at, performer_completion_reported_at, facility_completion_reported_at, completion_disputed_at"
       )
       .eq("id", matchId)
       .eq("performer_id", performer.id)
@@ -92,6 +93,34 @@ export async function POST(
         { error: "マッチングが見つかりません" },
         { status: 404 }
       );
+    }
+
+    // バンドマッチングの場合、現在のアクティブなリーダーだけが
+    // 演奏完了を報告できるようにする
+    if (match.band_id) {
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンドリーダー権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドの演奏完了報告はリーダーのみ行えます" },
+          { status: 403 }
+        );
+      }
     }
 
     if (match.status !== "active") {

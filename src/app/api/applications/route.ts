@@ -197,6 +197,7 @@ export async function POST(request: NextRequest) {
       )
       .eq("request_id", requestId)
       .eq("performer_id", performer.id)
+      .is("band_id", null)
       .maybeSingle();
 
     if (existingApplicationError) {

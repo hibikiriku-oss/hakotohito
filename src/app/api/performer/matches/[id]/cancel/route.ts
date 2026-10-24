@@ -74,6 +74,7 @@ export async function POST(
         id,
         request_id,
         performer_id,
+        band_id,
         status,
         performance_status,
         performance_requests (
@@ -96,7 +97,6 @@ export async function POST(
         )
       `)
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
       .single();
 
     if (matchError || !match) {
@@ -109,6 +109,42 @@ export async function POST(
         },
         { status: 404 }
       );
+    }
+
+    // バンドマッチングは、現在のアクティブなリーダーだけが
+    // キャンセルできる
+    if (match.band_id) {
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンドキャンセル権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドのマッチングをキャンセルできるのはリーダーのみです" },
+          { status: 403 }
+        );
+      }
+    } else {
+      // 個人マッチングは従来どおり本人のみ操作できる
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、操作する権限がありません" },
+          { status: 404 }
+        );
+      }
     }
 
     if (

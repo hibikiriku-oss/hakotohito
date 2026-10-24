@@ -75,6 +75,8 @@ export async function POST(
       );
     }
 
+    // マッチングを取得する。バンドマッチングでは、
+    // 続く処理で現在のリーダーかどうかを別途検証する。
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -82,17 +84,61 @@ export async function POST(
         status,
         performance_status,
         performer_id,
+        band_id,
         completion_disputed_at
       `)
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
-      .single();
+      .maybeSingle();
 
-    if (matchError || !match) {
+    if (matchError) {
+      console.error("異議申し立て対象の取得エラー:", matchError);
+
+      return NextResponse.json(
+        { error: "マッチング情報の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    if (!match) {
       return NextResponse.json(
         { error: "マッチングが見つかりません" },
         { status: 404 }
       );
+    }
+
+    if (match.band_id) {
+      // バンドの場合、現在のアクティブなリーダーだけが申し立て可能
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンド申し立て権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドの異議申し立てはリーダーのみ行えます" },
+          { status: 403 }
+        );
+      }
+    } else {
+      // 個人マッチングは従来どおり本人だけが申し立て可能
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、操作する権限がありません" },
+          { status: 404 }
+        );
+      }
     }
 
     if (match.status !== "active") {
@@ -127,7 +173,8 @@ export async function POST(
         completion_dispute_reason: reason,
       })
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
+      // 操作対象のマッチングが取得時と同じであることを確認
+      .eq("performer_id", match.performer_id)
       .eq("status", "active")
       .eq("performance_status", match.performance_status)
       .is("completion_disputed_at", null)
@@ -135,6 +182,7 @@ export async function POST(
 
     if (updateError) {
       console.error("演奏者側の異議申し立てエラー:", updateError);
+
       return NextResponse.json(
         { error: "異議申し立ての登録に失敗しました" },
         { status: 500 }
@@ -143,7 +191,10 @@ export async function POST(
 
     if (!updatedRows || updatedRows.length === 0) {
       return NextResponse.json(
-        { error: "演奏状況が変更されています。画面を再読み込みしてください" },
+        {
+          error:
+            "演奏状況が変更されています。画面を再読み込みしてください",
+        },
         { status: 409 }
       );
     }
@@ -154,6 +205,7 @@ export async function POST(
     });
   } catch (error) {
     console.error("演奏者側の異議申し立てAPIエラー:", error);
+
     return NextResponse.json(
       { error: "異議申し立ての処理に失敗しました" },
       { status: 500 }

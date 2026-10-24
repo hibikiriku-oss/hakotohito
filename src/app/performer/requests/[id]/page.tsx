@@ -35,6 +35,16 @@ type PerformanceRequest = {
   facilities: Facility | null;
 };
 
+type LeaderBand = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  status: string;
+  role: string;
+  createdAt?: string;
+  joinedAt?: string;
+};
+
 // 日本時間の今日を YYYY-MM-DD 形式で取得
 function getJapanToday(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -76,6 +86,21 @@ export default function PerformerRequestDetailPage() {
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
+
+  const [applicationMode, setApplicationMode] =
+    useState<"individual" | "band">("individual");
+
+  const [leaderBands, setLeaderBands] =
+    useState<LeaderBand[]>([]);
+
+  const [selectedBandId, setSelectedBandId] =
+    useState("");
+
+  const [bandsLoading, setBandsLoading] =
+    useState(false);
+
+  const [bandLoadError, setBandLoadError] =
+    useState("");
 
   const [showFacilityProfile, setShowFacilityProfile] =
     useState(false);
@@ -119,8 +144,73 @@ export default function PerformerRequestDetailPage() {
         const profile = await liff.getProfile();
         setLineUserId(profile.userId);
 
+        // バンド一覧の取得。取得に失敗しても個人応募は継続できる。
+        setBandsLoading(true);
+        setBandLoadError("");
+
+        try {
+          const idToken = liff.getIDToken();
+
+          if (!idToken) {
+            throw new Error(
+              "LINEの認証情報を取得できません。再ログインしてください。"
+            );
+          }
+
+          const bandsResponse = await fetch("/api/bands", {
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+            },
+            cache: "no-store",
+          });
+
+          const bandsData = await bandsResponse.json();
+
+          if (!bandsResponse.ok) {
+            throw new Error(
+              bandsData.error || "バンド一覧を取得できませんでした"
+            );
+          }
+
+          const bands: LeaderBand[] = Array.isArray(bandsData.bands)
+            ? bandsData.bands
+            : [];
+
+          // 現在のアクティブなリーダーバンドだけを応募先に表示
+          const eligibleBands = bands.filter(
+            (band) =>
+              band.role === "leader" &&
+              band.status === "active"
+          );
+
+          setLeaderBands(eligibleBands);
+          setSelectedBandId((current) => {
+            if (
+              current &&
+              eligibleBands.some((band) => band.id === current)
+            ) {
+              return current;
+            }
+
+            return eligibleBands[0]?.id ?? "";
+          });
+        } catch (bandError) {
+          console.error("バンド一覧取得エラー:", bandError);
+          setLeaderBands([]);
+          setSelectedBandId("");
+          setBandLoadError(
+            bandError instanceof Error
+              ? bandError.message
+              : "バンド一覧を取得できませんでした"
+          );
+        } finally {
+          setBandsLoading(false);
+        }
+
+        // 案件情報の取得
         const response = await fetch(
-          `/api/performance-requests/${requestId}`
+          `/api/performance-requests/${requestId}`,
+          { cache: "no-store" }
         );
 
         const data = await response.json();
@@ -133,12 +223,14 @@ export default function PerformerRequestDetailPage() {
 
         setRequest(data.request);
 
+        // 施設レビューの取得
         if (data.request.facilities?.id) {
           setFacilityReviewsLoading(true);
 
           try {
             const facilityResponse = await fetch(
-              `/api/facilities/${data.request.facilities.id}`
+              `/api/facilities/${data.request.facilities.id}`,
+              { cache: "no-store" }
             );
 
             const facilityData = await facilityResponse.json();
@@ -159,6 +251,7 @@ export default function PerformerRequestDetailPage() {
             setFacilityReviewsLoading(false);
           }
 
+          // お気に入り状態の取得
           try {
             const favoritesResponse = await fetch(
               "/api/favorites",
@@ -166,6 +259,7 @@ export default function PerformerRequestDetailPage() {
                 headers: {
                   "x-line-user-id": profile.userId,
                 },
+                cache: "no-store",
               }
             );
 
@@ -275,6 +369,7 @@ export default function PerformerRequestDetailPage() {
     }
   };
 
+  // 個人名義の既存応募処理
   const handleApply = async () => {
     if (!lineUserId) {
       alert("LINEユーザー情報を取得できていません");
@@ -285,7 +380,6 @@ export default function PerformerRequestDetailPage() {
       return;
     }
 
-    // クリック時点の日本時間で期限を再確認
     const today = getJapanToday();
     const deadline = String(
       request.application_deadline || ""
@@ -302,7 +396,7 @@ export default function PerformerRequestDetailPage() {
     }
 
     const confirmed = window.confirm(
-      "この案件に応募しますか？\n応募には10コイン必要です。"
+      "この案件に個人名義で応募しますか？\n応募には10コイン必要です。"
     );
 
     if (!confirmed) {
@@ -331,11 +425,130 @@ export default function PerformerRequestDetailPage() {
         return;
       }
 
-      alert("応募しました！");
+      alert("個人名義で応募しました！");
       router.push("/performer/home");
     } catch (error) {
-      console.error("応募エラー:", error);
+      console.error("個人応募エラー:", error);
       alert("通信エラーが発生しました");
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  // バンド名義の応募処理
+  const handleBandApply = async () => {
+    if (!lineUserId) {
+      alert("LINEユーザー情報を取得できていません");
+      return;
+    }
+
+    if (!request) {
+      return;
+    }
+
+    const today = getJapanToday();
+    const deadline = String(
+      request.application_deadline || ""
+    ).slice(0, 10);
+
+    if (!deadline || today > deadline) {
+      alert("応募期限を過ぎているため、この案件には応募できません。");
+      return;
+    }
+
+    if (request.status !== "open") {
+      alert("この案件には現在応募できません");
+      return;
+    }
+
+    if (bandsLoading) {
+      alert("バンド一覧を読み込んでいます。少し待ってからお試しください。");
+      return;
+    }
+
+    if (bandLoadError) {
+      alert(
+        `バンド一覧を取得できませんでした。\n${bandLoadError}\n\n画面を開き直してからお試しください。`
+      );
+      return;
+    }
+
+    const selectedBand = leaderBands.find(
+      (band) => band.id === selectedBandId
+    );
+
+    if (!selectedBand) {
+      alert(
+        "応募するバンドを選択してください。応募できるのは、あなたがリーダーを務めるアクティブなバンドです。"
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `バンド「${selectedBand.name || "バンド名未設定"}」でこの案件に応募しますか？\n\n応募手数料10コインは、バンドリーダーであるあなた個人のコイン残高から支払われます。`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setApplying(true);
+
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        alert(
+          "LINEの認証情報を取得できません。LINEアプリを開き直して、再度お試しください。"
+        );
+        return;
+      }
+
+      const response = await fetch(
+        `/api/bands/${encodeURIComponent(selectedBand.id)}/applications`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            requestId,
+            message,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || "バンド応募に失敗しました");
+        return;
+      }
+
+      const spentCoins =
+        typeof data.coinsSpent === "number"
+          ? data.coinsSpent
+          : 10;
+
+      const balanceMessage =
+        typeof data.coinBalance === "number"
+          ? `\n応募後の個人残高：${data.coinBalance}コイン`
+          : "";
+
+      const notificationMessage =
+        data.notificationSent === true
+          ? "\n施設へのLINE通知を送信しました。"
+          : "\n応募は登録されましたが、施設へのLINE通知は送信できなかった可能性があります。";
+
+      alert(
+        `バンド「${selectedBand.name || "バンド名未設定"}」で応募しました！\n\n消費コイン：${spentCoins}コイン${balanceMessage}${notificationMessage}`
+      );
+
+      router.push("/performer/home");
+    } catch (error) {
+      console.error("バンド応募エラー:", error);
+      alert("通信エラーが発生しました。応募履歴を確認してから再度お試しください。");
     } finally {
       setApplying(false);
     }
@@ -586,7 +799,7 @@ export default function PerformerRequestDetailPage() {
           </section>
         )}
 
-        {/* 応募フォーム・期限切れ表示 */}
+        {/* 応募フォーム */}
         {request.status === "open" && !isExpired ? (
           <section className="mt-5 rounded-2xl bg-white border border-gray-200 p-5 shadow-sm">
             <div>
@@ -597,14 +810,114 @@ export default function PerformerRequestDetailPage() {
                 この案件に応募する
               </h2>
               <p className="mt-2 text-sm leading-6 text-gray-500">
-                施設に伝えたいことがあれば入力してください。
+                個人名義またはリーダーを務めるバンド名義で応募できます。
               </p>
             </div>
 
+            {/* 応募方法の切り替え */}
+            <div className="mt-4">
+              <p className="text-sm font-bold text-gray-700">
+                応募方法
+              </p>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setApplicationMode("individual")}
+                  aria-pressed={applicationMode === "individual"}
+                  className={`rounded-xl border px-3 py-3 text-sm font-bold transition ${
+                    applicationMode === "individual"
+                      ? "border-black bg-black text-white"
+                      : "border-gray-200 bg-white text-gray-700"
+                  }`}
+                >
+                  👤 個人で応募
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setApplicationMode("band")}
+                  aria-pressed={applicationMode === "band"}
+                  className={`rounded-xl border px-3 py-3 text-sm font-bold transition ${
+                    applicationMode === "band"
+                      ? "border-purple-700 bg-purple-700 text-white"
+                      : "border-gray-200 bg-white text-gray-700"
+                  }`}
+                >
+                  🎸 バンドで応募
+                </button>
+              </div>
+            </div>
+
+            {/* バンド選択 */}
+            {applicationMode === "band" && (
+              <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50 p-4">
+                <label
+                  htmlFor="application-band"
+                  className="block text-sm font-bold text-purple-900"
+                >
+                  応募するバンド
+                </label>
+
+                {bandsLoading ? (
+                  <p className="mt-3 text-sm text-purple-700">
+                    バンド一覧を読み込んでいます...
+                  </p>
+                ) : bandLoadError ? (
+                  <div className="mt-3 rounded-lg border border-red-200 bg-white p-3">
+                    <p className="text-sm text-red-700">
+                      {bandLoadError}
+                    </p>
+                    <p className="mt-2 text-xs leading-5 text-gray-500">
+                      個人応募は引き続き利用できます。バンド応募を使う場合は、LINEアプリで画面を開き直してください。
+                    </p>
+                  </div>
+                ) : leaderBands.length === 0 ? (
+                  <div className="mt-3 rounded-lg bg-white p-3">
+                    <p className="text-sm font-bold text-gray-800">
+                      応募できるバンドがありません
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-gray-600">
+                      バンド応募には、あなたがリーダーを務めるアクティブなバンドが必要です。バンドを作成するか、既存のバンドでリーダーになってください。
+                    </p>
+                  </div>
+                ) : (
+                  <select
+                    id="application-band"
+                    value={selectedBandId}
+                    onChange={(event) =>
+                      setSelectedBandId(event.target.value)
+                    }
+                    className="mt-2 w-full rounded-xl border border-purple-200 bg-white px-3 py-3 text-sm text-gray-900"
+                  >
+                    <option value="">バンドを選択してください</option>
+                    {leaderBands.map((band) => (
+                      <option key={band.id} value={band.id}>
+                        {band.name || "バンド名未設定"}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <div className="mt-3 rounded-lg bg-white p-3">
+                  <p className="text-sm font-bold text-purple-900">
+                    💰 応募手数料：10コイン
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-gray-600">
+                    応募手数料はバンド共有残高ではなく、リーダー本人のコイン残高から支払われます。応募ボタンを押すと残高が確認されます。
+                  </p>
+                </div>
+              </div>
+            )}
+
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder="過去の演奏経験や、今回の演奏への意気込みなど"
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder={
+                applicationMode === "band"
+                  ? "バンドの演奏経験やメンバー構成、今回の演奏への意気込みなど"
+                  : "過去の演奏経験や、今回の演奏への意気込みなど"
+              }
               rows={5}
               className="mt-4 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
             />
@@ -614,15 +927,34 @@ export default function PerformerRequestDetailPage() {
             </p>
 
             <button
-              onClick={handleApply}
-              disabled={applying}
-              className="mt-4 w-full rounded-2xl bg-black px-5 py-4 text-base font-bold text-white shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300"
+              onClick={
+                applicationMode === "band"
+                  ? handleBandApply
+                  : handleApply
+              }
+              disabled={
+                applying ||
+                (applicationMode === "band" &&
+                  (bandsLoading ||
+                    Boolean(bandLoadError) ||
+                    !selectedBandId ||
+                    leaderBands.length === 0))
+              }
+              className={`mt-4 w-full rounded-2xl px-5 py-4 text-base font-bold text-white shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 ${
+                applicationMode === "band"
+                  ? "bg-purple-700"
+                  : "bg-black"
+              }`}
             >
-              {applying ? "応募中..." : "この案件に応募する"}
+              {applying
+                ? "応募中..."
+                : applicationMode === "band"
+                  ? "🎸 選択したバンドで応募する"
+                  : "この案件に応募する"}
             </button>
 
             <p className="mt-3 text-center text-xs leading-5 text-gray-400">
-              応募には10コイン必要です。応募後、施設から承認されるとマッチングが成立します。
+              応募には10コイン必要です。施設から承認されるとマッチングが成立します。
             </p>
           </section>
         ) : (

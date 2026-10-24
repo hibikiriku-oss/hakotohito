@@ -31,6 +31,13 @@ type Match = {
   id: string;
   request_id: string;
   performer_id: string;
+  band_id: string | null;
+  band: {
+    id: string;
+    name: string;
+    description: string | null;
+  } | null;
+  isBandLeader: boolean;
   matched_at: string;
   status: string;
   performance_status: string;
@@ -143,10 +150,12 @@ export default function PerformerMatchesPage() {
         if (!request) return false;
 
         const facility = request.facilities;
+
         const matchesKeyword =
           !keyword ||
           (request.title || "").toLocaleLowerCase().includes(keyword) ||
-          (facility?.name || "").toLocaleLowerCase().includes(keyword);
+          (facility?.name || "").toLocaleLowerCase().includes(keyword) ||
+          (match.band?.name || "").toLocaleLowerCase().includes(keyword);
 
         const matchesStatus =
           statusFilter === "all" || getStatus(match) === statusFilter;
@@ -235,6 +244,23 @@ export default function PerformerMatchesPage() {
             <h2 className="text-xl font-bold text-gray-900 mt-1">
               {request.title}
             </h2>
+
+            {match.band && (
+              <div className="mt-2 rounded-lg bg-purple-50 px-3 py-2">
+                <p className="text-xs font-bold text-purple-700">
+                  🎸 バンド応募
+                </p>
+                <p className="mt-1 font-bold text-purple-900">
+                  {match.band.name}
+                </p>
+                <p className="mt-1 text-xs text-purple-700">
+                  {match.isBandLeader
+                    ? "あなたはこのバンドのリーダーです"
+                    : "バンドメンバーとして参加"}
+                </p>
+              </div>
+            )}
+
           </div>
           <span
             className={`shrink-0 text-xs rounded-full px-3 py-1 font-bold ${badgeClass}`}
