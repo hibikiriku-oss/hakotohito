@@ -1098,6 +1098,17 @@ export default function PerformerBandsPage() {
                   <p className="mt-3 text-xs text-gray-400">
                     作成日：{formatDate(band.createdAt)}
                   </p>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(`/performer/bands/${band.id}/chat`)
+                    }
+                    className="mt-4 w-full rounded-2xl bg-black py-3 font-bold text-white active:opacity-80"
+                  >
+                    💬 バンドチャットを開く
+                  </button>
+
                 </article>
               ))}
             </div>
