@@ -669,22 +669,188 @@ export async function POST(
             facilityUserError
           );
         } else {
-          const notificationResult = await sendLinePushMessage(
-            facilityUser.line_user_id,
-            [
-              {
-                type: "text",
-                text:
-                  `🎵 新しいバンド応募があります。\n` +
-                  `バンド名：${band.name}\n` +
-                  `案件：${performanceRequest.title}\n` +
-                  `演奏日：${performanceRequest.performance_date}\n` +
-                  `時間：${performanceRequest.start_time}〜${performanceRequest.end_time}\n` +
-                  `場所：${performanceRequest.area || "未設定"}\n` +
-                  `応募メッセージ：${message || "なし"}`,
+const notificationResult = await sendLinePushMessage(
+  facilityUser.line_user_id,
+  [
+    {
+      type: "flex",
+      altText: "🎵 新しいバンド応募があります",
+      contents: {
+        type: "bubble",
+        size: "mega",
+        header: {
+          type: "box",
+          layout: "vertical",
+          backgroundColor: "#5B46D8",
+          paddingAll: "16px",
+          contents: [
+            {
+              type: "text",
+              text: "🎵 新しいバンド応募",
+              color: "#FFFFFF",
+              weight: "bold",
+              size: "lg",
+              wrap: true,
+            },
+            {
+              type: "text",
+              text: "演奏案件にバンドから応募が届きました",
+              color: "#EAE6FF",
+              size: "xs",
+              wrap: true,
+              margin: "sm",
+            },
+          ],
+        },
+        body: {
+          type: "box",
+          layout: "vertical",
+          paddingAll: "16px",
+          spacing: "md",
+          contents: [
+            {
+              type: "text",
+              text: "応募バンド",
+              size: "xs",
+              color: "#6B7280",
+            },
+            {
+              type: "text",
+              text: band.name || "バンド名未設定",
+              size: "lg",
+              weight: "bold",
+              color: "#111827",
+              wrap: true,
+            },
+            {
+              type: "separator",
+              margin: "sm",
+            },
+            {
+              type: "text",
+              text: "案件名",
+              size: "xs",
+              color: "#6B7280",
+            },
+            {
+              type: "text",
+              text: performanceRequest.title || "未設定",
+              size: "md",
+              weight: "bold",
+              color: "#111827",
+              wrap: true,
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              spacing: "sm",
+              margin: "md",
+              contents: [
+                {
+                  type: "text",
+                  text: "演奏日",
+                  size: "sm",
+                  color: "#6B7280",
+                  flex: 2,
+                },
+                {
+                  type: "text",
+                  text: String(
+                    performanceRequest.performance_date || "未設定"
+                  ),
+                  size: "sm",
+                  color: "#111827",
+                  flex: 5,
+                  wrap: true,
+                },
+              ],
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "text",
+                  text: "演奏時間",
+                  size: "sm",
+                  color: "#6B7280",
+                  flex: 2,
+                },
+                {
+                  type: "text",
+                  text:
+                    `${performanceRequest.start_time || "未設定"}` +
+                    `〜${performanceRequest.end_time || "未設定"}`,
+                  size: "sm",
+                  color: "#111827",
+                  flex: 5,
+                  wrap: true,
+                },
+              ],
+            },
+            {
+              type: "box",
+              layout: "horizontal",
+              spacing: "sm",
+              contents: [
+                {
+                  type: "text",
+                  text: "場所",
+                  size: "sm",
+                  color: "#6B7280",
+                  flex: 2,
+                },
+                {
+                  type: "text",
+                  text: performanceRequest.area || "未設定",
+                  size: "sm",
+                  color: "#111827",
+                  flex: 5,
+                  wrap: true,
+                },
+              ],
+            },
+            {
+              type: "text",
+              text: "応募メッセージ",
+              size: "xs",
+              color: "#6B7280",
+              margin: "lg",
+            },
+            {
+              type: "text",
+              text: message || "メッセージはありません",
+              size: "sm",
+              color: "#374151",
+              wrap: true,
+            },
+          ],
+        },
+        footer: {
+          type: "box",
+          layout: "vertical",
+          paddingAll: "16px",
+          contents: [
+            {
+              type: "button",
+              style: "primary",
+              color: "#5B46D8",
+              height: "md",
+              action: {
+                type: "uri",
+                label: "応募者を確認する",
+                uri:
+                  `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}` +
+                  `/facility/requests/${performanceRequest.id}/applications`,
               },
-            ]
-          );
+            },
+          ],
+        },
+      },
+    },
+  ]
+);
 
           notificationSent = Boolean(notificationResult?.success);
 
