@@ -114,11 +114,109 @@ export async function GET(request: NextRequest) {
       return auth.error;
     }
 
+    // 自分宛ての未回答の招待だけを取得する
+    const { data: invitations, error: invitationsError } = await supabase
+      .from("band_invitations")
+      .select(
+        "id, band_id, inviter_performer_id, message, status, created_at"
+      )
+      .eq("invitee_performer_id", auth.performerId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (invitationsError) {
+      console.error("受信招待一覧取得エラー:", invitationsError);
+
+      return NextResponse.json(
+        { error: "受信した招待を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    const bandIds = [
+      ...new Set((invitations ?? []).map((item) => item.band_id)),
+    ];
+
+    const inviterIds = [
+      ...new Set(
+        (invitations ?? []).map((item) => item.inviter_performer_id)
+      ),
+    ];
+
+    const bandMap = new Map<
+      string,
+      { name: string; status: string }
+    >();
+
+    const inviterMap = new Map<string, string>();
+
+    if (bandIds.length > 0) {
+      const { data: bandRows, error: bandsError } = await supabase
+        .from("bands")
+        .select("id, name, status")
+        .in("id", bandIds);
+
+      if (bandsError) {
+        console.error("招待元バンド取得エラー:", bandsError);
+
+        return NextResponse.json(
+          { error: "招待元のバンド情報を取得できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      for (const band of bandRows ?? []) {
+        bandMap.set(band.id, {
+          name: band.name,
+          status: band.status,
+        });
+      }
+    }
+
+    if (inviterIds.length > 0) {
+      const { data: inviterRows, error: invitersError } = await supabase
+        .from("performers")
+        .select("id, name")
+        .in("id", inviterIds);
+
+      if (invitersError) {
+        console.error("招待者情報取得エラー:", invitersError);
+
+        return NextResponse.json(
+          { error: "招待した演奏者の情報を取得できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      for (const inviter of inviterRows ?? []) {
+        inviterMap.set(inviter.id, inviter.name);
+      }
+    }
+
+    const receivedInvitations = (invitations ?? []).map((invitation) => {
+      const band = bandMap.get(invitation.band_id);
+
+      return {
+        id: invitation.id,
+        bandId: invitation.band_id,
+        bandName: band?.name ?? "バンド情報を取得できません",
+        bandStatus: band?.status ?? "unknown",
+        inviterPerformerId: invitation.inviter_performer_id,
+        inviterName:
+          inviterMap.get(invitation.inviter_performer_id) ??
+          "演奏者情報を取得できません",
+        message: invitation.message,
+        status: invitation.status,
+        createdAt: invitation.created_at,
+      };
+    });
+
     return NextResponse.json({
       performerId: auth.performerId,
+      invitations: receivedInvitations,
     });
   } catch (error) {
-    console.error("招待APIの本人確認エラー:", error);
+    console.error("受信招待一覧APIエラー:", error);
 
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },
@@ -188,9 +286,7 @@ export async function POST(request: NextRequest) {
     }
 
     const message =
-      typeof input.message === "string"
-        ? input.message.trim()
-        : "";
+      typeof input.message === "string" ? input.message.trim() : "";
 
     if (message.length > 500) {
       return NextResponse.json(
@@ -206,7 +302,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // バンドが存在し、活動中であることを確認
     const { data: band, error: bandError } = await supabase
       .from("bands")
       .select("id, name, status")
@@ -229,7 +324,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 招待する本人が、そのバンドの現役メンバーか確認
     const { data: membership, error: membershipError } = await supabase
       .from("band_members")
       .select("id")
@@ -254,7 +348,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 招待先の演奏者が存在することを確認
     const { data: invitee, error: inviteeError } = await supabase
       .from("performers")
       .select("id")
@@ -277,7 +370,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // すでにメンバーなら招待できない
     const { data: existingMember, error: existingMemberError } =
       await supabase
         .from("band_members")
@@ -303,7 +395,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 同じバンドへの未回答の招待があれば重複送信を防止
     const { data: pendingInvitation, error: pendingError } =
       await supabase
         .from("band_invitations")
@@ -367,6 +458,144 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("バンド招待APIエラー:", error);
+
+    return NextResponse.json(
+      { error: "サーバーエラーが発生しました" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "サーバーの設定に問題があります" },
+        { status: 500 }
+      );
+    }
+
+    const auth = await getAuthenticatedPerformer(request);
+
+    if ("error" in auth) {
+      return auth.error;
+    }
+
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "リクエスト形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json(
+        { error: "入力内容が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const input = body as {
+      invitationId?: unknown;
+      decision?: unknown;
+    };
+
+    if (
+      typeof input.invitationId !== "string" ||
+      !input.invitationId.trim()
+    ) {
+      return NextResponse.json(
+        { error: "回答する招待を選択してください" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      input.decision !== "accepted" &&
+      input.decision !== "rejected"
+    ) {
+      return NextResponse.json(
+        { error: "承認または拒否を指定してください" },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase.rpc(
+      "respond_to_band_invitation",
+      {
+        p_invitation_id: input.invitationId,
+        p_performer_id: auth.performerId,
+        p_decision: input.decision,
+      }
+    );
+
+    if (error) {
+      console.error("招待回答処理エラー:", error);
+
+      const message = error.message || "";
+
+      if (message.includes("invitation_not_found")) {
+        return NextResponse.json(
+          { error: "招待が見つかりません" },
+          { status: 404 }
+        );
+      }
+
+      if (message.includes("not_invitee")) {
+        return NextResponse.json(
+          { error: "この招待に回答する権限がありません" },
+          { status: 403 }
+        );
+      }
+
+      if (message.includes("invitation_not_pending")) {
+        return NextResponse.json(
+          { error: "この招待にはすでに回答済みです" },
+          { status: 409 }
+        );
+      }
+
+      if (message.includes("band_not_active")) {
+        return NextResponse.json(
+          { error: "このバンドは現在活動していません" },
+          { status: 409 }
+        );
+      }
+
+      if (message.includes("invalid_decision")) {
+        return NextResponse.json(
+          { error: "回答内容が正しくありません" },
+          { status: 400 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: "招待への回答を保存できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    const result = Array.isArray(data) ? data[0] : null;
+
+    return NextResponse.json({
+      success: true,
+      invitation: result
+        ? {
+            id: result.invitation_id,
+            bandId: result.band_id,
+            status: result.status,
+          }
+        : {
+            id: input.invitationId,
+            status: input.decision,
+          },
+    });
+  } catch (error) {
+    console.error("招待回答APIエラー:", error);
 
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },
