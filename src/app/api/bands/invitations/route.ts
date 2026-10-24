@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
+import { sendLinePushMessage, type LineMessage } from "@/lib/line";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -401,7 +402,7 @@ export async function POST(request: NextRequest) {
 
     const { data: invitee, error: inviteeError } = await supabase
       .from("performers")
-      .select("id")
+      .select("id, user_id")
       .eq("id", input.inviteePerformerId)
       .maybeSingle();
 
@@ -492,9 +493,163 @@ export async function POST(request: NextRequest) {
       );
     }
 
+        // 招待先のLINEユーザーIDを取得
+    let notificationSent = false;
+
+    const { data: inviteeUser, error: inviteeUserError } =
+      await supabase
+        .from("users")
+        .select("line_user_id")
+        .eq("id", invitee.user_id)
+        .maybeSingle();
+
+    if (inviteeUserError) {
+      console.error(
+        "バンド参加依頼の通知先取得エラー:",
+        inviteeUserError
+      );
+    } else if (inviteeUser?.line_user_id) {
+      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+
+      const requestUrl = liffId
+        ? `https://liff.line.me/${liffId}/performer/bands?view=requests`
+        : null;
+
+      const notificationMessages: LineMessage[] = requestUrl
+        ? [
+            {
+              type: "flex",
+              altText: "🎸 バンドへの参加依頼が届きました",
+              contents: {
+                type: "bubble",
+                size: "kilo",
+                header: {
+                  type: "box",
+                  layout: "vertical",
+                  backgroundColor: "#6D28D9",
+                  paddingAll: "16px",
+                  contents: [
+                    {
+                      type: "text",
+                      text: "🎸 バンド参加依頼",
+                      color: "#FFFFFF",
+                      weight: "bold",
+                      size: "lg",
+                      wrap: true,
+                    },
+                    {
+                      type: "text",
+                      text: "あなたに新しい招待が届きました",
+                      color: "#EDE9FE",
+                      size: "xs",
+                      wrap: true,
+                      margin: "sm",
+                    },
+                  ],
+                },
+                body: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  spacing: "md",
+                  contents: [
+                    {
+                      type: "text",
+                      text: "招待されたバンド",
+                      size: "xs",
+                      color: "#6B7280",
+                    },
+                    {
+                      type: "text",
+                      text: band.name || "バンド名未設定",
+                      size: "lg",
+                      weight: "bold",
+                      color: "#111827",
+                      wrap: true,
+                    },
+                    {
+                      type: "separator",
+                      margin: "sm",
+                    },
+                    {
+                      type: "text",
+                      text: "参加依頼が届いています。依頼内容を確認して、参加するかどうかを選んでください。",
+                      size: "sm",
+                      color: "#374151",
+                      wrap: true,
+                    },
+                    {
+                      type: "text",
+                      text: message || "招待メッセージはありません。",
+                      size: "sm",
+                      color: "#6B7280",
+                      wrap: true,
+                    },
+                  ],
+                },
+                footer: {
+                  type: "box",
+                  layout: "vertical",
+                  paddingAll: "16px",
+                  contents: [
+                    {
+                      type: "button",
+                      style: "primary",
+                      color: "#6D28D9",
+                      height: "md",
+                      action: {
+                        type: "uri",
+                        label: "参加依頼を確認する",
+                        uri: requestUrl,
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ]
+        : [
+            {
+              type: "text",
+              text:
+                `🎸 バンド参加依頼が届きました。\n` +
+                `バンド名：${band.name || "未設定"}\n` +
+                `参加依頼をアプリから確認してください。`,
+            },
+          ];
+
+      try {
+        const notificationResult = await sendLinePushMessage(
+          inviteeUser.line_user_id,
+          notificationMessages
+        );
+
+        notificationSent = notificationResult.success;
+
+        if (!notificationResult.success) {
+          console.error(
+            "バンド参加依頼のLINE通知送信エラー:",
+            notificationResult.error
+          );
+        }
+      } catch (notificationError) {
+        // 通知に失敗しても、登録済みの招待は取り消さない
+        console.error(
+          "バンド参加依頼のLINE通知例外:",
+          notificationError
+        );
+      }
+    } else {
+      console.warn(
+        "バンド参加依頼の通知先LINEユーザーIDがありません:",
+        invitee.id
+      );
+    }
+
     return NextResponse.json(
       {
         success: true,
+        notificationSent,
         invitation: {
           id: invitation.id,
           status: invitation.status,

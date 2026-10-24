@@ -122,8 +122,11 @@ export default function PerformerBandsPage() {
       window.location.search
     ).get("view");
 
-    if (requestedView === "participating") {
-      setView("participating");
+    if (
+      requestedView === "participating" ||
+      requestedView === "requests"
+    ) {
+      setView(requestedView);
     }
   }, []);
   const [name, setName] = useState("");
