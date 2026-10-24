@@ -129,6 +129,9 @@ export default function PerformerBandsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bands, setBands] = useState<Band[]>([]);
+  const [disbandedBands, setDisbandedBands] = useState<Band[]>([]);
+  const [showDisbandedBands, setShowDisbandedBands] = useState(false);
+  const [loadingDisbandedBands, setLoadingDisbandedBands] = useState(false);
   const [performers, setPerformers] = useState<PerformerCandidate[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [sentInvitations, setSentInvitations] = useState<SentInvitation[]>([]);
@@ -203,6 +206,31 @@ export default function PerformerBandsPage() {
         ? previous
         : items[0]?.id || ""
     );
+
+    return items;
+  }, []);
+
+  const loadDisbandedBands = useCallback(async (token: string) => {
+    const response = await fetch("/api/bands?view=disbanded", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "解散したバンドを取得できませんでした"
+      );
+    }
+
+    const items: Band[] = Array.isArray(data.bands)
+      ? data.bands
+      : [];
+
+    setDisbandedBands(items);
 
     return items;
   }, []);
@@ -562,6 +590,38 @@ export default function PerformerBandsPage() {
     }
   };
 
+  const handleToggleDisbandedBands = async () => {
+    if (showDisbandedBands) {
+      setShowDisbandedBands(false);
+      return;
+    }
+
+    try {
+      setLoadingDisbandedBands(true);
+      setError("");
+
+      const token = await getToken();
+
+      if (!token) return;
+
+      setIdToken(token);
+
+      await loadDisbandedBands(token);
+
+      setShowDisbandedBands(true);
+    } catch (err) {
+      console.error("解散済みバンド取得エラー:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "解散したバンドを取得できませんでした"
+      );
+    } finally {
+      setLoadingDisbandedBands(false);
+    }
+  };
+
   const handleRefresh = async () => {
     try {
       setError("");
@@ -843,6 +903,79 @@ export default function PerformerBandsPage() {
             )}
 
             {/* バンドを組む */}
+                        {view === "participating" && (
+              <section className="mt-4 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={handleToggleDisbandedBands}
+                  disabled={loadingDisbandedBands}
+                  className="w-full rounded-2xl border border-gray-300 bg-gray-50 py-4 font-bold text-gray-800 active:bg-gray-100 disabled:opacity-50"
+                >
+                  {loadingDisbandedBands
+                    ? "解散したバンドを読み込み中..."
+                    : showDisbandedBands
+                      ? "▲ 解散したバンドを閉じる"
+                      : "🗂️ 解散したバンドを見る"}
+                </button>
+
+                {showDisbandedBands && (
+                  <div className="mt-5">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-bold text-gray-900">
+                        解散したバンド
+                      </h2>
+                      <span className="text-sm text-gray-500">
+                        {disbandedBands.length}件
+                      </span>
+                    </div>
+
+                    {disbandedBands.length === 0 ? (
+                      <div className="rounded-2xl bg-gray-50 p-5 text-center">
+                        <p className="font-bold text-gray-700">
+                          解散したバンドはありません
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-gray-500">
+                          過去に所属していた解散済みバンドが、ここに表示されます。
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {disbandedBands.map((band) => (
+                          <article
+                            key={band.id}
+                            className="rounded-2xl border border-gray-200 p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <h3 className="break-words font-bold text-gray-900">
+                                {band.name}
+                              </h3>
+
+                              <span className="shrink-0 rounded-full bg-gray-200 px-3 py-1 text-xs font-bold text-gray-700">
+                                解散済み
+                              </span>
+                            </div>
+
+                            {band.description && (
+                              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                                {band.description}
+                              </p>
+                            )}
+
+                            <p className="mt-3 text-xs text-gray-400">
+                              参加日：{formatDate(band.joinedAt)}
+                            </p>
+
+                            <p className="mt-3 text-xs leading-5 text-gray-500">
+                              解散済みのため、バンドのチャットや通常の管理操作は利用できません。
+                            </p>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
             {view === "create" && (
               <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
                 <h2 className="mb-4 text-lg font-bold text-gray-900">

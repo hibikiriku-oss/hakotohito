@@ -112,13 +112,16 @@ export async function GET(request: NextRequest) {
       return auth.error;
     }
 
+    // view=disbanded の場合は解散済みバンドを取得する
+    const showDisbanded =
+      request.nextUrl.searchParams.get("view") === "disbanded";
+
     const { data: memberships, error } = await supabase
       .from("band_members")
       .select(
         "role, status, joined_at, bands(id, name, description, status, created_at)"
       )
       .eq("performer_id", auth.performerId)
-      .eq("status", "active")
       .order("joined_at", { ascending: false });
 
     if (error) {
@@ -135,7 +138,23 @@ export async function GET(request: NextRequest) {
           ? membership.bands[0]
           : membership.bands;
 
-        return band && band.status === "active";
+        if (!band) {
+          return false;
+        }
+
+        if (showDisbanded) {
+          // 解散済みバンドかつ、過去に所属していたメンバーだけ表示
+          return (
+            membership.status === "left" &&
+            band.status === "disbanded"
+          );
+        }
+
+        // 通常の一覧には活動中のバンドだけ表示
+        return (
+          membership.status === "active" &&
+          band.status === "active"
+        );
       })
       .map((membership) => {
         const band = Array.isArray(membership.bands)
@@ -153,7 +172,10 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    return NextResponse.json({ bands });
+    return NextResponse.json({
+      bands,
+      view: showDisbanded ? "disbanded" : "active",
+    });
   } catch (error) {
     console.error("バンド一覧APIエラー:", error);
     return NextResponse.json(
