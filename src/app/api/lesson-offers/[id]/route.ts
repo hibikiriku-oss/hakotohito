@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendLinePushMessage, type LineMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -366,6 +367,208 @@ export async function PUT(
           available_coins: data?.available_coins,
         },
         { status: 400 }
+      );
+    }
+
+    // 募集更新が成功した場合、成立済みの相手へLINE通知する。
+    // 通知エラーは募集更新の成功結果に影響させない。
+    try {
+      const { data: applications, error: applicationsError } =
+        await supabase
+          .from("lesson_applications")
+          .select("applicant_performer_id")
+          .eq("lesson_offer_id", id)
+          .eq("status", "matched");
+
+      if (applicationsError) {
+        console.error(
+          "レッスン変更通知：応募情報取得エラー",
+          applicationsError
+        );
+      } else {
+        const applicantIds = [
+          ...new Set(
+            (applications ?? []).map(
+              (application) => application.applicant_performer_id
+            )
+          ),
+        ];
+
+        if (applicantIds.length > 0) {
+          const { data: applicants, error: applicantsError } =
+            await supabase
+              .from("performers")
+              .select("id, user_id")
+              .in("id", applicantIds);
+
+          if (applicantsError) {
+            console.error(
+              "レッスン変更通知：応募者取得エラー",
+              applicantsError
+            );
+          } else {
+            const userIds = [
+              ...new Set(
+                (applicants ?? []).map((applicant) => applicant.user_id)
+              ),
+            ];
+
+            const { data: users, error: usersError } =
+              await supabase
+                .from("users")
+                .select("id, line_user_id")
+                .in("id", userIds);
+
+            if (usersError) {
+              console.error(
+                "レッスン変更通知：通知先取得エラー",
+                usersError
+              );
+            } else {
+              const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+              const detailUrl = liffId
+                ? `https://liff.line.me/${liffId}/performer/lesson/${id}`
+                : null;
+
+              const notificationMessages: LineMessage[] = detailUrl
+                ? [
+                    {
+                      type: "flex",
+                      altText: "📢 参加中のレッスン募集が更新されました",
+                      contents: {
+                        type: "bubble",
+                        size: "kilo",
+                        header: {
+                          type: "box",
+                          layout: "vertical",
+                          backgroundColor: "#2563EB",
+                          paddingAll: "16px",
+                          contents: [
+                            {
+                              type: "text",
+                              text: "📢 レッスン募集の変更",
+                              color: "#FFFFFF",
+                              weight: "bold",
+                              size: "lg",
+                              wrap: true,
+                            },
+                            {
+                              type: "text",
+                              text: "参加中のレッスン内容が更新されました",
+                              color: "#DBEAFE",
+                              size: "xs",
+                              wrap: true,
+                              margin: "sm",
+                            },
+                          ],
+                        },
+                        body: {
+                          type: "box",
+                          layout: "vertical",
+                          paddingAll: "16px",
+                          spacing: "md",
+                          contents: [
+                            {
+                              type: "text",
+                              text: title.trim(),
+                              size: "lg",
+                              weight: "bold",
+                              color: "#111827",
+                              wrap: true,
+                            },
+                            {
+                              type: "separator",
+                            },
+                            {
+                              type: "text",
+                              text:
+                                `開催日：${date || "未設定"}\n` +
+                                `時間：${start || "未設定"} ～ ${end || "未設定"}\n` +
+                                `エリア：${typeof area === "string" ? area.trim() || "未設定" : "未設定"}\n` +
+                                `レッスン料金：${lessonFee === 0 ? "無料" : `¥${lessonFee.toLocaleString("ja-JP")}`}`,
+                              size: "sm",
+                              color: "#374151",
+                              wrap: true,
+                            },
+                            {
+                              type: "text",
+                              text:
+                                "詳細画面を開き、最新の募集内容をご確認ください。",
+                              size: "sm",
+                              color: "#6B7280",
+                              wrap: true,
+                            },
+                          ],
+                        },
+                        footer: {
+                          type: "box",
+                          layout: "vertical",
+                          paddingAll: "16px",
+                          contents: [
+                            {
+                              type: "button",
+                              style: "primary",
+                              color: "#2563EB",
+                              action: {
+                                type: "uri",
+                                label: "変更内容を確認する",
+                                uri: detailUrl,
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      type: "text",
+                      text:
+                        `📢 参加中のレッスン募集が更新されました。\n` +
+                        `募集名：${title.trim()}\n` +
+                        `開催日：${date || "未設定"}\n` +
+                        `時間：${start || "未設定"} ～ ${end || "未設定"}`,
+                    },
+                  ];
+
+              const uniqueLineUserIds = [
+                ...new Set(
+                  (users ?? [])
+                    .map((user) => user.line_user_id)
+                    .filter(
+                      (lineUserId): lineUserId is string =>
+                        typeof lineUserId === "string" &&
+                        lineUserId.length > 0
+                    )
+                ),
+              ];
+
+              const notificationResults = await Promise.all(
+                uniqueLineUserIds.map((lineUserId) =>
+                  sendLinePushMessage(
+                    lineUserId,
+                    notificationMessages
+                  )
+                )
+              );
+
+              const failedCount = notificationResults.filter(
+                (result) => !result.success
+              ).length;
+
+              if (failedCount > 0) {
+                console.error(
+                  `レッスン変更通知：${failedCount}件の送信に失敗しました`
+                );
+              }
+            }
+          }
+        }
+      }
+    } catch (notificationError) {
+      console.error(
+        "レッスン変更LINE通知エラー:",
+        notificationError
       );
     }
 
