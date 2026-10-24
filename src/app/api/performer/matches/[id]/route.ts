@@ -51,7 +51,7 @@ export async function GET(
       );
     }
 
-    // 本人が参加しているマッチングだけ取得
+    // マッチング情報を取得
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -104,24 +104,25 @@ export async function GET(
       );
     }
 
-    // バンドのマッチングか、個人のマッチングかを判定する
     let band: {
       id: string;
       name: string | null;
       description: string | null;
+      status: string;
     } | null = null;
 
     let isBandLeader = false;
 
     if (match.band_id) {
-      // バンドマッチングの場合、現在のアクティブメンバーか確認
-      const { data: membership, error: membershipError } = await supabase
-        .from("band_members")
-        .select("role")
-        .eq("band_id", match.band_id)
-        .eq("performer_id", performer.id)
-        .eq("status", "active")
-        .maybeSingle();
+      // 現在の所属状態を含めて取得する。
+      // 解散済みバンドの過去履歴は、left のメンバーにも閲覧を許可する。
+      const { data: membership, error: membershipError } =
+        await supabase
+          .from("band_members")
+          .select("role, status")
+          .eq("band_id", match.band_id)
+          .eq("performer_id", performer.id)
+          .maybeSingle();
 
       if (membershipError) {
         console.error("バンド所属確認エラー:", membershipError);
@@ -134,17 +135,21 @@ export async function GET(
 
       if (!membership) {
         return NextResponse.json(
-          { error: "マッチングが見つからないか、閲覧する権限がありません" },
+          {
+            error:
+              "マッチングが見つからないか、閲覧する権限がありません",
+          },
           { status: 404 }
         );
       }
 
-      // バンド名を取得
-      const { data: bandData, error: bandError } = await supabase
-        .from("bands")
-        .select("id, name, description")
-        .eq("id", match.band_id)
-        .maybeSingle();
+      // バンド情報と状態を取得
+      const { data: bandData, error: bandError } =
+        await supabase
+          .from("bands")
+          .select("id, name, description, status")
+          .eq("id", match.band_id)
+          .maybeSingle();
 
       if (bandError) {
         console.error("バンド情報取得エラー:", bandError);
@@ -162,26 +167,61 @@ export async function GET(
         );
       }
 
+      // 活動中バンド：現役のアクティブメンバーだけ許可
+      if (
+        bandData.status === "active" &&
+        membership.status !== "active"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "マッチングが見つからないか、閲覧する権限がありません",
+          },
+          { status: 404 }
+        );
+      }
+
+      // 解散済みバンド：所属履歴が残る元メンバーに限って閲覧許可
+      if (
+        bandData.status === "disbanded" &&
+        membership.status !== "left"
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "マッチングが見つからないか、閲覧する権限がありません",
+          },
+          { status: 404 }
+        );
+      }
+
       band = bandData;
-      isBandLeader = membership.role === "leader";
+
+      // 解散済みバンドは、元リーダーであっても操作権限を付与しない
+      isBandLeader =
+        bandData.status === "active" &&
+        membership.status === "active" &&
+        membership.role === "leader";
     } else {
-      // 個人マッチングは、従来どおり本人だけが閲覧可能
+      // 個人マッチングは従来どおり本人だけが閲覧可能
       if (match.performer_id !== performer.id) {
         return NextResponse.json(
-          { error: "マッチングが見つからないか、閲覧する権限がありません" },
+          {
+            error:
+              "マッチングが見つからないか、閲覧する権限がありません",
+          },
           { status: 404 }
         );
       }
     }
 
-    // 画面側でバンド名と操作権限を利用できるようにする
     const enrichedMatch = {
       ...match,
       band,
       isBandLeader,
     };
 
-return NextResponse.json({ match: enrichedMatch });
+    return NextResponse.json({ match: enrichedMatch });
   } catch (error) {
     console.error("マッチング詳細APIエラー:", error);
 

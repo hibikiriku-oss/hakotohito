@@ -9,6 +9,14 @@ const supabase = createClient(
 type BandMembership = {
   band_id: string;
   role: string;
+  status: string;
+};
+
+type BandRow = {
+  id: string;
+  name: string | null;
+  description: string | null;
+  status: string;
 };
 
 type MatchRow = {
@@ -65,7 +73,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ログインユーザーを取得
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
@@ -79,7 +86,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 演奏者プロフィールを取得
     const { data: performer, error: performerError } = await supabase
       .from("performers")
       .select("id")
@@ -93,12 +99,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 現在所属しているバンドを取得
+    // 現在の所属だけでなく、過去の所属記録も取得する。
+    // 解散済みバンドの履歴閲覧に限って過去の所属を利用する。
     const { data: memberships, error: membershipsError } = await supabase
       .from("band_members")
-      .select("band_id, role")
-      .eq("performer_id", performer.id)
-      .eq("status", "active");
+      .select("band_id, role, status")
+      .eq("performer_id", performer.id);
 
     if (membershipsError) {
       console.error("バンド所属情報の取得エラー:", membershipsError);
@@ -109,12 +115,53 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const activeMemberships = (memberships ?? []) as BandMembership[];
-    const activeBandIds = [
-      ...new Set(activeMemberships.map((membership) => membership.band_id)),
+    const membershipRows = (memberships ?? []) as BandMembership[];
+    const membershipBandIds = [
+      ...new Set(membershipRows.map((membership) => membership.band_id)),
     ];
 
-    // 個人のマッチングを取得
+    const bandById = new Map<string, BandRow>();
+
+    if (membershipBandIds.length > 0) {
+      const { data: bands, error: bandsError } = await supabase
+        .from("bands")
+        .select("id, name, description, status")
+        .in("id", membershipBandIds);
+
+      if (bandsError) {
+        console.error("バンド情報の取得エラー:", bandsError);
+
+        return NextResponse.json(
+          { error: "バンド情報の取得に失敗しました" },
+          { status: 500 }
+        );
+      }
+
+      for (const band of (bands ?? []) as BandRow[]) {
+        bandById.set(band.id, band);
+      }
+    }
+
+    // 活動中バンドは現在のアクティブメンバーのみ対象。
+    // 解散済みバンドは、過去の所属記録がある人に履歴閲覧を許可する。
+    const allowedBandIds = [
+      ...new Set(
+        membershipRows
+          .filter((membership) => {
+            const band = bandById.get(membership.band_id);
+
+            return (
+              (membership.status === "active" &&
+                band?.status === "active") ||
+              (membership.status === "left" &&
+                band?.status === "disbanded")
+            );
+          })
+          .map((membership) => membership.band_id)
+      ),
+    ];
+
+    // 個人マッチングを取得
     const {
       data: personalMatches,
       error: personalMatchesError,
@@ -133,14 +180,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 所属中のバンドのマッチングを取得
+    // 許可されたバンドのマッチングを取得
     let bandMatches: MatchRow[] = [];
 
-    if (activeBandIds.length > 0) {
+    if (allowedBandIds.length > 0) {
       const { data, error: bandMatchesError } = await supabase
         .from("matches")
         .select(MATCH_SELECT)
-        .in("band_id", activeBandIds)
+        .in("band_id", allowedBandIds)
         .order("matched_at", { ascending: false });
 
       if (bandMatchesError) {
@@ -155,20 +202,14 @@ export async function GET(request: NextRequest) {
       bandMatches = (data ?? []) as MatchRow[];
     }
 
-    /*
-     * 個人マッチングとバンドマッチングを統合する。
-     * リーダーの場合、同じバンドマッチングが両方の検索結果に
-     * 含まれることがあるため、マッチングIDで重複を除外する。
-     *
-     * バンドのマッチングは、現在もそのバンドに所属している
-     * メンバーにだけ返す。
-     */
+    // 個人・バンドの結果を統合し、重複を除外
     const uniqueMatches = new Map<string, MatchRow>();
 
     for (const match of (personalMatches ?? []) as MatchRow[]) {
       if (
         match.band_id === null ||
-        (match.band_id && activeBandIds.includes(match.band_id))
+        (match.band_id !== null &&
+          allowedBandIds.includes(match.band_id))
       ) {
         uniqueMatches.set(match.id, match);
       }
@@ -178,39 +219,23 @@ export async function GET(request: NextRequest) {
       uniqueMatches.set(match.id, match);
     }
 
-    // 所属バンドの情報を取得
-    const bandById = new Map<
-      string,
-      { id: string; name: string | null; description: string | null }
-    >();
+    // 現在の所属情報だけを、操作権限の判定に利用する。
+    const activeRoleByBandId = new Map<string, string>();
 
-    if (activeBandIds.length > 0) {
-      const { data: bands, error: bandsError } = await supabase
-        .from("bands")
-        .select("id, name, description")
-        .in("id", activeBandIds);
+    for (const membership of membershipRows) {
+      const band = bandById.get(membership.band_id);
 
-      if (bandsError) {
-        console.error("バンド情報の取得エラー:", bandsError);
-
-        return NextResponse.json(
-          { error: "バンド情報の取得に失敗しました" },
-          { status: 500 }
+      if (
+        membership.status === "active" &&
+        band?.status === "active"
+      ) {
+        activeRoleByBandId.set(
+          membership.band_id,
+          membership.role
         );
       }
-
-      for (const band of bands ?? []) {
-        bandById.set(band.id, band);
-      }
     }
 
-    const roleByBandId = new Map<string, string>();
-
-    for (const membership of activeMemberships) {
-      roleByBandId.set(membership.band_id, membership.role);
-    }
-
-    // 画面で利用しやすい形式に整える
     const matches = Array.from(uniqueMatches.values())
       .sort(
         (a, b) =>
@@ -231,9 +256,12 @@ export async function GET(request: NextRequest) {
                 description: band?.description ?? null,
               }
             : null,
+
+          // 解散済みバンドには操作権限を付与しない
           isBandLeader:
             match.band_id !== null &&
-            roleByBandId.get(match.band_id) === "leader",
+            band?.status === "active" &&
+            activeRoleByBandId.get(match.band_id) === "leader",
         };
       });
 

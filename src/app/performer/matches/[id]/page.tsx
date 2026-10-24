@@ -36,6 +36,7 @@ type Match = {
     id: string;
     name: string | null;
     description: string | null;
+    status: string;
   } | null;
   isBandLeader: boolean;
   matched_at: string;
@@ -562,22 +563,24 @@ export default function PerformerMatchDetailPage() {
             )}
 
             <p className="mt-2 text-xs text-purple-700">
-              {match.isBandLeader
-                ? "あなたはこのバンドのリーダーです"
-                : "バンドメンバーとして参加しています"}
+              {match.band.status === "disbanded"
+                ? "このバンドは解散済みです。ここでは過去のマッチング状況のみ確認できます。"
+                : match.isBandLeader
+                  ? "あなたはこのバンドのリーダーです"
+                  : "バンドメンバーとして参加しています"}
             </p>
 
-            <button
-              type="button"
-              onClick={() =>
-                router.push(
-                  `/performer/bands/${match!.band!.id}/chat`
-                )
-              }
-              className="mt-3 w-full rounded-xl bg-purple-700 py-3 font-bold text-white"
-            >
-              💬 バンドチャットを開く
-            </button>
+            {match.band.status === "active" && (
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(`/performer/bands/${match!.band!.id}/chat`)
+                }
+                className="mt-3 w-full rounded-xl bg-purple-700 py-3 font-bold text-white"
+              >
+                💬 バンドチャットを開く
+              </button>
+            )}
           </section>
         )}
 
