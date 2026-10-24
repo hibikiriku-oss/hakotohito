@@ -114,18 +114,21 @@ export async function GET(request: NextRequest) {
       return auth.error;
     }
 
-    // 自分宛ての未回答の招待だけを取得する
-    const { data: invitations, error: invitationsError } = await supabase
-      .from("band_invitations")
-      .select(
-        "id, band_id, inviter_performer_id, message, status, created_at"
-      )
-      .eq("invitee_performer_id", auth.performerId)
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
+    const selectFields =
+      "id, band_id, inviter_performer_id, invitee_performer_id, message, status, created_at, responded_at";
 
-    if (invitationsError) {
-      console.error("受信招待一覧取得エラー:", invitationsError);
+    // 自分宛ての未回答の招待を取得
+    const { data: receivedRows, error: receivedError } =
+      await supabase
+        .from("band_invitations")
+        .select(selectFields)
+        .eq("invitee_performer_id", auth.performerId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+    if (receivedError) {
+      console.error("受信招待一覧取得エラー:", receivedError);
 
       return NextResponse.json(
         { error: "受信した招待を取得できませんでした" },
@@ -133,13 +136,37 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // 自分が送信した招待を、回答状態にかかわらず取得
+    const { data: sentRows, error: sentError } = await supabase
+      .from("band_invitations")
+      .select(selectFields)
+      .eq("inviter_performer_id", auth.performerId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (sentError) {
+      console.error("送信招待一覧取得エラー:", sentError);
+
+      return NextResponse.json(
+        { error: "送信した招待を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    const received = receivedRows ?? [];
+    const sent = sentRows ?? [];
+    const allRows = [...received, ...sent];
+
     const bandIds = [
-      ...new Set((invitations ?? []).map((item) => item.band_id)),
+      ...new Set(allRows.map((item) => item.band_id)),
     ];
 
-    const inviterIds = [
+    const performerIds = [
       ...new Set(
-        (invitations ?? []).map((item) => item.inviter_performer_id)
+        allRows.flatMap((item) => [
+          item.inviter_performer_id,
+          item.invitee_performer_id,
+        ])
       ),
     ];
 
@@ -148,7 +175,7 @@ export async function GET(request: NextRequest) {
       { name: string; status: string }
     >();
 
-    const inviterMap = new Map<string, string>();
+    const performerMap = new Map<string, string>();
 
     if (bandIds.length > 0) {
       const { data: bandRows, error: bandsError } = await supabase
@@ -157,10 +184,10 @@ export async function GET(request: NextRequest) {
         .in("id", bandIds);
 
       if (bandsError) {
-        console.error("招待元バンド取得エラー:", bandsError);
+        console.error("招待履歴のバンド取得エラー:", bandsError);
 
         return NextResponse.json(
-          { error: "招待元のバンド情報を取得できませんでした" },
+          { error: "バンド情報を取得できませんでした" },
           { status: 500 }
         );
       }
@@ -173,50 +200,74 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (inviterIds.length > 0) {
-      const { data: inviterRows, error: invitersError } = await supabase
-        .from("performers")
-        .select("id, name")
-        .in("id", inviterIds);
+    if (performerIds.length > 0) {
+      const { data: performerRows, error: performersError } =
+        await supabase
+          .from("performers")
+          .select("id, name")
+          .in("id", performerIds);
 
-      if (invitersError) {
-        console.error("招待者情報取得エラー:", invitersError);
+      if (performersError) {
+        console.error(
+          "招待履歴の演奏者取得エラー:",
+          performersError
+        );
 
         return NextResponse.json(
-          { error: "招待した演奏者の情報を取得できませんでした" },
+          { error: "演奏者情報を取得できませんでした" },
           { status: 500 }
         );
       }
 
-      for (const inviter of inviterRows ?? []) {
-        inviterMap.set(inviter.id, inviter.name);
+      for (const performer of performerRows ?? []) {
+        performerMap.set(performer.id, performer.name);
       }
     }
 
-    const receivedInvitations = (invitations ?? []).map((invitation) => {
+    const receivedInvitations = received.map((invitation) => {
       const band = bandMap.get(invitation.band_id);
 
       return {
         id: invitation.id,
         bandId: invitation.band_id,
-        bandName: band?.name ?? "バンド情報を取得できません",
+        bandName: band?.name ?? "不明なバンド",
         bandStatus: band?.status ?? "unknown",
         inviterPerformerId: invitation.inviter_performer_id,
         inviterName:
-          inviterMap.get(invitation.inviter_performer_id) ??
-          "演奏者情報を取得できません",
+          performerMap.get(invitation.inviter_performer_id) ??
+          "不明な演奏者",
         message: invitation.message,
         status: invitation.status,
         createdAt: invitation.created_at,
       };
     });
 
+    const sentInvitations = sent.map((invitation) => {
+      const band = bandMap.get(invitation.band_id);
+
+      return {
+        id: invitation.id,
+        bandId: invitation.band_id,
+        bandName: band?.name ?? "不明なバンド",
+        bandStatus: band?.status ?? "unknown",
+        inviteePerformerId: invitation.invitee_performer_id,
+        inviteeName:
+          performerMap.get(invitation.invitee_performer_id) ??
+          "不明な演奏者",
+        message: invitation.message,
+        status: invitation.status,
+        createdAt: invitation.created_at,
+        respondedAt: invitation.responded_at,
+      };
+    });
+
     return NextResponse.json({
       performerId: auth.performerId,
       invitations: receivedInvitations,
+      sentInvitations,
     });
   } catch (error) {
-    console.error("受信招待一覧APIエラー:", error);
+    console.error("招待一覧APIエラー:", error);
 
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },

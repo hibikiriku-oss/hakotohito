@@ -40,10 +40,55 @@ type Invitation = {
   createdAt: string;
 };
 
+type SentInvitation = {
+  id: string;
+  bandId: string;
+  bandName: string;
+  bandStatus: string;
+  inviteePerformerId: string;
+  inviteeName: string;
+  message: string | null;
+  status: string;
+  createdAt: string;
+  respondedAt: string | null;
+};
+
 type InvitationDecision = "accepted" | "rejected";
 
 const inputClass =
   "w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 outline-none focus:border-black focus:bg-white";
+
+function getInvitationStatusLabel(status: string) {
+  switch (status) {
+    case "pending":
+      return "回答待ち";
+    case "accepted":
+      return "承認済み";
+    case "rejected":
+      return "拒否済み";
+    case "cancelled":
+      return "キャンセル済み";
+    default:
+      return status;
+  }
+}
+
+function getInvitationStatusClass(status: string) {
+  switch (status) {
+    case "accepted":
+      return "bg-green-100 text-green-800";
+    case "rejected":
+      return "bg-red-100 text-red-800";
+    case "pending":
+      return "bg-amber-100 text-amber-800";
+    default:
+      return "bg-gray-100 text-gray-600";
+  }
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("ja-JP");
+}
 
 export default function PerformerBandsPage() {
   const router = useRouter();
@@ -53,6 +98,7 @@ export default function PerformerBandsPage() {
   const [bands, setBands] = useState<Band[]>([]);
   const [performers, setPerformers] = useState<PerformerCandidate[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [sentInvitations, setSentInvitations] = useState<SentInvitation[]>([]);
   const [performerId, setPerformerId] = useState("");
   const [selectedBandId, setSelectedBandId] = useState("");
   const [selectedPerformerId, setSelectedPerformerId] = useState("");
@@ -106,7 +152,9 @@ export default function PerformerBandsPage() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || "バンド一覧の取得に失敗しました");
+      throw new Error(
+        data.error || "バンド一覧の取得に失敗しました"
+      );
     }
 
     const items: Band[] = Array.isArray(data.bands)
@@ -125,7 +173,7 @@ export default function PerformerBandsPage() {
   }, []);
 
   const loadPerformers = useCallback(async (token: string) => {
-    // 本人の演奏者IDと、本人宛ての未回答招待を取得
+    // 本人宛ての招待と、自分が送信した招待の履歴を取得
     const invitationResponse = await fetch(
       "/api/bands/invitations",
       {
@@ -147,13 +195,20 @@ export default function PerformerBandsPage() {
     }
 
     setPerformerId(invitationData.performerId);
+
     setInvitations(
       Array.isArray(invitationData.invitations)
         ? invitationData.invitations
         : []
     );
 
-    // 招待先候補となる演奏者一覧を取得
+    setSentInvitations(
+      Array.isArray(invitationData.sentInvitations)
+        ? invitationData.sentInvitations
+        : []
+    );
+
+    // 招待候補となる演奏者一覧を取得
     const performerResponse = await fetch("/api/performers", {
       cache: "no-store",
     });
@@ -369,11 +424,24 @@ export default function PerformerBandsPage() {
       setSelectedPerformerId("");
       setInviteMessage("");
 
-      setNotice(
-        `「${band?.name || data.band.name}」への招待を${
-          invitee?.name || "選択した演奏者"
-        }さんに送信しました。`
-      );
+      const successMessage =
+        `「${band?.name || data.band.name}」への招待を` +
+        `${invitee?.name || "選択した演奏者"}さんに送信しました。`;
+
+      // 送信した招待の履歴をすぐに更新する
+      try {
+        await loadPerformers(token);
+        setNotice(successMessage);
+      } catch (refreshError) {
+        console.error(
+          "送信後の招待履歴更新エラー:",
+          refreshError
+        );
+
+        setNotice(
+          `${successMessage} 履歴の表示が更新されない場合は「更新」を押してください。`
+        );
+      }
     } catch (err) {
       console.error("バンド招待エラー:", err);
 
@@ -435,7 +503,6 @@ export default function PerformerBandsPage() {
         );
       }
 
-      // 招待一覧と所属バンド一覧を再取得
       await Promise.all([
         loadBands(token),
         loadPerformers(token),
@@ -756,6 +823,104 @@ export default function PerformerBandsPage() {
           )}
         </section>
 
+        {/* 送信した招待の履歴 */}
+        <section className="mb-5 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-gray-900">
+              📤 送信した招待
+            </h2>
+
+            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-600">
+              {sentInvitations.length}件
+            </span>
+          </div>
+
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            招待した相手の回答状況を確認できます。
+          </p>
+
+          {loading ? (
+            <p className="py-6 text-center text-sm text-gray-500">
+              送信履歴を読み込み中...
+            </p>
+          ) : sentInvitations.length === 0 ? (
+            <div className="py-7 text-center">
+              <p className="text-3xl">📨</p>
+              <p className="mt-3 text-sm font-bold text-gray-700">
+                送信した招待はありません
+              </p>
+              <p className="mt-2 text-xs leading-5 text-gray-400">
+                招待を送ると、ここに回答状況が表示されます。
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {sentInvitations.map((invitation) => (
+                <article
+                  key={invitation.id}
+                  className="rounded-2xl border border-gray-200 p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="break-words font-bold text-gray-900">
+                        {invitation.inviteeName}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-gray-600">
+                        バンド：{invitation.bandName}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${getInvitationStatusClass(
+                        invitation.status
+                      )}`}
+                    >
+                      {getInvitationStatusLabel(invitation.status)}
+                    </span>
+                  </div>
+
+                  {invitation.message && (
+                    <p className="mt-3 whitespace-pre-wrap rounded-xl bg-gray-50 p-3 text-sm leading-6 text-gray-600">
+                      {invitation.message}
+                    </p>
+                  )}
+
+                  <div className="mt-3 space-y-1 text-xs text-gray-400">
+                    <p>
+                      送信日：{formatDate(invitation.createdAt)}
+                    </p>
+
+                    {invitation.respondedAt && (
+                      <p>
+                        回答日：{formatDate(invitation.respondedAt)}
+                      </p>
+                    )}
+                  </div>
+
+                  {invitation.status === "pending" && (
+                    <p className="mt-3 text-xs leading-5 text-amber-700">
+                      相手の回答を待っています。
+                    </p>
+                  )}
+
+                  {invitation.status === "accepted" && (
+                    <p className="mt-3 text-xs leading-5 text-green-700">
+                      相手が参加を承認しました。
+                    </p>
+                  )}
+
+                  {invitation.status === "rejected" && (
+                    <p className="mt-3 text-xs leading-5 text-red-700">
+                      相手が招待を拒否しました。
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* 受信した招待 */}
         <section className="mb-5 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-2">
@@ -781,7 +946,7 @@ export default function PerformerBandsPage() {
                 新しい招待はありません
               </p>
               <p className="mt-2 text-xs leading-5 text-gray-400">
-                ほかの演奏者からバンドに招待されると、ここに表示されます。
+                ほかの演奏者から招待されると、ここに表示されます。
               </p>
             </div>
           ) : (
@@ -820,10 +985,7 @@ export default function PerformerBandsPage() {
                     )}
 
                     <p className="mt-3 text-xs text-gray-400">
-                      受信日：
-                      {new Date(
-                        invitation.createdAt
-                      ).toLocaleDateString("ja-JP")}
+                      受信日：{formatDate(invitation.createdAt)}
                     </p>
 
                     {invitation.bandStatus !== "active" && (
@@ -849,9 +1011,7 @@ export default function PerformerBandsPage() {
                         }
                         className="rounded-xl bg-black px-3 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        {responding
-                          ? "処理中..."
-                          : "承認する"}
+                        {responding ? "処理中..." : "承認する"}
                       </button>
 
                       <button
@@ -936,10 +1096,7 @@ export default function PerformerBandsPage() {
                   )}
 
                   <p className="mt-3 text-xs text-gray-400">
-                    作成日：
-                    {new Date(band.createdAt).toLocaleDateString(
-                      "ja-JP"
-                    )}
+                    作成日：{formatDate(band.createdAt)}
                   </p>
                 </article>
               ))}
