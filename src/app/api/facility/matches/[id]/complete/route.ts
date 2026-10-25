@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendLinePushMessage, type LineMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +17,7 @@ type CompletionMatch = {
   performer_completion_reported_at: string | null;
   facility_completion_reported_at: string | null;
   completion_disputed_at: string | null;
-  completion_method: string | null;
+  completion_method?: string | null;
 };
 
 type CompletionResult = {
@@ -150,6 +151,10 @@ export async function POST(
       );
     }
 
+    // 施設側の完了報告がこのリクエストで新規登録されたかを記録する。
+    // 再試行によるLINE通知の重複を避ける。
+    let facilityReportJustRecorded = false;
+
     // 施設側の完了報告を記録。既存の報告日時は上書きしない。
     if (!match.facility_completion_reported_at) {
       const { data: reportRows, error: reportError } = await supabase
@@ -171,6 +176,8 @@ export async function POST(
           { status: 500 }
         );
       }
+
+      facilityReportJustRecorded = Boolean(reportRows && reportRows.length > 0);
 
       if (!reportRows || reportRows.length === 0) {
         // 同時操作の可能性があるため、最新状態を確認する。
@@ -245,8 +252,7 @@ export async function POST(
         .eq("id", matchId)
         .single();
 
-    const latestMatch =
-      latestRawMatch as unknown as CompletionMatch | null;
+    const latestMatch = latestRawMatch as unknown as CompletionMatch | null;
 
     if (latestError || !latestMatch) {
       return NextResponse.json(
@@ -281,10 +287,170 @@ export async function POST(
       );
     }
 
+    // nullチェック後の確定済みマッチングを利用し、通知関数内の型エラーを防ぐ。
+    const safeLatestMatch: CompletionMatch = latestMatch;
+
+    const notifyPerformerCompletion = async (
+      isCompleted: boolean
+    ): Promise<boolean> => {
+      if (!facilityReportJustRecorded) {
+        return false;
+      }
+
+      try {
+        const { data: performer, error: performerError } =
+          await supabase
+            .from("performers")
+            .select("id, user_id, name")
+            .eq("id", safeLatestMatch.performer_id)
+            .maybeSingle();
+
+        if (performerError || !performer?.user_id) {
+          console.error(
+            "演奏完了通知：演奏者取得エラー",
+            performerError
+          );
+          return false;
+        }
+
+        const { data: performerUser, error: performerUserError } =
+          await supabase
+            .from("users")
+            .select("line_user_id, display_name")
+            .eq("id", performer.user_id)
+            .maybeSingle();
+
+        if (performerUserError || !performerUser?.line_user_id) {
+          console.error(
+            "演奏完了通知：通知先取得エラー",
+            performerUserError
+          );
+          return false;
+        }
+
+        const { data: performanceRequest, error: requestError } =
+          await supabase
+            .from("performance_requests")
+            .select("title")
+            .eq("id", safeLatestMatch.request_id)
+            .maybeSingle();
+
+        if (requestError) {
+          console.error(
+            "演奏完了通知：案件名取得エラー",
+            requestError
+          );
+        }
+
+        const miniAppBaseUrl =
+          "https://miniapp.line.me/2011785379-l5XCTbIf";
+        const matchUrl = `${miniAppBaseUrl}/performer/matches/${matchId}`;
+        const title = isCompleted
+          ? "✅ 演奏完了が確定しました"
+          : "📩 施設から完了報告が届きました";
+        const description = isCompleted
+          ? "施設と演奏者の双方が完了を報告し、演奏が完了しました。"
+          : "施設が演奏完了を報告しました。マッチング詳細を確認し、完了報告を行ってください。";
+
+        const messages: LineMessage[] = [
+          {
+            type: "flex",
+            altText: title,
+            contents: {
+              type: "bubble",
+              size: "kilo",
+              header: {
+                type: "box",
+                layout: "vertical",
+                backgroundColor: isCompleted ? "#15803D" : "#2563EB",
+                paddingAll: "16px",
+                contents: [
+                  {
+                    type: "text",
+                    text: title,
+                    color: "#FFFFFF",
+                    weight: "bold",
+                    size: "lg",
+                    wrap: true,
+                  },
+                ],
+              },
+              body: {
+                type: "box",
+                layout: "vertical",
+                paddingAll: "16px",
+                spacing: "md",
+                contents: [
+                  {
+                    type: "text",
+                    text: performanceRequest?.title || "演奏案件",
+                    weight: "bold",
+                    size: "lg",
+                    color: "#111827",
+                    wrap: true,
+                  },
+                  {
+                    type: "text",
+                    text: `${performer.name || performerUser.display_name || "演奏者"}さんへ`,
+                    size: "sm",
+                    color: "#374151",
+                    wrap: true,
+                  },
+                  {
+                    type: "text",
+                    text: description,
+                    size: "sm",
+                    color: "#374151",
+                    wrap: true,
+                  },
+                ],
+              },
+              footer: {
+                type: "box",
+                layout: "vertical",
+                spacing: "sm",
+                paddingAll: "16px",
+                contents: [
+                  {
+                    type: "button",
+                    style: "primary",
+                    color: isCompleted ? "#15803D" : "#2563EB",
+                    action: {
+                      type: "uri",
+                      label: "マッチングを確認する",
+                      uri: matchUrl,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        ];
+
+        const lineResult = await sendLinePushMessage(
+          performerUser.line_user_id,
+          messages
+        );
+
+        if (!lineResult.success) {
+          console.error(
+            "演奏完了通知の送信エラー:",
+            lineResult.error
+          );
+          return false;
+        }
+
+        return true;
+      } catch (notificationError) {
+        console.error("演奏完了通知の例外:", notificationError);
+        return false;
+      }
+    };
+
     // 双方が報告済みなら、DB関数で完了確定と手数料処理を一括実行する。
     if (
-      latestMatch.performer_completion_reported_at &&
-      latestMatch.facility_completion_reported_at
+      safeLatestMatch.performer_completion_reported_at &&
+      safeLatestMatch.facility_completion_reported_at
     ) {
       const { data: rpcData, error: rpcError } = await supabase.rpc(
         "complete_match_with_fee",
@@ -336,24 +502,30 @@ export async function POST(
         );
       }
 
+      const notificationSent = await notifyPerformerCompletion(true);
+
       return NextResponse.json({
         success: true,
         completed: true,
         alreadyCompleted: result.alreadyCompleted ?? false,
         feeCharged: result.feeCharged ?? false,
         feeAmount: result.feeAmount ?? 0,
+        notificationSent,
         message:
           result.message || "双方の報告により演奏が完了しました",
         match: completedMatch,
       });
     }
 
+    const notificationSent = await notifyPerformerCompletion(false);
+
     return NextResponse.json({
       success: true,
       completed: false,
       pendingConfirmation: true,
+      notificationSent,
       message: "演奏完了を報告しました。演奏者側の確認を待っています",
-      match: latestMatch,
+      match: safeLatestMatch,
     });
   } catch (error) {
     console.error("施設の演奏完了APIエラー:", error);
