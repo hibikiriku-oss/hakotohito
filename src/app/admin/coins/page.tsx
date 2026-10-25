@@ -39,7 +39,7 @@ type InquiryUpdateResponse = {
   };
 };
 
-type AdminTab = "coins" | "inquiries";
+type AdminTab = "coins" | "inquiries" | "rates";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "不具合・エラー",
@@ -440,36 +440,68 @@ export default function AdminCoinsPage() {
           </p>
         </header>
 
-        <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm" role="tablist" aria-label="管理機能">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "coins"}
-            onClick={() => {
-              setActiveTab("coins");
-              setError("");
-              setNotice("");
-            }}
-            className={`rounded-xl px-3 py-3 text-sm font-bold ${activeTab === "coins" ? "bg-black text-white" : "bg-gray-100 text-gray-700"}`}
-          >
-            🪙 コイン管理
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === "inquiries"}
-            onClick={() => {
-              setActiveTab("inquiries");
-              setError("");
-              setNotice("");
-              if (!inquiriesLoaded && idToken) void loadInquiries(idToken, statusFilter);
-            }}
-            className={`rounded-xl px-3 py-3 text-sm font-bold ${activeTab === "inquiries" ? "bg-black text-white" : "bg-gray-100 text-gray-700"}`}
-          >
-            📩 問い合わせ管理
-          </button>
-        </div>
+      <div
+        className="mb-5 grid grid-cols-3 gap-2 rounded-2xl bg-white p-2 shadow-sm"
+        role="tablist"
+        aria-label="管理機能"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "coins"}
+          onClick={() => {
+            setActiveTab("coins");
+            setError("");
+            setNotice("");
+          }}
+          className={`rounded-xl px-2 py-3 text-sm font-bold ${
+            activeTab === "coins"
+              ? "bg-black text-white"
+              : "bg-gray-100 text-gray-700"
+          }`}
+        >
+          🪙 コイン管理
+        </button>
 
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "inquiries"}
+          onClick={() => {
+            setActiveTab("inquiries");
+            setError("");
+            setNotice("");
+            if (!inquiriesLoaded && idToken) {
+              void loadInquiries(idToken, statusFilter);
+            }
+          }}
+          className={`rounded-xl px-2 py-3 text-sm font-bold ${
+            activeTab === "inquiries"
+              ? "bg-black text-white"
+              : "bg-gray-100 text-gray-700"
+          }`}
+        >
+          📩 問い合わせ管理
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "rates"}
+          onClick={() => {
+            setActiveTab("rates");
+            setError("");
+            setNotice("");
+          }}
+          className={`rounded-xl px-2 py-3 text-sm font-bold ${
+            activeTab === "rates"
+              ? "bg-black text-white"
+              : "bg-gray-100 text-gray-700"
+          }`}
+        >
+          ⚙️ 消費コイン設定
+        </button>
+      </div>
         {error && (
           <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 whitespace-pre-wrap">
             {error}
@@ -481,7 +513,9 @@ export default function AdminCoinsPage() {
           </div>
         )}
 
-        {activeTab === "coins" ? (
+        {activeTab === "rates" ? (
+            <CoinRateSettingsPanel token={idToken} />
+        ) : activeTab === "coins" ? (
           <>
             <section className="mb-5 rounded-2xl bg-white p-5 shadow-sm">
               <h2 className="mb-3 font-bold">1. ユーザーを検索</h2>
@@ -626,5 +660,382 @@ export default function AdminCoinsPage() {
         )}
       </div>
     </main>
+  );
+}
+
+type CoinRateDraft = {
+  application_fee_coins: string;
+  direct_invitation_fee_coins: string;
+  match_fee_coins: string;
+  completion_fee_percent: string;
+  free_lesson_match_fee_coins: string;
+  paid_lesson_fee_percent: string;
+};
+
+type CoinRateKey = keyof CoinRateDraft;
+
+type CoinRateField = {
+  key: CoinRateKey;
+  label: string;
+  description: string;
+  unit: string;
+  min: number;
+  max: number;
+  step: number;
+  integer: boolean;
+};
+
+const COIN_RATE_FIELDS: CoinRateField[] = [
+  {
+    key: "application_fee_coins",
+    label: "演奏案件への応募料",
+    description: "個人での応募・バンドでの応募に適用",
+    unit: "コイン",
+    min: 1,
+    max: 1000000,
+    step: 1,
+    integer: true,
+  },
+  {
+    key: "direct_invitation_fee_coins",
+    label: "施設からの直接依頼料",
+    description: "施設が演奏者へ直接依頼するときに適用",
+    unit: "コイン",
+    min: 1,
+    max: 1000000,
+    step: 1,
+    integer: true,
+  },
+  {
+    key: "match_fee_coins",
+    label: "マッチング成立手数料",
+    description: "通常案件のマッチング成立時に適用",
+    unit: "コイン",
+    min: 1,
+    max: 1000000,
+    step: 1,
+    integer: true,
+  },
+  {
+    key: "completion_fee_percent",
+    label: "演奏完了時の手数料",
+    description: "報酬・イベント参加費・レンタル料に対する割合",
+    unit: "%",
+    min: 0,
+    max: 100,
+    step: 0.01,
+    integer: false,
+  },
+  {
+    key: "free_lesson_match_fee_coins",
+    label: "無料レッスンの成立手数料",
+    description: "無料レッスンの成立1人あたりに適用",
+    unit: "コイン / 人",
+    min: 1,
+    max: 1000000,
+    step: 1,
+    integer: true,
+  },
+  {
+    key: "paid_lesson_fee_percent",
+    label: "有料レッスンの成立手数料",
+    description: "レッスン料金に対する割合。計算結果は切り上げ",
+    unit: "%",
+    min: 0,
+    max: 100,
+    step: 0.01,
+    integer: false,
+  },
+];
+
+const DEFAULT_COIN_RATE_DRAFT: CoinRateDraft = {
+  application_fee_coins: "10",
+  direct_invitation_fee_coins: "100",
+  match_fee_coins: "100",
+  completion_fee_percent: "1",
+  free_lesson_match_fee_coins: "5",
+  paid_lesson_fee_percent: "1",
+};
+
+type CoinRateRecord = CoinRateDraft & {
+  id: number;
+  updated_at: string;
+  updated_by_line_user_id: string | null;
+};
+
+function CoinRateSettingsPanel({ token }: { token: string }) {
+  const [rates, setRates] = useState<CoinRateDraft>(
+    DEFAULT_COIN_RATE_DRAFT
+  );
+  const [updatedAt, setUpdatedAt] = useState("");
+  const [loadingRates, setLoadingRates] = useState(true);
+  const [savingRates, setSavingRates] = useState(false);
+  const [ratesLoaded, setRatesLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const loadRates = useCallback(async () => {
+    if (!token) return;
+
+    setLoadingRates(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/admin/coin-rates", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.rates) {
+        throw new Error(
+          data.error || "消費コイン設定を取得できませんでした。"
+        );
+      }
+
+      const saved = data.rates as CoinRateRecord;
+
+      setRates({
+        application_fee_coins: String(saved.application_fee_coins),
+        direct_invitation_fee_coins: String(
+          saved.direct_invitation_fee_coins
+        ),
+        match_fee_coins: String(saved.match_fee_coins),
+        completion_fee_percent: String(saved.completion_fee_percent),
+        free_lesson_match_fee_coins: String(
+          saved.free_lesson_match_fee_coins
+        ),
+        paid_lesson_fee_percent: String(saved.paid_lesson_fee_percent),
+      });
+
+      setUpdatedAt(saved.updated_at || "");
+      setRatesLoaded(true);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "消費コイン設定を取得できませんでした。"
+      );
+    } finally {
+      setLoadingRates(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void loadRates();
+  }, [loadRates]);
+
+  function updateRate(key: CoinRateKey, value: string) {
+    setRates((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  }
+
+  async function saveRates() {
+    if (!token || savingRates) return;
+
+    if (!ratesLoaded) {
+      setError("保存前に現在の設定を読み込んでください。");
+      return;
+    }
+
+    const numericRates = {} as Record<CoinRateKey, number>;
+
+    for (const field of COIN_RATE_FIELDS) {
+      const rawValue = rates[field.key];
+
+      if (!rawValue.trim()) {
+        setError(`${field.label}を入力してください。`);
+        return;
+      }
+
+      const value = Number(rawValue);
+
+      if (
+        !Number.isFinite(value) ||
+        value < field.min ||
+        value > field.max ||
+        (field.integer && !Number.isSafeInteger(value)) ||
+        (!field.integer && Math.round(value * 100) !== value * 100)
+      ) {
+        setError(
+          field.integer
+            ? `${field.label}は${field.min.toLocaleString()}〜${field.max.toLocaleString()}の整数で入力してください。`
+            : `${field.label}は0〜100の範囲で小数第2位まで入力してください。`
+        );
+        return;
+      }
+
+      numericRates[field.key] = value;
+    }
+
+    const confirmed = window.confirm(
+      "消費コイン設定を変更します。\n\n" +
+        `応募料：${numericRates.application_fee_coins} コイン\n` +
+        `直接依頼料：${numericRates.direct_invitation_fee_coins} コイン\n` +
+        `成立手数料：${numericRates.match_fee_coins} コイン\n` +
+        `完了手数料率：${numericRates.completion_fee_percent}%\n` +
+        `無料レッスン：${numericRates.free_lesson_match_fee_coins} コイン / 人\n` +
+        `有料レッスン：${numericRates.paid_lesson_fee_percent}%\n\n` +
+        "この内容で保存しますか？"
+    );
+
+    if (!confirmed) return;
+
+    setSavingRates(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/admin/coin-rates", {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(numericRates),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.rates) {
+        throw new Error(
+          data.error || "消費コイン設定を保存できませんでした。"
+        );
+      }
+
+      const saved = data.rates as CoinRateRecord;
+
+      setRates({
+        application_fee_coins: String(saved.application_fee_coins),
+        direct_invitation_fee_coins: String(
+          saved.direct_invitation_fee_coins
+        ),
+        match_fee_coins: String(saved.match_fee_coins),
+        completion_fee_percent: String(saved.completion_fee_percent),
+        free_lesson_match_fee_coins: String(
+          saved.free_lesson_match_fee_coins
+        ),
+        paid_lesson_fee_percent: String(saved.paid_lesson_fee_percent),
+      });
+
+      setUpdatedAt(saved.updated_at || "");
+      setNotice(
+        "設定を保存しました。実際の消費・返金への反映確認は、DB関数の更新後に行います。"
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "消費コイン設定を保存できませんでした。"
+      );
+    } finally {
+      setSavingRates(false);
+    }
+  }
+
+  return (
+    <section className="rounded-2xl bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-bold">⚙️ 消費コイン設定</h2>
+
+      <p className="mt-2 text-sm leading-6 text-gray-600">
+        各機能で消費するコイン数や手数料率を設定します。
+        固定料金は1〜1,000,000コイン、割合は0〜100%で指定できます。
+      </p>
+
+      {error && (
+        <div
+          role="alert"
+          className="mt-4 whitespace-pre-wrap rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+        >
+          {error}
+        </div>
+      )}
+
+      {notice && (
+        <div
+          role="status"
+          className="mt-4 whitespace-pre-wrap rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800"
+        >
+          {notice}
+        </div>
+      )}
+
+      {loadingRates ? (
+        <p className="mt-6 text-center text-gray-500">
+          設定を読み込んでいます…
+        </p>
+      ) : (
+        <div className="mt-5 space-y-5">
+          {COIN_RATE_FIELDS.map((field) => (
+            <div key={field.key} className="border-b pb-5 last:border-b-0">
+              <label
+                htmlFor={`coin-rate-${field.key}`}
+                className="block font-bold"
+              >
+                {field.label}
+              </label>
+
+              <p className="mt-1 text-sm leading-5 text-gray-500">
+                {field.description}
+              </p>
+
+              <div className="mt-3 flex items-center gap-3">
+                <input
+                  id={`coin-rate-${field.key}`}
+                  type="number"
+                  inputMode="decimal"
+                  min={field.min}
+                  max={field.max}
+                  step={field.step}
+                  value={rates[field.key]}
+                  onChange={(event) =>
+                    updateRate(field.key, event.target.value)
+                  }
+                  disabled={savingRates}
+                  className="min-w-0 flex-1 rounded-xl border p-3 disabled:bg-gray-100"
+                />
+
+                <span className="shrink-0 text-sm text-gray-600">
+                  {field.unit}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          <div className="flex flex-col gap-3 pt-1 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => void saveRates()}
+              disabled={savingRates || !ratesLoaded}
+              className="flex-1 rounded-xl bg-black p-4 font-bold text-white disabled:opacity-50"
+            >
+              {savingRates ? "保存中…" : "設定を確認して保存"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void loadRates()}
+              disabled={loadingRates || savingRates}
+              className="rounded-xl border p-4 font-bold disabled:opacity-50"
+            >
+              再読み込み
+            </button>
+          </div>
+
+          {updatedAt && (
+            <p className="text-xs text-gray-500">
+              最終更新：{new Date(updatedAt).toLocaleString("ja-JP")}
+            </p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

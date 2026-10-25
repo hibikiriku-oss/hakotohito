@@ -87,8 +87,19 @@ export default function NewLessonOfferPage() {
     capacityNumber >= 1 &&
     capacityNumber <= 100;
 
+  const [coinRates, setCoinRates] = useState({
+    free_lesson_match_fee_coins: 5,
+    paid_lesson_fee_percent: 1,
+  });
+
   const coinsPerPerson =
-    validFee ? (feeNumber === 0 ? 5 : Math.ceil(feeNumber * 0.01)) : 0;
+    validFee
+      ? feeNumber === 0
+        ? coinRates.free_lesson_match_fee_coins
+        : Math.ceil(
+            (feeNumber * coinRates.paid_lesson_fee_percent) / 100
+          )
+      : 0;
 
   const estimatedReservedCoins =
     validFee && validCapacity
@@ -123,6 +134,55 @@ export default function NewLessonOfferPage() {
     }
 
     initLiff();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoinRates() {
+      try {
+        const response = await fetch("/api/coin-rates", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("料金設定の取得に失敗しました");
+        }
+
+        const data = (await response.json()) as {
+          free_lesson_match_fee_coins?: number;
+          paid_lesson_fee_percent?: number;
+        };
+
+        const freeLessonFee = Number(data.free_lesson_match_fee_coins);
+        const paidLessonPercent = Number(data.paid_lesson_fee_percent);
+
+        if (
+          !Number.isSafeInteger(freeLessonFee) ||
+          freeLessonFee < 0 ||
+          !Number.isFinite(paidLessonPercent) ||
+          paidLessonPercent < 0 ||
+          paidLessonPercent > 100
+        ) {
+          throw new Error("料金設定の値が不正です");
+        }
+
+        if (!cancelled) {
+          setCoinRates({
+            free_lesson_match_fee_coins: freeLessonFee,
+            paid_lesson_fee_percent: paidLessonPercent,
+          });
+        }
+      } catch (error) {
+        console.error("料金設定の読み込みに失敗しました:", error);
+      }
+    }
+
+    void loadCoinRates();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const toggleChoice = (
@@ -558,8 +618,8 @@ export default function NewLessonOfferPage() {
                 </p>
                 <p className="text-xs text-gray-500 mt-3 leading-relaxed">
                   {feeNumber === 0
-                    ? "無料レッスンは、成立1人あたり5コインです。"
-                    : "有料レッスンは、レッスン料の1%（1コイン未満切り上げ）が成立1人あたりの手数料です。"}
+                    ? `無料レッスンは、成立1人あたり${coinRates.free_lesson_match_fee_coins}コインです。`
+                    : `有料レッスンは、レッスン料の${coinRates.paid_lesson_fee_percent}%（1コイン未満切り上げ）が成立1人あたりの手数料です。`}
                   募集登録時に、定員分のコインが仮押さえされます。実際の仮押さえ額はサーバー側で確定します。
                 </p>
               </>

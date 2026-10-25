@@ -238,9 +238,40 @@ export async function POST(request: NextRequest) {
     // 応募前の必要コイン確認
     // ==============================
 
-    // 応募料は10コイン。
     // 報酬の1%手数料は演奏完了時に処理する。
-    const requiredCoins = 10;
+    // 管理画面で設定された応募手数料を取得
+    const {
+      data: coinRateSettings,
+      error: coinRateSettingsError,
+    } = await supabase
+      .from("coin_rate_settings")
+      .select("application_fee_coins")
+      .eq("id", 1)
+      .maybeSingle();
+
+    if (coinRateSettingsError) {
+      console.error("応募手数料設定の取得に失敗しました:", coinRateSettingsError);
+
+      return NextResponse.json(
+        { error: "応募手数料の設定を取得できませんでした。時間をおいて再度お試しください。" },
+        { status: 500 }
+      );
+    }
+
+    const requiredCoins = Number(
+      coinRateSettings?.application_fee_coins ?? 10
+    );
+
+    if (
+      !Number.isSafeInteger(requiredCoins) ||
+      requiredCoins < 1 ||
+      requiredCoins > 1_000_000
+    ) {
+      return NextResponse.json(
+        { error: "応募手数料の設定値が不正です。管理者にお問い合わせください。" },
+        { status: 500 }
+      );
+    }
 
     // 最新の残高を取得
     const {
@@ -444,7 +475,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "コインが不足しています。応募には10コイン必要です。チャージしてから再度お試しください。",
+            `コインが不足しています。応募には${requiredCoins}コイン必要です。チャージしてから再度お試しください。`,
         },
         { status: 400 }
       );

@@ -85,6 +85,7 @@ export default function PerformerRequestDetailPage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
+  const [applicationFeeCoins, setApplicationFeeCoins] = useState(10);
   const [error, setError] = useState("");
 
   const [applicationMode, setApplicationMode] =
@@ -119,6 +120,44 @@ export default function PerformerRequestDetailPage() {
 
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoinRates() {
+      try {
+        const response = await fetch("/api/coin-rates", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("応募手数料の取得に失敗しました");
+        }
+
+        const data = (await response.json()) as {
+          application_fee_coins?: number;
+        };
+
+        const fee = Number(data.application_fee_coins);
+
+        if (!Number.isSafeInteger(fee) || fee < 1 || fee > 1_000_000) {
+          throw new Error("応募手数料の設定値が不正です");
+        }
+
+        if (!cancelled) {
+          setApplicationFeeCoins(fee);
+        }
+      } catch (error) {
+        console.error("応募手数料の読み込みに失敗しました:", error);
+      }
+    }
+
+    void loadCoinRates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     async function initialize() {
@@ -396,7 +435,7 @@ export default function PerformerRequestDetailPage() {
     }
 
     const confirmed = window.confirm(
-      "この案件に個人名義で応募しますか？\n応募には10コイン必要です。"
+      `この案件に個人名義で応募しますか？\n応募には${applicationFeeCoins}コイン必要です。`
     );
 
     if (!confirmed) {
@@ -485,7 +524,7 @@ export default function PerformerRequestDetailPage() {
     }
 
     const confirmed = window.confirm(
-      `バンド「${selectedBand.name || "バンド名未設定"}」でこの案件に応募しますか？\n\n応募手数料10コインは、バンドリーダーであるあなた個人のコイン残高から支払われます。`
+      `バンド「${selectedBand.name || "バンド名未設定"}」でこの案件に応募しますか？\n\n応募手数料${applicationFeeCoins}コインは、バンドリーダーであるあなた個人のコイン残高から支払われます。`
     );
 
     if (!confirmed) {
@@ -901,7 +940,7 @@ export default function PerformerRequestDetailPage() {
 
                 <div className="mt-3 rounded-lg bg-white p-3">
                   <p className="text-sm font-bold text-purple-900">
-                    💰 応募手数料：10コイン
+                    💰 応募手数料：{applicationFeeCoins}コイン
                   </p>
                   <p className="mt-1 text-xs leading-5 text-gray-600">
                     応募手数料はバンド共有残高ではなく、リーダー本人のコイン残高から支払われます。応募ボタンを押すと残高が確認されます。
@@ -954,7 +993,7 @@ export default function PerformerRequestDetailPage() {
             </button>
 
             <p className="mt-3 text-center text-xs leading-5 text-gray-400">
-              応募には10コイン必要です。施設から承認されるとマッチングが成立します。
+              応募には{applicationFeeCoins}コイン必要です。施設から承認されるとマッチングが成立します。
             </p>
           </section>
         ) : (

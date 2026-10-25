@@ -113,6 +113,59 @@ export default function EditLessonOfferPage() {
   const [endTime, setEndTime] = useState("");
   const [lessonFee, setLessonFee] = useState("0");
   const [capacity, setCapacity] = useState("5");
+  const [coinRates, setCoinRates] = useState({
+    free_lesson_match_fee_coins: 5,
+    paid_lesson_fee_percent: 1,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoinRates() {
+      try {
+        const response = await fetch("/api/coin-rates", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("料金設定を取得できませんでした");
+        }
+
+        const data = (await response.json()) as {
+          free_lesson_match_fee_coins?: number;
+          paid_lesson_fee_percent?: number;
+        };
+
+        const freeLessonFee = Number(data.free_lesson_match_fee_coins);
+        const paidLessonPercent = Number(data.paid_lesson_fee_percent);
+
+        if (
+          !Number.isSafeInteger(freeLessonFee) ||
+          freeLessonFee < 0 ||
+          !Number.isFinite(paidLessonPercent) ||
+          paidLessonPercent < 0 ||
+          paidLessonPercent > 100
+        ) {
+          throw new Error("料金設定の値が不正です");
+        }
+
+        if (!cancelled) {
+          setCoinRates({
+            free_lesson_match_fee_coins: freeLessonFee,
+            paid_lesson_fee_percent: paidLessonPercent,
+          });
+        }
+      } catch (error) {
+        console.error("料金設定の読み込みに失敗しました:", error);
+      }
+    }
+
+    void loadCoinRates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadOffer = useCallback(
     async (userId: string) => {
@@ -603,9 +656,12 @@ export default function EditLessonOfferPage() {
               <p style={{ marginTop: 12, color: "#555" }}>
                 参考：1人あたりの成立手数料は
                 {Number(lessonFee) === 0
-                  ? "5"
-                  : String(Math.ceil(Number(lessonFee) / 100))}
-                枚です。変更後の仮押さえ額は保存時に再計算されます。
+                  ? String(coinRates.free_lesson_match_fee_coins)
+                  : String(
+                      Math.ceil(
+                        (Number(lessonFee) * coinRates.paid_lesson_fee_percent) / 100
+                      )
+                    )}                枚です。変更後の仮押さえ額は保存時に再計算されます。
               </p>
             )}
         </section>

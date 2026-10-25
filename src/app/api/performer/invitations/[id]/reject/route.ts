@@ -206,7 +206,7 @@ export async function POST(
                 },
                 {
                   type: "text",
-                  text: "演奏者が今回の依頼を辞退しました。消費した100コインは返金されました。",
+                  text: "演奏者が今回の依頼を辞退しました。消費した直接依頼手数料は返金されました。",
                   wrap: true,
                 },
                 {
@@ -263,7 +263,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: "依頼を辞退しました。施設に100コインを返金しました。",
+      message: "依頼を辞退しました。施設に直接依頼手数料を返金しました。",
       application: {
         ...application,
         status: "rejected",

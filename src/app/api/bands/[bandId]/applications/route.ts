@@ -486,7 +486,37 @@ export async function POST(
 
     // まず現在残高を確認
     const currentBalance = Number(auth.user.coin_balance ?? 0);
-    const requiredCoins = 10;
+
+    const { data: coinRateSettings, error: coinRateSettingsError } =
+      await supabase
+        .from("coin_rate_settings")
+        .select("application_fee_coins")
+        .eq("id", 1)
+        .maybeSingle();
+
+    if (coinRateSettingsError) {
+      console.error("応募手数料設定の取得に失敗しました:", coinRateSettingsError);
+
+      return NextResponse.json(
+        { error: "応募手数料の設定を取得できませんでした。時間をおいて再度お試しください。" },
+        { status: 500 }
+      );
+    }
+
+    const requiredCoins = Number(
+      coinRateSettings?.application_fee_coins ?? 10
+    );
+
+    if (
+      !Number.isSafeInteger(requiredCoins) ||
+      requiredCoins < 1 ||
+      requiredCoins > 1_000_000
+    ) {
+      return NextResponse.json(
+        { error: "応募手数料の設定値が不正です。管理者にお問い合わせください。" },
+        { status: 500 }
+      );
+    }
 
     if (currentBalance < 0) {
       return NextResponse.json(
@@ -502,7 +532,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            `バンド応募には10コイン必要です。` +
+            `バンド応募には${requiredCoins}コイン必要です。\n` +
             `リーダーの現在の残高は${currentBalance}コインです。`,
         },
         { status: 400 }

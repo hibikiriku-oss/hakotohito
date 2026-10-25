@@ -343,7 +343,7 @@ export async function POST(
       success: true,
       message:
         result.refundAmount === 100
-          ? "マッチングをキャンセルし、案件を再募集状態に戻しました。直接依頼の手数料100コインを返金しました。"
+          ? "マッチングをキャンセルし、案件を再募集状態に戻しました。直接依頼の手数料を返金しました。"
           : "マッチングをキャンセルし、案件を再募集状態に戻しました。",
       match: {
         id: matchId,
