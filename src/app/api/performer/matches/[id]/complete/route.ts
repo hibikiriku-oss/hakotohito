@@ -342,6 +342,7 @@ export async function POST(
         const miniAppBaseUrl =
           "https://miniapp.line.me/2011785379-l5XCTbIf";
         const matchUrl = `${miniAppBaseUrl}/facility/matches/${matchId}`;
+        const reviewUrl = `${miniAppBaseUrl}/facility/matches/${matchId}/review`;
         const isCompletedNotice = kind === "completed";
         const title = isCompletedNotice
           ? "✅ 演奏完了のお知らせ"
@@ -426,8 +427,8 @@ export async function POST(
                     color: isCompletedNotice ? "#15803D" : "#2563EB",
                     action: {
                       type: "uri",
-                      label: "マッチングを確認する",
-                      uri: matchUrl,
+                      label: isCompletedNotice ? "演奏者を評価する" : "マッチングを確認する",
+                      uri: isCompletedNotice ? reviewUrl : matchUrl,
                     },
                   },
                 ],
