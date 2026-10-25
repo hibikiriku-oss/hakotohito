@@ -74,7 +74,9 @@ export default function FacilityPerformersPage() {
           await Promise.all([
             fetch("/api/performers"),
             fetch("/api/favorites", {
-              headers: { "x-line-user-id": profile.userId },
+              headers: {
+               Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
+               "x-line-user-id": profile.userId },
             }),
           ]);
 
@@ -363,6 +365,7 @@ export default function FacilityPerformersPage() {
         method: currentlyFavorite ? "DELETE" : "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
           "x-line-user-id": profile.userId,
         },
         body: JSON.stringify({

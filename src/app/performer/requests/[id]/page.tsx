@@ -296,6 +296,7 @@ export default function PerformerRequestDetailPage() {
               "/api/favorites",
               {
                 headers: {
+                  Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
                   "x-line-user-id": profile.userId,
                 },
                 cache: "no-store",
@@ -364,6 +365,7 @@ export default function PerformerRequestDetailPage() {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id": lineUserId,
           },
           body: JSON.stringify({
@@ -384,6 +386,7 @@ export default function PerformerRequestDetailPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id": lineUserId,
           },
           body: JSON.stringify({

@@ -62,6 +62,7 @@ export default function FacilityFavoritesPage() {
 
         const response = await fetch("/api/favorites", {
           headers: {
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id": profile.userId,
           },
         });
@@ -158,6 +159,7 @@ export default function FacilityFavoritesPage() {
           headers: {
             "Content-Type":
               "application/json",
+               Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id":
               profile.userId,
           },

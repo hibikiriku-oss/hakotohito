@@ -83,6 +83,7 @@ export default function PerformerFavoritesPage() {
           "/api/favorites",
           {
             headers: {
+              Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
               "x-line-user-id":
                 profile.userId,
             },
@@ -226,6 +227,7 @@ export default function PerformerFavoritesPage() {
           headers: {
             "Content-Type":
               "application/json",
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id":
               profile.userId,
           },
