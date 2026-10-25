@@ -3,49 +3,36 @@
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
 
-const prefectures = [
-  "北海道",
-  "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
-  "岐阜県", "静岡県", "愛知県", "三重県",
-  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
-  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-  "徳島県", "香川県", "愛媛県", "高知県",
-  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県",
-  "沖縄県",
-];
-
 const instrumentOptions = [
-  "ピアノ",
-  "ギター",
-  "ベース",
-  "ウクレレ",
-  "ドラム",
-  "バイオリン",
-  "ビオラ",
-  "チェロ",
-  "フルート",
-  "クラリネット",
-  "サックス",
-  "トランペット",
-  "トロンボーン",
-  "箏",
-  "和太鼓",
-  "声楽・歌",
+  "\u30D4\u30A2\u30CE",
+  "\u30AE\u30BF\u30FC",
+  "\u30D9\u30FC\u30B9",
+  "\u30C9\u30E9\u30E0",
+  "\u30F4\u30A9\u30FC\u30AB\u30EB",
+  "\u30D0\u30A4\u30AA\u30EA\u30F3",
+  "\u30C1\u30A7\u30ED",
+  "\u30D5\u30EB\u30FC\u30C8",
+  "\u30AF\u30E9\u30EA\u30CD\u30C3\u30C8",
+  "\u30B5\u30C3\u30AF\u30B9",
+  "\u30C8\u30E9\u30F3\u30DA\u30C3\u30C8",
+  "\u30C8\u30ED\u30F3\u30DC\u30FC\u30F3",
+  "\u30A6\u30AF\u30EC\u30EC",
+  "\u30D1\u30FC\u30AB\u30C3\u30B7\u30E7\u30F3",
+  "DJ",
+  "\u548C\u697D\u5668",
 ];
 
 const genreOptions = [
-  "クラシック",
-  "ポップス",
-  "ジャズ",
-  "ロック",
-  "演歌・歌謡曲",
-  "童謡・唱歌",
-  "アニメ・ゲーム音楽",
-  "映画音楽",
-  "邦楽",
-  "民謡",
+  "\u30AF\u30E9\u30B7\u30C3\u30AF",
+  "\u30ED\u30C3\u30AF\u30FB\u30DD\u30C3\u30D7\u30B9",
+  "\u30B8\u30E3\u30BA\u30FB\u30D5\u30E5\u30FC\u30B8\u30E7\u30F3",
+  "\u30E9\u30C6\u30F3\u30FB\u30DC\u30B5\u30CE\u30D0",
+  "\u30D2\u30C3\u30D7\u30DB\u30C3\u30D7\u30FB\u30E9\u30C3\u30D7",
+  "R&B",
+  "\u30A2\u30AB\u30DA\u30E9",
+  "DJ\u30FB\u30A8\u30EC\u30AF\u30C8\u30ED",
+  "\u30EF\u30FC\u30EB\u30C9\u30DF\u30E5\u30FC\u30B8\u30C3\u30AF",
+  "\u6F14\u6B4C\u30FB\u6B4C\u8B21\u66F2",
 ];
 
 const inputClass =
@@ -55,9 +42,8 @@ export default function PerformerPage() {
   const [lineUserId, setLineUserId] = useState("");
   const [name, setName] = useState("");
 
-  const [prefecture, setPrefecture] = useState("愛知県");
-  const [municipality, setMunicipality] = useState("");
   const [areas, setAreas] = useState<string[]>([]);
+  const [areaInput, setAreaInput] = useState("");
 
   const [instruments, setInstruments] = useState<string[]>([]);
   const [otherInstrument, setOtherInstrument] = useState("");
@@ -111,22 +97,24 @@ export default function PerformerPage() {
   };
 
   const addArea = () => {
-    const city = municipality.trim();
+    const area = areaInput.trim().replace(/\s+/g, " ");
 
-    if (!city) {
-      alert("市区町村名を入力してください");
+    if (!area) {
+      alert("\u6D3B\u52D5\u30A8\u30EA\u30A2\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
       return;
     }
 
-    const fullArea = `${prefecture}${city}`;
-
-    if (areas.includes(fullArea)) {
-      alert("この活動エリアはすでに追加されています");
+    if (
+      areas.some(
+        (item) => item.toLocaleLowerCase() === area.toLocaleLowerCase()
+      )
+    ) {
+      alert("\u3053\u306E\u6D3B\u52D5\u30A8\u30EA\u30A2\u306F\u3059\u3067\u306B\u8FFD\u52A0\u3055\u308C\u3066\u3044\u307E\u3059\u3002");
       return;
     }
 
-    setAreas((current) => [...current, fullArea]);
-    setMunicipality("");
+    setAreas((current) => [...current, area]);
+    setAreaInput("");
   };
 
   const handleSubmit = async (
@@ -269,28 +257,20 @@ if (
 
               <div className="mt-5">
                 <label className="block text-sm font-bold text-gray-800 mb-2">
-                  活動エリア（市区町村単位） <span className="text-red-500">*</span>
+                  {"\u6D3B\u52D5\u30A8\u30EA\u30A2"} <span className="text-red-500">*</span>
                 </label>
-                <p className="text-xs text-gray-500 mb-3">
-                  活動できる市区町村を複数追加できます。
-                </p>
 
-                <select
-                  value={prefecture}
-                  onChange={(e) => setPrefecture(e.target.value)}
-                  className={inputClass}
-                >
-                  {prefectures.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
+                <p className="text-xs text-gray-500 mb-3">
+                  {"\u6D3B\u52D5\u3067\u304D\u308B\u5730\u57DF\u3092\u81EA\u7531\u306B\u5165\u529B\u3057\u3001\u8907\u6570\u8FFD\u52A0\u3067\u304D\u307E\u3059\u3002"}
+                </p>
 
                 <div className="flex gap-2 mt-3">
                   <input
-                    value={municipality}
-                    onChange={(e) => setMunicipality(e.target.value)}
-                    placeholder="例：名古屋市千種区"
+                    value={areaInput}
+                    onChange={(e) => setAreaInput(e.target.value)}
+                    placeholder={"\u4F8B\uFF1A\u540D\u53E4\u5C4B\u5E02\u3001\u6771\u4E09\u6CB3\u3001\u611B\u77E5\u770C\u5168\u57DF"}
                     className={inputClass}
+                    maxLength={100}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -298,17 +278,18 @@ if (
                       }
                     }}
                   />
+
                   <button
                     type="button"
                     onClick={addArea}
                     className="shrink-0 rounded-2xl bg-gray-900 text-white px-4 font-bold"
                   >
-                    追加
+                    {"\u8FFD\u52A0"}
                   </button>
                 </div>
 
                 <p className="text-xs text-gray-400 mt-2">
-                  例：愛知県を選び「名古屋市千種区」と入力して追加します。
+                  {"\u5E02\u533A\u753A\u6751\u3001\u8907\u6570\u306E\u5E02\u3001\u5730\u57DF\u540D\u306A\u3069\u3092\u5165\u529B\u3067\u304D\u307E\u3059\u3002"}
                 </p>
 
                 {areas.length > 0 && (
@@ -319,6 +300,7 @@ if (
                         className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2"
                       >
                         <span className="text-sm text-gray-800">{item}</span>
+
                         <button
                           type="button"
                           onClick={() =>
@@ -327,9 +309,9 @@ if (
                             )
                           }
                           className="text-sm text-red-600 font-bold"
-                          aria-label={`${item}を削除`}
+                          aria-label={"\u6D3B\u52D5\u30A8\u30EA\u30A2\u3092\u524A\u9664"}
                         >
-                          削除
+                          {"\u524A\u9664"}
                         </button>
                       </div>
                     ))}
