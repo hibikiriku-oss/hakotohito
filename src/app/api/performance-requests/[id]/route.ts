@@ -47,6 +47,7 @@ export async function GET(
         *,
         facilities (
           id,
+          user_id,
           name,
           facility_type,
           address,
