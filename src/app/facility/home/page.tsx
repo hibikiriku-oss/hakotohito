@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
+import AnnouncementTicker from "@/components/AnnouncementTicker";
 
 export default function FacilityHomePage() {
   const router = useRouter();
@@ -69,6 +70,7 @@ export default function FacilityHomePage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen px-4 py-6">
+        <AnnouncementTicker />
 
         {/* ヘッダー */}
         <header className="pt-2 pb-6">

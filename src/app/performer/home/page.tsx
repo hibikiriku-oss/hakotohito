@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
+import AnnouncementTicker from "@/components/AnnouncementTicker";
 
 type MenuKey = "home" | "offers" | "matches" | "lesson" | "bands" | "other";
 
@@ -236,6 +237,8 @@ export default function PerformerHomePage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="mx-auto min-h-screen max-w-md px-4 py-6">
+        <AnnouncementTicker />
+
         <header className="pt-2">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

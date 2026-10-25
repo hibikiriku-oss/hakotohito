@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import liff from "@line/liff";
+import AdminAnnouncementPanel from "@/components/AdminAnnouncementPanel";
 
 type AdminUser = {
   id: string;
@@ -39,7 +40,7 @@ type InquiryUpdateResponse = {
   };
 };
 
-type AdminTab = "coins" | "inquiries" | "rates";
+type AdminTab = "coins" | "inquiries" | "rates" | "announcements";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "不具合・エラー",
@@ -441,7 +442,7 @@ export default function AdminCoinsPage() {
         </header>
 
       <div
-        className="mb-5 grid grid-cols-3 gap-2 rounded-2xl bg-white p-2 shadow-sm"
+        className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4 rounded-2xl bg-white p-2 shadow-sm"
         role="tablist"
         aria-label="管理機能"
       >
@@ -501,7 +502,42 @@ export default function AdminCoinsPage() {
         >
           ⚙️ 消費コイン設定
         </button>
+        <button
+
+          type="button"
+
+          role="tab"
+
+          aria-selected={activeTab === "announcements"}
+
+          onClick={() => {
+
+            setActiveTab("announcements");
+
+            setError("");
+
+            setNotice("");
+
+          }}
+
+          className={`rounded-xl px-2 py-3 text-sm font-bold ${
+
+            activeTab === "announcements"
+
+              ? "bg-black text-white"
+
+              : "bg-gray-100 text-gray-700"
+
+          }`}
+
+        >
+
+          {"\u304A\u77E5\u3089\u305B\u7BA1\u7406"}
+
+        </button>
+
       </div>
+
         {error && (
           <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 whitespace-pre-wrap">
             {error}
@@ -513,7 +549,9 @@ export default function AdminCoinsPage() {
           </div>
         )}
 
-        {activeTab === "rates" ? (
+        {activeTab === "announcements" ? (
+          <AdminAnnouncementPanel token={idToken} />
+        ) : activeTab === "rates" ? (
             <CoinRateSettingsPanel token={idToken} />
         ) : activeTab === "coins" ? (
           <>
