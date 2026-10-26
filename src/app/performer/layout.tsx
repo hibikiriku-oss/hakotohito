@@ -61,6 +61,7 @@ export default function PerformerLayout({
 
         const response = await fetch("/api/coins/balance", {
           headers: {
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id": profile.userId,
           },
           cache: "no-store",

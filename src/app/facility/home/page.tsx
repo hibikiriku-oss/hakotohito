@@ -34,8 +34,8 @@ export default function FacilityHomePage() {
           "/api/coins/balance",
           {
             headers: {
-              "x-line-user-id":
-                profile.userId,
+              Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
+              "x-line-user-id": profile.userId,
             },
             cache: "no-store",
           }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,24 +9,50 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const match = authorization?.match(/^Bearer\s+(.+)$/i);
+    const idToken = match?.[1]?.trim();
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+        {
+          error:
+            "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error:
+            "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
       );
     }
 
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
-      .eq("line_user_id", lineUserId)
-      .single();
+      .eq("line_user_id", verified.userId)
+      .maybeSingle();
 
-    if (userError || !user) {
+    if (userError) {
+      console.error("コイン履歴のユーザー取得エラー:", userError.message);
+
       return NextResponse.json(
-        { error: "ユーザー情報が見つかりません" },
+        { error: "ユーザー情報の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "ユーザーが見つかりません" },
         { status: 404 }
       );
     }
@@ -40,7 +67,7 @@ export async function GET(request: NextRequest) {
       .limit(100);
 
     if (error) {
-      console.error("コイン履歴取得エラー:", error);
+      console.error("コイン履歴取得エラー:", error.message);
 
       return NextResponse.json(
         { error: "コイン履歴の取得に失敗しました" },

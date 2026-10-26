@@ -195,6 +195,7 @@ export default function PerformerHomePage() {
 
         const response = await fetch("/api/coins/balance", {
           headers: {
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id": profile.userId,
           },
           cache: "no-store",

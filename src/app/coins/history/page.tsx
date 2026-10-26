@@ -48,6 +48,7 @@ export default function CoinHistoryPage() {
 
         const response = await fetch("/api/coins/history", {
           headers: {
+            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
             "x-line-user-id": profile.userId,
           },
           cache: "no-store",
