@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 // Supabase
 const supabase = createClient(
@@ -29,12 +30,25 @@ export async function POST(
     // ----------------------------------------
     // 2. LINEユーザーID取得
     // ----------------------------------------
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const match = authorization?.match(/^Bearer\s+(.+)$/i);
+    const idToken = match?.[1]?.trim();
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
         {
-          error: "LINEユーザーIDがありません",
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
         },
         { status: 401 }
       );
@@ -46,7 +60,7 @@ export async function POST(
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("*")
-      .eq("line_user_id", lineUserId)
+      .eq("line_user_id", verified.userId)
       .single();
 
     if (userError || !user) {

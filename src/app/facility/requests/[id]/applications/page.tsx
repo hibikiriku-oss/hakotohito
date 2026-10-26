@@ -310,6 +310,14 @@ export default function FacilityRequestApplicationsPage() {
       setAcceptingApplicationId(application.id);
       setError("");
 
+       const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。画面を再読み込みして、もう一度お試しください。"
+        );
+      }
+
       const response = await fetch(
         "/api/facility/requests/" +
           requestId +
@@ -320,6 +328,7 @@ export default function FacilityRequestApplicationsPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
             "x-line-user-id": lineUserId,
           },
         }
