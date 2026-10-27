@@ -74,9 +74,6 @@ export default function FacilityMatchChatPage() {
   const messagesEndRef =
     useRef<HTMLDivElement | null>(null);
 
-  const lineUserIdRef =
-    useRef("");
-
   async function loadMessages(
     showLoading = false
   ) {
@@ -85,18 +82,19 @@ export default function FacilityMatchChatPage() {
         setLoading(true);
       }
 
-      const profile =
-        await liff.getProfile();
+            const idToken = liff.getIDToken();
 
-      lineUserIdRef.current =
-        profile.userId;
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         `/api/matches/${matchId}/chat`,
         {
           headers: {
-            "x-line-user-id":
-              profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           cache: "no-store",
         }
@@ -211,18 +209,12 @@ export default function FacilityMatchChatPage() {
       setSending(true);
       setError("");
 
-      let lineUserId =
-        lineUserIdRef.current;
+            const idToken = liff.getIDToken();
 
-      if (!lineUserId) {
-        const profile =
-          await liff.getProfile();
-
-        lineUserId =
-          profile.userId;
-
-        lineUserIdRef.current =
-          profile.userId;
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
       }
 
       const response = await fetch(
@@ -230,10 +222,8 @@ export default function FacilityMatchChatPage() {
         {
           method: "POST",
           headers: {
-            "Content-Type":
-              "application/json",
-            "x-line-user-id":
-              lineUserId,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             message,

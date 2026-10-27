@@ -78,7 +78,6 @@ function parseCustomValues(value: string) {
 }
 
 export default function FacilityRequestPage() {
-  const [lineUserId, setLineUserId] = useState("");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -138,8 +137,6 @@ export default function FacilityRequestPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
-        setLineUserId(profile.userId);
       } catch (error) {
         console.error("LIFF ERROR:", error);
         alert("LINE情報の取得に失敗しました");
@@ -250,8 +247,10 @@ export default function FacilityRequestPage() {
       return;
     }
 
-    if (!lineUserId) {
-      alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
+        const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      alert("LINEの本人確認情報を取得できません。再ログインしてください。");
       return;
     }
 
@@ -280,7 +279,7 @@ export default function FacilityRequestPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           title: title.trim(),

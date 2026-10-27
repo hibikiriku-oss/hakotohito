@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
@@ -181,7 +182,7 @@ export default function PerformerProfileEditPage() {
 
   const loadProfile = async (userId: string) => {
     const response = await fetch("/api/performers/profile", {
-      headers: { "x-line-user-id": userId },
+      headers: { Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,},
     });
 
     const data = await response.json();
@@ -337,7 +338,7 @@ export default function PerformerProfileEditPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
         },
         body: JSON.stringify({
           name: name.trim(),

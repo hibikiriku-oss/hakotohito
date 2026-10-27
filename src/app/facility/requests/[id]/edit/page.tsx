@@ -288,7 +288,13 @@ export default function FacilityRequestEditPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         `/api/performance-requests/${requestId}`,
@@ -296,7 +302,7 @@ export default function FacilityRequestEditPage() {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             title: title.trim(),

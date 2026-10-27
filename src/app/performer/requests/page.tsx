@@ -200,10 +200,7 @@ export default function PerformerRequestsPage() {
         const response = await fetch(
           `/api/performance-requests?${params.toString()}`,
           {
-            headers: {
-              "x-line-user-id": lineUserId,
-            },
-          }
+}
         );
 
         const data = await response.json();

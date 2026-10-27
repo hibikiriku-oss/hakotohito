@@ -68,15 +68,21 @@ export default function FacilityPerformersPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+                const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const [performersResponse, favoritesResponse] =
           await Promise.all([
             fetch("/api/performers"),
             fetch("/api/favorites", {
               headers: {
-               Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-               "x-line-user-id": profile.userId },
+                Authorization: `Bearer ${idToken}`,
+              },
             }),
           ]);
 
@@ -358,15 +364,21 @@ export default function FacilityPerformersPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+            const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
       const currentlyFavorite = isFavorite(performer);
 
       const response = await fetch("/api/favorites", {
         method: currentlyFavorite ? "DELETE" : "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-          "x-line-user-id": profile.userId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           targetUserId: performer.user_id,

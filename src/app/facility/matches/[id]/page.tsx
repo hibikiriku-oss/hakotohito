@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
@@ -176,13 +177,19 @@ export default function FacilityMatchDetailPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+          );
+        }
 
         const response = await fetch(
           "/api/facility/matches/" + matchId,
           {
             headers: {
-              "x-line-user-id": profile.userId,
+              Authorization: `Bearer ${idToken}`,
             },
           }
         );
@@ -202,7 +209,7 @@ export default function FacilityMatchDetailPage() {
           "/api/reviews?match_id=" + matchId,
           {
             headers: {
-              "x-line-user-id": profile.userId,
+              Authorization: `Bearer ${idToken}`,
             },
           }
         );
@@ -248,14 +255,20 @@ export default function FacilityMatchDetailPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         `/api/facility/matches/${matchId}/complete`,
         {
           method: "POST",
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );
@@ -282,7 +295,7 @@ export default function FacilityMatchDetailPage() {
         `/api/facility/matches/${matchId}`,
         {
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
         }
       );
@@ -339,14 +352,18 @@ export default function FacilityMatchDetailPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error("LINEの本人確認情報を取得できませんでした。再ログインしてください。");
+      }
 
       const response = await fetch(
         `/api/facility/matches/${matchId}/dispute/agree`,
         {
           method: "POST",
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );
@@ -368,7 +385,7 @@ export default function FacilityMatchDetailPage() {
         `/api/facility/matches/${matchId}`,
         {
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );
@@ -419,14 +436,18 @@ export default function FacilityMatchDetailPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error("LINEの本人確認情報を取得できませんでした。再ログインしてください。");
+      }
 
       const response = await fetch(
         `/api/facility/matches/${matchId}/cancel`,
         {
           method: "POST",
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );

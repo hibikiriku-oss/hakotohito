@@ -1,6 +1,6 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,17 +58,34 @@ async function getCurrentPerformerId(lineUserId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+        const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
         {
           success: false,
-          error: "LINEユーザー情報を取得できません。",
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
         },
         { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     const requestedDate = request.nextUrl.searchParams.get("date");
     let selectedDate = getJapanToday();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -81,16 +82,33 @@ export async function PATCH(
 ) {
   try {
     const { id } = await context.params;
-    const lineUserId = request.headers.get("x-line-user-id");
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 401 }
-      );
-    }
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    const facility = await getFacilityByLineUserId(lineUserId);
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const facility = await getFacilityByLineUserId(verified.userId);
 
     if (!facility) {
       return NextResponse.json(
@@ -396,16 +414,33 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const lineUserId = request.headers.get("x-line-user-id");
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 401 }
-      );
-    }
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    const facility = await getFacilityByLineUserId(lineUserId);
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const facility = await getFacilityByLineUserId(verified.userId);
 
     if (!facility) {
       return NextResponse.json(

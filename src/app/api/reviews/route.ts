@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,7 +23,16 @@ async function getUserByLineUserId(lineUserId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+
+    const verified = idToken
+      ? await verifyLineIdToken(idToken)
+      : null;
+
+    const lineUserId = verified?.userId;
     const matchId = request.nextUrl.searchParams.get("match_id");
 
     if (!lineUserId) {
@@ -184,8 +194,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
+    const verified = idToken
+      ? await verifyLineIdToken(idToken)
+      : null;
+
+    const lineUserId = verified?.userId;
     if (!lineUserId) {
       return NextResponse.json(
         { error: "LINEユーザー情報がありません" },

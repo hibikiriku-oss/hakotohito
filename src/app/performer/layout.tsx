@@ -1,6 +1,7 @@
 
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import liff from "@line/liff";
@@ -61,9 +62,8 @@ export default function PerformerLayout({
 
         const response = await fetch("/api/coins/balance", {
           headers: {
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id": profile.userId,
-          },
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+},
           cache: "no-store",
         });
 

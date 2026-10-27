@@ -76,16 +76,19 @@ export default function PerformerFavoritesPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch(
           "/api/favorites",
           {
             headers: {
-              Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-              "x-line-user-id":
-                profile.userId,
+              Authorization: `Bearer ${idToken}`,
             },
           }
         );
@@ -217,19 +220,21 @@ export default function PerformerFavoritesPage() {
         return;
       }
 
-      const profile =
-        await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         "/api/favorites",
         {
           method: "DELETE",
           headers: {
-            "Content-Type":
-              "application/json",
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id":
-              profile.userId,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             targetUserId:

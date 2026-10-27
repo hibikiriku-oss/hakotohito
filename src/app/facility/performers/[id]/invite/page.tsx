@@ -51,7 +51,6 @@ export default function FacilityPerformerInvitePage() {
   const params = useParams();
   const performerId = params.id as string;
 
-  const [lineUserId, setLineUserId] = useState("");
   const [performer, setPerformer] = useState<Performer | null>(null);
   const [rating, setRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
@@ -81,19 +80,23 @@ export default function FacilityPerformerInvitePage() {
           return;
         }
 
-        const profile = await liff.getProfile();
-        setLineUserId(profile.userId);
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const [performerResponse, requestsResponse] =
           await Promise.all([
             fetch(`/api/performers/${performerId}`),
             fetch("/api/facility/requests", {
               headers: {
-                "x-line-user-id": profile.userId,
+                Authorization: `Bearer ${idToken}`,
               },
             }),
           ]);
-
         const performerData = await performerResponse.json();
         const requestsData = await requestsResponse.json();
 
@@ -180,8 +183,12 @@ export default function FacilityPerformerInvitePage() {
   );
 
   const handleSubmit = async () => {
-    if (!lineUserId) {
-      setError("LINEユーザー情報を取得できませんでした");
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      setError(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
+      );
       return;
     }
 
@@ -199,7 +206,7 @@ export default function FacilityPerformerInvitePage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           request_id: selectedRequestId,

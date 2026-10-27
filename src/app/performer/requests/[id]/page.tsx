@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
@@ -296,9 +297,8 @@ export default function PerformerRequestDetailPage() {
               "/api/favorites",
               {
                 headers: {
-                  Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-                  "x-line-user-id": profile.userId,
-                },
+                  Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+},
                 cache: "no-store",
               }
             );
@@ -365,9 +365,8 @@ export default function PerformerRequestDetailPage() {
           method: "DELETE",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id": lineUserId,
-          },
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+},
           body: JSON.stringify({
             targetUserId: request.facilities.user_id,
           }),
@@ -386,9 +385,8 @@ export default function PerformerRequestDetailPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id": lineUserId,
-          },
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+},
           body: JSON.stringify({
             targetUserId: request.facilities.user_id,
           }),
@@ -452,9 +450,8 @@ export default function PerformerRequestDetailPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-          "x-line-user-id": lineUserId,
-        },
+          Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+},
         body: JSON.stringify({
           requestId,
           message,

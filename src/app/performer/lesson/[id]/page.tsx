@@ -144,22 +144,30 @@ export default function LessonDetailPage() {
   const [applicationsError, setApplicationsError] = useState("");
 
   const loadApplications = useCallback(
-    async (userId: string, lessonOfferId: string) => {
-      if (!userId || !lessonOfferId) return;
+async (lessonOfferId: string) => {
+  if (!lessonOfferId) return;
 
       setApplicationsLoading(true);
       setApplicationsError("");
 
       try {
-        const response = await fetch(
-          `/api/lesson-offers/${lessonOfferId}/applications`,
-          {
-            headers: {
-              "x-line-user-id": userId,
-            },
-            cache: "no-store",
-          }
-        );
+const idToken = liff.getIDToken();
+
+if (!idToken) {
+  throw new Error(
+    "LINEの本人確認情報を取得できません。再ログインしてください。"
+  );
+}
+
+const response = await fetch(
+  `/api/lesson-offers/${lessonOfferId}/applications`,
+  {
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: "no-store",
+  }
+);
 
         const data = await response.json();
 
@@ -186,17 +194,25 @@ export default function LessonDetailPage() {
     []
   );
 
-  const loadOffer = useCallback(async (userId: string) => {
-    try {
-      const response = await fetch(
-        `/api/lesson-offers/${offerId}`,
-        {
-          headers: {
-            "x-line-user-id": userId,
-          },
-          cache: "no-store",
-        }
+const loadOffer = useCallback(async () => {
+  try {
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      throw new Error(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
       );
+    }
+
+    const response = await fetch(
+      `/api/lesson-offers/${offerId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+        cache: "no-store",
+      }
+    );
 
       const data = await response.json();
 
@@ -209,7 +225,7 @@ export default function LessonDetailPage() {
       setOffer(data.offer);
 
       if (data.offer?.is_mine) {
-        await loadApplications(userId, data.offer.id);
+        await loadApplications(data.offer.id);
       } else {
         setApplications([]);
         setApplicationsError("");
@@ -248,7 +264,7 @@ export default function LessonDetailPage() {
         if (cancelled) return;
 
         setLineUserId(profile.userId);
-        await loadOffer(profile.userId);
+        await loadOffer();
       } catch (e) {
         if (cancelled) return;
 
@@ -286,17 +302,25 @@ export default function LessonDetailPage() {
     setNotice("");
 
     try {
-      const response = await fetch(
-        `/api/lesson-offers/${offer.id}/applications`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-line-user-id": lineUserId,
-          },
-          body: JSON.stringify({ message: message.trim() }),
-        }
-      );
+const idToken = liff.getIDToken();
+
+if (!idToken) {
+  throw new Error(
+    "LINEの本人確認情報を取得できません。再ログインしてください。"
+  );
+}
+
+const response = await fetch(
+  `/api/lesson-offers/${offer.id}/applications`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({ message: message.trim() }),
+  }
+);
 
       const data = await response.json();
 
@@ -522,7 +546,7 @@ export default function LessonDetailPage() {
 
             <button
               type="button"
-              onClick={() => loadApplications(lineUserId, offer.id)}
+              onClick={() => loadApplications(offer.id)}
               disabled={applicationsLoading || !lineUserId}
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
             >

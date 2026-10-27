@@ -167,13 +167,23 @@ export default function EditLessonOfferPage() {
     };
   }, []);
 
-  const loadOffer = useCallback(
-    async (userId: string) => {
-      const response = await fetch(`/api/lesson-offers/${offerId}`, {
-        method: "GET",
-        headers: { "x-line-user-id": userId },
-        cache: "no-store",
-      });
+const loadOffer = useCallback(
+  async () => {
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      throw new Error(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
+      );
+    }
+
+    const response = await fetch(`/api/lesson-offers/${offerId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+      cache: "no-store",
+    });
 
       const data = await response.json();
 
@@ -230,12 +240,12 @@ export default function EditLessonOfferPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+const profile = await liff.getProfile();
 
-        if (cancelled) return;
+if (cancelled) return;
 
-        setLineUserId(profile.userId);
-        await loadOffer(profile.userId);
+setLineUserId(profile.userId);
+await loadOffer();
 
         if (!cancelled) setLoaded(true);
       } catch (error) {
@@ -331,12 +341,21 @@ export default function EditLessonOfferPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`/api/lesson-offers/${offerId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
-        },
+const idToken = liff.getIDToken();
+
+if (!idToken) {
+  setErrorMessage(
+    "LINEの本人確認情報を取得できません。再ログインしてください。"
+  );
+  return;
+}
+
+const response = await fetch(`/api/lesson-offers/${offerId}`, {
+  method: "PUT",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${idToken}`,
+  },
         body: JSON.stringify({
           title: title.trim(),
           description,

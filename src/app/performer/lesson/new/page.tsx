@@ -235,9 +235,11 @@ export default function NewLessonOfferPage() {
       return;
     }
 
-    if (!lineUserId) {
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
       alert(
-        "LINEユーザー情報を取得中です。少し待ってから再度お試しください。"
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
       );
       return;
     }
@@ -261,7 +263,7 @@ export default function NewLessonOfferPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           title: title.trim(),

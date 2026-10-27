@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import {
   FormEvent,
   useEffect,
@@ -100,8 +101,7 @@ export default function PerformerMatchChatPage() {
         `/api/matches/${matchId}/chat`,
         {
           headers: {
-            "x-line-user-id":
-              profile.userId,
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
           cache: "no-store",
         }
@@ -237,8 +237,7 @@ export default function PerformerMatchChatPage() {
           headers: {
             "Content-Type":
               "application/json",
-            "x-line-user-id":
-              lineUserId,
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
           body: JSON.stringify({
             message,

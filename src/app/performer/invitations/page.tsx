@@ -55,10 +55,18 @@ export default function PerformerInvitationsPage() {
           return;
         }
 
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
+
         const profile = await liff.getProfile();
 
         setLineUserId(profile.userId);
-        await loadInvitations(profile.userId);
+        await loadInvitations(idToken);
       } catch (err) {
         console.error(err);
         setError("依頼情報の取得に失敗しました");
@@ -69,14 +77,14 @@ export default function PerformerInvitationsPage() {
     init();
   }, []);
 
-  const loadInvitations = async (userId: string) => {
+  const loadInvitations = async (idToken: string) => {
     try {
       setLoading(true);
       setError("");
 
       const response = await fetch("/api/performer/invitations", {
         headers: {
-          "x-line-user-id": userId,
+          Authorization: `Bearer ${idToken}`,
         },
       });
 

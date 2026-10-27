@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
 
@@ -182,7 +183,7 @@ if (
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
         },
         body: JSON.stringify({
           name: name.trim(),

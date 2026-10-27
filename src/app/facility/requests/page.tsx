@@ -219,11 +219,17 @@ export default function FacilityRequestsPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch("/api/facility/requests", {
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           cache: "no-store",
         });
@@ -384,14 +390,20 @@ export default function FacilityRequestsPage() {
         throw new Error("LINEにログインしてから操作してください。");
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         `/api/performance-requests/${encodeURIComponent(request.id)}`,
         {
           method: "DELETE",
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           cache: "no-store",
         }

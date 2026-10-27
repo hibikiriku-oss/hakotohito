@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendLinePushMessage, type LineMessage } from "@/lib/line";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -83,13 +84,28 @@ export async function GET(
       );
     }
 
-    const lineUserId = request.headers.get("x-line-user-id");
     let currentPerformerId: string | null = null;
 
-    if (lineUserId) {
-      const performer = await getCurrentPerformer(lineUserId);
-      currentPerformerId = performer?.id ?? null;
-    }
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
+
+if (idToken) {
+  const verified = await verifyLineIdToken(idToken);
+
+  if (!verified) {
+    return NextResponse.json(
+      {
+        error: "LINEの本人確認に失敗しました。再ログインしてください。",
+      },
+      { status: 401 }
+    );
+  }
+
+  const performer = await getCurrentPerformer(verified.userId);
+  currentPerformerId = performer?.id ?? null;
+}
 
     const { data: offer, error } = await supabase
       .from("lesson_offers")
@@ -179,16 +195,32 @@ export async function PUT(
       );
     }
 
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "ログイン情報を確認できません。再度お試しください。" },
-        { status: 401 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const performer = await getCurrentPerformer(lineUserId);
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const performer = await getCurrentPerformer(verified.userId);
 
     if (!performer) {
       return NextResponse.json(

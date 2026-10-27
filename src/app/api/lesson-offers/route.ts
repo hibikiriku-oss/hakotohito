@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -95,13 +96,28 @@ async function getCurrentPerformer(lineUserId: string) {
 // レッスン募集一覧。自分の募集も含めて返します。
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
     let currentPerformerId: string | null = null;
 
-    if (lineUserId) {
-      const performer = await getCurrentPerformer(lineUserId);
-      currentPerformerId = performer?.id ?? null;
-    }
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
+
+if (idToken) {
+  const verified = await verifyLineIdToken(idToken);
+
+  if (!verified) {
+    return NextResponse.json(
+      {
+        error: "LINEの本人確認に失敗しました。再ログインしてください。",
+      },
+      { status: 401 }
+    );
+  }
+
+  const performer = await getCurrentPerformer(verified.userId);
+  currentPerformerId = performer?.id ?? null;
+}
 
     const { searchParams } = new URL(request.url);
     const keyword = (searchParams.get("keyword") || "").trim();
@@ -207,16 +223,32 @@ export async function GET(request: NextRequest) {
 // レッスン募集登録。対象ランクを保存し、定員分のコインを仮押さえします。
 export async function POST(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const performer = await getCurrentPerformer(lineUserId);
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const performer = await getCurrentPerformer(verified.userId);
 
     if (!performer) {
       return NextResponse.json(

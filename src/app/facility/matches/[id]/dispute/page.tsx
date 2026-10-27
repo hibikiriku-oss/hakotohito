@@ -40,13 +40,19 @@ export default function FacilityMatchDisputePage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+          );
+        }
 
         const response = await fetch(
           `/api/facility/matches/${matchId}`,
           {
             headers: {
-              "x-line-user-id": profile.userId,
+              Authorization: `Bearer ${idToken}`,
             },
           }
         );
@@ -123,7 +129,13 @@ export default function FacilityMatchDisputePage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         `/api/facility/matches/${matchId}/dispute`,
@@ -131,12 +143,11 @@ export default function FacilityMatchDisputePage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({ reason: trimmedReason }),
         }
       );
-
       const data = await response.json();
 
       if (!response.ok) {

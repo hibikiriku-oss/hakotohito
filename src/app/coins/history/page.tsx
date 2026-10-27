@@ -44,12 +44,17 @@ export default function CoinHistoryPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+                const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch("/api/coins/history", {
           headers: {
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           cache: "no-store",
         });

@@ -73,9 +73,6 @@ export default function FacilityRequestApplicationsPage() {
 
   const requestId = params.id as string;
 
-  const [lineUserId, setLineUserId] =
-    useState("");
-
   const [performanceRequest, setPerformanceRequest] =
     useState<PerformanceRequest | null>(null);
 
@@ -100,9 +97,8 @@ export default function FacilityRequestApplicationsPage() {
   const [error, setError] =
     useState("");
 
-  const loadApplications = async (
-    userId: string
-  ) => {
+    const loadApplications = async () => {
+
     try {
       setLoading(true);
       setError("");
@@ -111,11 +107,20 @@ export default function FacilityRequestApplicationsPage() {
         "/api/facility/requests/" +
           requestId +
           "/applications",
-        {
-          headers: {
-            "x-line-user-id":
-              userId,
-          },
+                {
+          headers: (() => {
+            const idToken = liff.getIDToken();
+
+            if (!idToken) {
+              throw new Error(
+                "LINEの本人確認情報を取得できません。再ログインしてください。"
+              );
+            }
+
+            return {
+              Authorization: `Bearer ${idToken}`,
+            };
+          })(),
         }
       );
 
@@ -172,16 +177,6 @@ export default function FacilityRequestApplicationsPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
-
-        setLineUserId(
-          profile.userId
-        );
-
-        await loadApplications(
-          profile.userId
-        );
       } catch (err) {
         console.error(err);
 
@@ -329,7 +324,6 @@ export default function FacilityRequestApplicationsPage() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${idToken}`,
-            "x-line-user-id": lineUserId,
           },
         }
       );
@@ -354,7 +348,7 @@ export default function FacilityRequestApplicationsPage() {
         );
       }
 
-      await loadApplications(lineUserId);
+      await loadApplications();
     } catch (err) {
       console.error(err);
 

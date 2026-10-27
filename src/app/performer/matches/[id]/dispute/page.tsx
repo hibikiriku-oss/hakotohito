@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState, type FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
@@ -40,13 +41,19 @@ export default function PerformerMatchDisputePage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+          );
+        }
 
         const response = await fetch(
           `/api/performer/matches/${matchId}`,
           {
             headers: {
-              "x-line-user-id": profile.userId,
+              Authorization: `Bearer ${idToken}`,
             },
           }
         );
@@ -133,7 +140,7 @@ export default function PerformerMatchDisputePage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
           body: JSON.stringify({ reason: trimmedReason }),
         }

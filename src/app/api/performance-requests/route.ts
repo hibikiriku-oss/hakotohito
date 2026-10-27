@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Holidays from "date-holidays";
 import { areaMatches } from "@/lib/area-matching";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -264,10 +265,33 @@ export async function GET(request: NextRequest) {
     }
 
     // LINEユーザーIDが送信された場合は、活動エリアを自動適用します。
-    const lineUserId = request.headers.get("x-line-user-id");
-    const performerAreas = lineUserId
-      ? await getPerformerAreas(lineUserId)
-      : null;
+// IDトークンが送信された場合は本人確認し、活動エリアを自動適用します。
+// 未ログインの案件検索は引き続き許可します。
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
+
+let lineUserId: string | null = null;
+
+if (idToken) {
+  const verified = await verifyLineIdToken(idToken);
+
+  if (!verified) {
+    return NextResponse.json(
+      {
+        error: "LINEの本人確認に失敗しました。再ログインしてください。",
+      },
+      { status: 401 }
+    );
+  }
+
+  lineUserId = verified.userId;
+}
+
+const performerAreas = lineUserId
+  ? await getPerformerAreas(lineUserId)
+  : null;
 
     const escapedKeyword = keyword.replace(/[,%()]/g, " ");
     const allMatchingRequests: Record<string, any>[] = [];
@@ -717,14 +741,32 @@ export async function POST(request: NextRequest) {
       new Set<TargetLevel>(targetLevels)
     );
 
-    const lineUserId = request.headers.get("x-line-user-id");
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const lineUserId = verified.userId;
 
     const { data: user, error: userError } = await supabase
       .from("users")

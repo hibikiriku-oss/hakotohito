@@ -58,15 +58,19 @@ export default function FacilityFavoritesPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch("/api/favorites", {
           headers: {
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
         });
-
         if (!response.ok) {
           throw new Error(
             "お気に入りの取得に失敗しました"
@@ -150,18 +154,21 @@ export default function FacilityFavoritesPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         "/api/favorites",
         {
           method: "DELETE",
           headers: {
-            "Content-Type":
-              "application/json",
-               Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id":
-              profile.userId,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
             targetUserId:
@@ -169,7 +176,6 @@ export default function FacilityFavoritesPage() {
           }),
         }
       );
-
       if (!response.ok) {
         throw new Error(
           "お気に入り解除に失敗しました"

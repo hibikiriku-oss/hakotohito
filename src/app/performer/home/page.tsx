@@ -191,16 +191,20 @@ export default function PerformerHomePage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch("/api/coins/balance", {
           headers: {
-            Authorization: `Bearer ${liff.getIDToken() ?? ""}`,
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
           cache: "no-store",
         });
-
         const data = await response.json();
 
         if (!response.ok) {

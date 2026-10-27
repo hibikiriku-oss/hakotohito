@@ -69,11 +69,19 @@ export default function PerformerInvitationDetailPage() {
         return;
       }
 
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
       const profile = await liff.getProfile();
 
       setLineUserId(profile.userId);
 
-      await fetchInvitation(profile.userId);
+      await fetchInvitation(idToken);
     } catch (error) {
       console.error("LIFF初期化エラー:", error);
 
@@ -82,13 +90,13 @@ export default function PerformerInvitationDetailPage() {
     }
   }
 
-  async function fetchInvitation(userId: string) {
+  async function fetchInvitation(idToken: string) {
     try {
       const response = await fetch(
         `/api/performer/invitations/${invitationId}`,
         {
           headers: {
-            "x-line-user-id": userId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );
@@ -133,12 +141,20 @@ export default function PerformerInvitationDetailPage() {
       setError("");
       setSuccess("");
 
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
       const response = await fetch(
         `/api/performer/invitations/${invitation.id}/accept`,
         {
           method: "POST",
           headers: {
-            "x-line-user-id": lineUserId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );
@@ -189,12 +205,20 @@ export default function PerformerInvitationDetailPage() {
       setError("");
       setSuccess("");
 
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
       const response = await fetch(
         `/api/performer/invitations/${invitation.id}/reject`,
         {
           method: "POST",
           headers: {
-            "x-line-user-id": lineUserId,
+            Authorization: `Bearer ${idToken}`,
           },
         }
       );

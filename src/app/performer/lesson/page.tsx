@@ -1,5 +1,6 @@
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
@@ -142,9 +143,7 @@ export default function LessonListPage() {
         `/api/lesson-offers?${params.toString()}`,
         {
           method: "GET",
-          headers: lineUserId
-            ? { "x-line-user-id": lineUserId }
-            : {},
+          headers: { Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}` },
           cache: "no-store",
         }
       );
@@ -212,7 +211,7 @@ export default function LessonListPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-line-user-id": lineUserId,
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
           body: JSON.stringify({
             message: messageByOffer[offer.id]?.trim() || "",
