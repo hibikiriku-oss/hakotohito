@@ -15,18 +15,14 @@ export async function GET(
 
     if (!id) {
       return NextResponse.json(
-        {
-          error: "演奏者IDが指定されていません",
-        },
+        { error: "演奏者IDが指定されていません" },
         { status: 400 }
       );
     }
 
-    // 演奏者情報を取得
     const { data: performer, error } = await supabase
       .from("performers")
-      .select(
-        `
+      .select(`
         id,
         user_id,
         name,
@@ -39,74 +35,80 @@ export async function GET(
           display_name,
           picture_url
         )
-        `
-      )
+      `)
       .eq("id", id)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.error("performer取得エラー:", error);
-
+      console.error("Performer lookup failed:", error);
       return NextResponse.json(
-        {
-          error: "演奏者情報の取得に失敗しました",
-        },
+        { error: "演奏者情報の取得に失敗しました" },
         { status: 500 }
       );
     }
 
     if (!performer) {
       return NextResponse.json(
-        {
-          error: "演奏者が見つかりません",
-        },
+        { error: "演奏者が見つかりません" },
         { status: 404 }
       );
     }
 
-    // 演奏者に対するレビューを取得
-    const { data: reviews, error: reviewsError } =
-      await supabase
-        .from("reviews")
-        .select(
-          `
-          rating,
-          comment,
-          created_at
-          `
-        )
-        .eq("reviewee_id", performer.user_id)
-        .order("created_at", {
-          ascending: false,
-        });
+    const { data: completedMatches, error: matchesError } = await supabase
+      .from("matches")
+      .select("id")
+      .eq("performer_id", performer.id)
+      .eq("performance_status", "completed")
+      .not("completed_at", "is", null);
 
-    if (reviewsError) {
-      console.error(
-        "レビュー取得エラー:",
-        reviewsError
-      );
-
+    if (matchesError) {
+      console.error("Completed matches lookup failed:", matchesError);
       return NextResponse.json(
-        {
-          error: "レビュー情報の取得に失敗しました",
-        },
+        { error: "レビュー情報の取得に失敗しました" },
         { status: 500 }
       );
     }
 
-    // レビュー件数
-    const reviewCount = reviews?.length ?? 0;
+    const completedMatchIds = (completedMatches ?? []).map(
+      (match) => match.id
+    );
 
-    // 平均評価
+    let reviews: {
+      rating: number;
+      comment: string | null;
+      created_at: string;
+    }[] = [];
+
+    if (completedMatchIds.length > 0) {
+      const { data: completedReviews, error: reviewsError } = await supabase
+        .from("reviews")
+        .select("match_id, rating, comment, created_at")
+        .eq("reviewee_id", performer.user_id)
+        .in("match_id", completedMatchIds)
+        .order("created_at", { ascending: false });
+
+      if (reviewsError) {
+        console.error("Reviews lookup failed:", reviewsError);
+        return NextResponse.json(
+          { error: "レビュー情報の取得に失敗しました" },
+          { status: 500 }
+        );
+      }
+
+      reviews = (completedReviews ?? []).map((review) => ({
+        rating: review.rating,
+        comment: review.comment,
+        created_at: review.created_at,
+      }));
+    }
+
+    const reviewCount = reviews.length;
     const rating =
       reviewCount > 0
         ? Number(
             (
-              reviews!.reduce(
-                (sum, review) =>
-                  sum + review.rating,
-                0
-              ) / reviewCount
+              reviews.reduce((sum, review) => sum + review.rating, 0) /
+              reviewCount
             ).toFixed(1)
           )
         : null;
@@ -115,19 +117,12 @@ export async function GET(
       performer,
       rating,
       review_count: reviewCount,
-      reviews: reviews ?? [],
+      reviews,
     });
   } catch (error) {
-    console.error(
-      "演奏者APIエラー:",
-      error
-    );
-
+    console.error("Performer API error:", error);
     return NextResponse.json(
-      {
-        error:
-          "演奏者情報の取得中にエラーが発生しました",
-      },
+      { error: "演奏者情報の取得中にエラーが発生しました" },
       { status: 500 }
     );
   }
