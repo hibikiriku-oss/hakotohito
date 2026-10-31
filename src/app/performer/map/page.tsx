@@ -585,7 +585,29 @@ export default function PerformerMapPage() {
         <span>
           <strong style={{ color: "#16a34a" }}>●</strong> レッスン募集
         </span>
-        <span>マーカーを押すと詳細を確認できます。</span>
+      </div>
+
+      {/* 地図の案内・表示件数 */}
+      <div
+        style={{
+          padding: 10,
+          background: "#f8fafc",
+          border: "1px solid #e2e8f0",
+          borderRadius: 8,
+          marginBottom: 8,
+          fontSize: 13,
+          lineHeight: 1.8,
+        }}
+      >
+        <p>{status}</p>
+        <p>地図表示：{shown}件</p>
+        <p>マーカーを押すと詳細を確認できます。</p>
+
+        {error && (
+          <p style={{ color: "#dc2626", marginTop: 6 }}>
+            エラー：{error}
+          </p>
+        )}
       </div>
 
       {/* 地図を検索条件より上に配置 */}
@@ -787,26 +809,6 @@ export default function PerformerMapPage() {
             条件をクリア
           </button>
         </div>
-      </div>
-
-      <div
-        style={{
-          padding: 10,
-          background: "#f8fafc",
-          borderRadius: 8,
-          marginBottom: 10,
-          fontSize: 13,
-        }}
-      >
-        <p>検索対象：{total}件</p>
-        <p>地図表示：{shown}件</p>
-        <p>{status}</p>
-
-        {error && (
-          <p style={{ color: "#dc2626", marginTop: 6 }}>
-            エラー：{error}
-          </p>
-        )}
       </div>
 
       <p
