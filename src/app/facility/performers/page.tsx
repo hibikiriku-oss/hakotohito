@@ -8,6 +8,8 @@ type User = {
   id: string;
   display_name: string | null;
   picture_url: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
 };
 
 type Performer = {
@@ -705,7 +707,11 @@ export default function FacilityPerformersPage() {
                   className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
                 >
                   <div className="flex items-start gap-4">
-                    {user?.picture_url ? (
+                    {user?.avatar_type === "emoji" && user.avatar_emoji ? (
+                      <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl shrink-0">
+                        {user.avatar_emoji}
+                      </div>
+                    ) : user?.avatar_type === "line" && user.picture_url ? (
                       <img
                         src={user.picture_url}
                         alt=""
@@ -713,7 +719,7 @@ export default function FacilityPerformersPage() {
                       />
                     ) : (
                       <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-2xl shrink-0">
-                        🎹
+                        🎸
                       </div>
                     )}
 
@@ -852,7 +858,13 @@ export default function FacilityPerformersPage() {
 
               <div className="p-5">
                 <div className="flex items-center gap-4">
-                  {getUser(selectedPerformer)?.picture_url ? (
+                  {getUser(selectedPerformer)?.avatar_type === "emoji" &&
+                  getUser(selectedPerformer)?.avatar_emoji ? (
+                    <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">
+                      {getUser(selectedPerformer)?.avatar_emoji}
+                    </div>
+                  ) : getUser(selectedPerformer)?.avatar_type === "line" &&
+                    getUser(selectedPerformer)?.picture_url ? (
                     <img
                       src={getUser(selectedPerformer)?.picture_url || ""}
                       alt=""
@@ -860,7 +872,7 @@ export default function FacilityPerformersPage() {
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">
-                      🎹
+                      🎸
                     </div>
                   )}
 
