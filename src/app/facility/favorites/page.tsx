@@ -19,6 +19,8 @@ type User = {
   display_name: string | null;
   picture_url: string | null;
   user_type: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
   performers?: Performer | Performer[] | null;
 };
 
@@ -71,6 +73,7 @@ export default function FacilityFavoritesPage() {
             Authorization: `Bearer ${idToken}`,
           },
         });
+
         if (!response.ok) {
           throw new Error(
             "お気に入りの取得に失敗しました"
@@ -176,6 +179,7 @@ export default function FacilityFavoritesPage() {
           }),
         }
       );
+
       if (!response.ok) {
         throw new Error(
           "お気に入り解除に失敗しました"
@@ -198,6 +202,51 @@ export default function FacilityFavoritesPage() {
     } finally {
       setFavoriteLoading(false);
     }
+  };
+
+  // プロフィールアイコン
+  const renderAvatar = (
+    user: User,
+    size: "small" | "large"
+  ) => {
+    const sizeClass =
+      size === "large"
+        ? "h-16 w-16 text-3xl"
+        : "h-14 w-14 text-2xl";
+
+    if (
+      user.avatar_type === "emoji" &&
+      user.avatar_emoji
+    ) {
+      return (
+        <div
+          className={`flex shrink-0 items-center justify-center rounded-full bg-gray-100 ${sizeClass}`}
+        >
+          {user.avatar_emoji}
+        </div>
+      );
+    }
+
+    if (
+      user.avatar_type === "line" &&
+      user.picture_url
+    ) {
+      return (
+        <img
+          src={user.picture_url}
+          alt=""
+          className={`shrink-0 rounded-full object-cover ring-2 ring-gray-100 ${sizeClass}`}
+        />
+      );
+    }
+
+    return (
+      <div
+        className={`flex shrink-0 items-center justify-center rounded-full bg-gray-100 ${sizeClass}`}
+      >
+        🎸
+      </div>
+    );
   };
 
   if (loading) {
@@ -377,17 +426,7 @@ export default function FacilityFavoritesPage() {
                     className="group w-full rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99]"
                   >
                     <div className="flex items-center gap-4">
-                      {user.picture_url ? (
-                        <img
-                          src={user.picture_url}
-                          alt=""
-                          className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-gray-100"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gray-100 text-2xl">
-                          🎹
-                        </div>
-                      )}
+                      {renderAvatar(user, "small")}
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
@@ -499,17 +538,7 @@ export default function FacilityFavoritesPage() {
                     {/* プロフィール */}
                     <div className="pt-6">
                       <div className="flex items-center gap-4">
-                        {user.picture_url ? (
-                          <img
-                            src={user.picture_url}
-                            alt=""
-                            className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-gray-100"
-                          />
-                        ) : (
-                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gray-100 text-3xl">
-                            🎹
-                          </div>
-                        )}
+                        {renderAvatar(user, "large")}
 
                         <div className="min-w-0">
                           <h3 className="text-xl font-bold text-gray-900">

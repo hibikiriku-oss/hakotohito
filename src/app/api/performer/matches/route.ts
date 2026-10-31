@@ -58,14 +58,19 @@ const MATCH_SELECT = `
       name,
       facility_type,
       address,
-      description
+      description,
+      users (
+        picture_url,
+        avatar_type,
+        avatar_emoji
+      )
     )
   )
 `;
 
 export async function GET(request: NextRequest) {
   try {
-        const authorization = request.headers.get("authorization");
+    const authorization = request.headers.get("authorization");
     const idToken = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length)
       : "";
@@ -266,8 +271,26 @@ export async function GET(request: NextRequest) {
           ? bandById.get(match.band_id) ?? null
           : null;
 
+        const performanceRequest = match.performance_requests;
+
+        const facility = performanceRequest?.facilities;
+
         return {
           ...match,
+          performance_requests: performanceRequest
+            ? {
+                ...performanceRequest,
+                facilities: facility
+                  ? {
+                      ...facility,
+                      picture_url: facility.users?.picture_url ?? null,
+                      avatar_type: facility.users?.avatar_type ?? null,
+                      avatar_emoji: facility.users?.avatar_emoji ?? null,
+                    }
+                  : null,
+              }
+            : null,
+
           band: match.band_id
             ? {
                 id: match.band_id,

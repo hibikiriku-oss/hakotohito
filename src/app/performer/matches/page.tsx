@@ -12,6 +12,9 @@ type Facility = {
   facility_type: string | null;
   address: string | null;
   description: string | null;
+  picture_url: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
 };
 
 type PerformanceRequest = {
@@ -349,9 +352,30 @@ export default function PerformerMatchesPage() {
             <p className="text-xs font-medium text-gray-400">施設</p>
 
             <div className="mt-2 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-lg">
-                🏢
-              </div>
+              {facility.avatar_type === "emoji" &&
+facility.avatar_emoji ? (
+  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-xl">
+    {facility.avatar_emoji}
+  </div>
+) : facility.avatar_type !== "emoji" &&
+facility.avatar_type !== null &&
+facility.avatar_type !== undefined ? (
+  facility.picture_url ? (
+    <img
+      src={facility.picture_url}
+      alt=""
+      className="h-10 w-10 shrink-0 rounded-xl object-cover"
+    />
+  ) : (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-lg">
+      🏢
+    </div>
+  )
+) : (
+  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-lg">
+    🏢
+  </div>
+)}
 
               <div className="min-w-0">
                 <p className="truncate font-bold text-gray-800">

@@ -107,10 +107,12 @@ export async function GET(request: NextRequest) {
           area,
           bio,
           users (
-            id,
-            display_name,
-            picture_url
-          )
+          id,
+          display_name,
+          picture_url,
+          avatar_type,
+          avatar_emoji
+        )
         )
       `)
       .eq(

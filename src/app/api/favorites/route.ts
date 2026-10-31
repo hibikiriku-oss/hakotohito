@@ -142,7 +142,9 @@ export async function GET(request: NextRequest) {
       error: targetUsersError,
     } = await supabase
       .from("users")
-      .select("id, display_name, picture_url, user_type")
+      .select(
+        "id, display_name, picture_url, user_type, avatar_type, avatar_emoji"
+      )
       .in("id", targetUserIds);
 
     if (targetUsersError) {
@@ -234,6 +236,8 @@ export async function GET(request: NextRequest) {
               display_name: targetUser.display_name,
               picture_url: targetUser.picture_url,
               user_type: targetUser.user_type,
+              avatar_type: targetUser.avatar_type,
+              avatar_emoji: targetUser.avatar_emoji,
               performers: performer,
               facilities: facility,
             }

@@ -99,7 +99,12 @@ export async function GET(
             name,
             facility_type,
             address,
-            description
+            description,
+            users (
+              picture_url,
+              avatar_type,
+              avatar_emoji
+            )
           )
         )
       `)
@@ -226,8 +231,48 @@ export async function GET(
       }
     }
 
+    // 施設に紐づくusers情報を画面で使う形式に整える
+    const flattenFacilityAvatar = (facility: any) => {
+      if (!facility) return facility;
+
+      const linkedUser = Array.isArray(facility.users)
+        ? facility.users[0]
+        : facility.users;
+
+      const {
+        users: _users,
+        ...facilityData
+      } = facility;
+
+      return {
+        ...facilityData,
+        picture_url: linkedUser?.picture_url ?? null,
+        avatar_type: linkedUser?.avatar_type ?? null,
+        avatar_emoji: linkedUser?.avatar_emoji ?? null,
+      };
+    };
+
+    const performanceRequest: any = (match as any).performance_requests;
+
+    const enrichedPerformanceRequest = Array.isArray(performanceRequest)
+      ? performanceRequest.map((item: any) => ({
+          ...item,
+          facilities: Array.isArray(item.facilities)
+            ? item.facilities.map(flattenFacilityAvatar)
+            : flattenFacilityAvatar(item.facilities),
+        }))
+      : performanceRequest
+        ? {
+            ...performanceRequest,
+            facilities: Array.isArray(performanceRequest.facilities)
+              ? performanceRequest.facilities.map(flattenFacilityAvatar)
+              : flattenFacilityAvatar(performanceRequest.facilities),
+          }
+        : performanceRequest;
+
     const enrichedMatch = {
-      ...match,
+      ...(match as any),
+      performance_requests: enrichedPerformanceRequest,
       band,
       isBandLeader,
     };

@@ -8,6 +8,8 @@ type User = {
   id: string;
   display_name: string | null;
   picture_url: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
 };
 
 type Performer = {
@@ -78,6 +80,38 @@ function formatTime(time: string) {
 function getMatchDateTime(match: Match) {
   const request = match.performance_requests;
   return request ? `${request.performance_date}T${request.start_time}` : "";
+}
+
+function renderAvatar(user: User | null) {
+  if (
+    user?.avatar_type === "emoji" &&
+    user.avatar_emoji
+  ) {
+    return (
+      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl shrink-0">
+        {user.avatar_emoji}
+      </div>
+    );
+  }
+
+  if (
+    user?.avatar_type !== "emoji" &&
+    user?.picture_url
+  ) {
+    return (
+      <img
+        src={user.picture_url}
+        alt=""
+        className="w-12 h-12 rounded-full object-cover shrink-0"
+      />
+    );
+  }
+
+  return (
+    <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-2xl shrink-0">
+      🎸
+    </div>
+  );
 }
 
 export default function FacilityMatchesPage() {
@@ -266,17 +300,7 @@ export default function FacilityMatchesPage() {
         <div className="mt-4">
           <p className="text-sm text-gray-500">演奏者</p>
           <div className="flex items-center gap-3 mt-2">
-            {user?.picture_url ? (
-              <img
-                src={user.picture_url}
-                alt=""
-                className="w-12 h-12 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                🎸
-              </div>
-            )}
+            {renderAvatar(user)}
 
             <div className="min-w-0">
               <p className="font-bold truncate">

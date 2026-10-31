@@ -66,7 +66,6 @@ export async function GET(
     }
 
     // マッチングと完了報告・異議申し立ての情報を取得
-    // * を使用し、新しく追加したカラムも取得する
     const { data: rawMatch, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -95,7 +94,9 @@ export async function GET(
           users (
             id,
             display_name,
-            picture_url
+            picture_url,
+            avatar_type,
+            avatar_emoji
           )
         )
       `)

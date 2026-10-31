@@ -11,6 +11,9 @@ type Facility = {
   facility_type: string | null;
   address: string | null;
   description: string | null;
+  picture_url: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
 };
 
 type PerformanceRequest = {
@@ -1111,9 +1114,27 @@ export default function PerformerMatchDetailPage() {
             <p className="text-xs font-semibold text-gray-400">
               演奏先
             </p>
-            <h2 className="mt-1 text-xl font-bold text-gray-900">
-              🏢 {facility.name || "施設名未登録"}
-            </h2>
+            <div className="mt-2 flex items-center gap-3">
+  {facility.avatar_type === "emoji" && facility.avatar_emoji ? (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-2xl">
+      {facility.avatar_emoji}
+    </div>
+  ) : facility.avatar_type === "line" && facility.picture_url ? (
+    <img
+      src={facility.picture_url}
+      alt=""
+      className="h-12 w-12 shrink-0 rounded-xl object-cover"
+    />
+  ) : (
+    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-xl">
+      🏢
+    </div>
+  )}
+
+  <h2 className="text-xl font-bold text-gray-900">
+    {facility.name || "施設名未登録"}
+  </h2>
+</div>
 
             {facility.facility_type && (
               <p className="mt-1 text-sm text-gray-500">

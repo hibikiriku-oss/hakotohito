@@ -17,6 +17,8 @@ type FavoriteUser = {
   display_name: string | null;
   picture_url: string | null;
   user_type: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
   facilities:
     | Facility
     | Facility[]
@@ -32,6 +34,53 @@ type Favorite = {
     | FavoriteUser[]
     | null;
 };
+
+function FacilityAvatar({
+  user,
+  size = "large",
+}: {
+  user: FavoriteUser | null;
+  size?: "large" | "small";
+}) {
+  const sizeClass =
+    size === "large"
+      ? "w-16 h-16 text-3xl rounded-2xl"
+      : "w-20 h-20 text-4xl rounded-2xl";
+
+  if (
+    user?.avatar_type === "emoji" &&
+    user.avatar_emoji
+  ) {
+    return (
+      <div
+        className={`${sizeClass} bg-gray-100 flex items-center justify-center shrink-0`}
+      >
+        {user.avatar_emoji}
+      </div>
+    );
+  }
+
+  if (
+    user?.avatar_type !== "emoji" &&
+    user?.picture_url
+  ) {
+    return (
+      <img
+        src={user.picture_url}
+        alt=""
+        className={`${sizeClass} object-cover shrink-0`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClass} bg-gray-100 flex items-center justify-center shrink-0`}
+    >
+      🏢
+    </div>
+  );
+}
 
 export default function PerformerFavoritesPage() {
   const router = useRouter();
@@ -468,17 +517,7 @@ export default function PerformerFavoritesPage() {
                 >
                   {/* 施設情報 */}
                   <div className="flex items-start gap-4">
-                    {user?.picture_url ? (
-                      <img
-                        src={user.picture_url}
-                        alt=""
-                        className="w-16 h-16 rounded-2xl object-cover shrink-0"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl shrink-0">
-                        🏢
-                      </div>
-                    )}
+                    <FacilityAvatar user={user} />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
@@ -579,21 +618,10 @@ export default function PerformerFavoritesPage() {
               <div className="p-5">
                 {/* プロフィール */}
                 <div className="flex items-center gap-4">
-                  {selectedFacility.user
-                    .picture_url ? (
-                    <img
-                      src={
-                        selectedFacility.user
-                          .picture_url
-                      }
-                      alt=""
-                      className="w-20 h-20 rounded-2xl object-cover"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center text-4xl">
-                      🏢
-                    </div>
-                  )}
+                  <FacilityAvatar
+                    user={selectedFacility.user}
+                    size="small"
+                  />
 
                   <div className="min-w-0">
                     <h3 className="text-xl font-bold">
