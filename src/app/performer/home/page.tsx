@@ -14,6 +14,13 @@ type MenuItem = {
   path: string;
 };
 
+type UserProfile = {
+  display_name: string | null;
+  picture_url: string | null;
+  avatar_type: "line" | "emoji";
+  avatar_emoji: string | null;
+};
+
 const menuConfig: Record<
   Exclude<MenuKey, "home">,
   {
@@ -169,11 +176,12 @@ export default function PerformerHomePage() {
   const [menu, setMenu] = useState<MenuKey>("home");
   const [coinBalance, setCoinBalance] = useState<number | null>(null);
   const [coinLoading, setCoinLoading] = useState(true);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadCoinBalance() {
+    async function loadUserData() {
       try {
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
@@ -199,25 +207,48 @@ export default function PerformerHomePage() {
           );
         }
 
-        const response = await fetch("/api/coins/balance", {
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-          },
-          cache: "no-store",
-        });
-        const data = await response.json();
+        const headers = {
+          Authorization: `Bearer ${idToken}`,
+        };
 
-        if (!response.ok) {
+        const [profileResponse, coinResponse] = await Promise.all([
+          fetch("/api/users", {
+            headers,
+            cache: "no-store",
+          }),
+          fetch("/api/coins/balance", {
+            headers,
+            cache: "no-store",
+          }),
+        ]);
+
+        if (profileResponse.ok) {
+          const profileData = await profileResponse.json();
+
+          if (!cancelled && profileData.user) {
+            setProfile(profileData.user);
+          }
+        } else {
+          const profileData = await profileResponse.json().catch(() => ({}));
+          console.error(
+            "プロフィール取得エラー:",
+            profileData.error || profileResponse.status
+          );
+        }
+
+        const coinData = await coinResponse.json();
+
+        if (!coinResponse.ok) {
           throw new Error(
-            data.error || "コイン残高の取得に失敗しました"
+            coinData.error || "コイン残高の取得に失敗しました"
           );
         }
 
         if (!cancelled) {
-          setCoinBalance(data.coinBalance ?? 0);
+          setCoinBalance(coinData.coinBalance ?? 0);
         }
       } catch (error) {
-        console.error("コイン残高取得エラー:", error);
+        console.error("ユーザー情報取得エラー:", error);
       } finally {
         if (!cancelled) {
           setCoinLoading(false);
@@ -225,7 +256,7 @@ export default function PerformerHomePage() {
       }
     }
 
-    loadCoinBalance();
+    loadUserData();
 
     return () => {
       cancelled = true;
@@ -238,6 +269,16 @@ export default function PerformerHomePage() {
     setMenu(selected);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
+  const avatarEmoji =
+    profile?.avatar_type === "emoji" && profile.avatar_emoji
+      ? profile.avatar_emoji
+      : null;
+
+  const avatarPicture =
+    profile?.avatar_type !== "emoji"
+      ? profile?.picture_url
+      : null;
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -261,11 +302,38 @@ export default function PerformerHomePage() {
                 演奏マッチング
               </p>
 
-              <h1 className="mt-1 text-2xl font-bold text-gray-900">
-                {menu === "home"
-                  ? "🎸 演奏者ホーム"
-                  : `${menuConfig[menu].icon} ${menuConfig[menu].title}`}
-              </h1>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white shadow-sm">
+                  {avatarEmoji ? (
+                    <span className="text-3xl" aria-label="プロフィールアイコン">
+                      {avatarEmoji}
+                    </span>
+                  ) : avatarPicture ? (
+                    <img
+                      src={avatarPicture}
+                      alt="プロフィール画像"
+                      className="h-full w-full object-cover"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span className="text-3xl">🎸</span>
+                  )}
+                </div>
+
+                <h1 className="text-xl font-bold text-gray-900">
+                  {menu === "home"
+                    ? "演奏者ホーム"
+                    : `${menuConfig[menu].icon} ${menuConfig[menu].title}`}
+                </h1>
+              </div>
+
+              {profile?.display_name && (
+                <p className="mt-2 text-sm text-gray-600">
+                  {profile.display_name} さん
+                </p>
+              )}
             </div>
 
             <button

@@ -7,6 +7,73 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// ログイン中の本人のユーザー情報を取得
+export async function GET(request: NextRequest) {
+  try {
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    const { data: user, error } = await supabase
+      .from("users")
+      .select(
+        "id, display_name, picture_url, avatar_type, avatar_emoji"
+      )
+      .eq("line_user_id", verified.userId)
+      .single();
+
+    if (error || !user) {
+      console.error("ユーザー情報取得エラー:", error);
+
+      return NextResponse.json(
+        { error: "ユーザー情報が見つかりません" },
+        {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    return NextResponse.json(
+      { user },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (error) {
+    console.error("ユーザー情報取得APIエラー:", error);
+
+    return NextResponse.json(
+      { error: "サーバーエラーが発生しました" },
+      {
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -49,7 +116,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // クライアントが送信したlineUserIdではなく、
     // 検証済みトークンから取得したユーザーIDを使用する
     const { data, error } = await supabase
       .from("users")
