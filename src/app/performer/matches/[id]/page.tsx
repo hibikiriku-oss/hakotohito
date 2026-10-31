@@ -203,11 +203,19 @@ export default function PerformerMatchDetailPage() {
               "演奏完了を報告しました。施設側の確認を待っています。"
       );
 
+      const refreshIdToken = liff.getIDToken();
+
+      if (!refreshIdToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+        );
+      }
+
       const refreshResponse = await fetch(
         `/api/performer/matches/${matchId}`,
         {
           headers: {
-            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+            Authorization: `Bearer ${refreshIdToken}`,
           },
           cache: "no-store",
         }
@@ -238,9 +246,7 @@ export default function PerformerMatchDetailPage() {
   async function handleAgreeDispute() {
     if (!match || agreeingDispute) return;
 
-    if (
-      match.completion_dispute_performer_agreed_at
-    ) {
+    if (match.completion_dispute_performer_agreed_at) {
       setNotice(
         "演奏者側はすでに同意済みです。施設側の同意を待っています。"
       );
@@ -534,6 +540,27 @@ export default function PerformerMatchDetailPage() {
       </main>
     );
   }
+
+  const japanDateParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const japanYear =
+    japanDateParts.find((part) => part.type === "year")?.value ?? "";
+  const japanMonth =
+    japanDateParts.find((part) => part.type === "month")?.value ?? "";
+  const japanDay =
+    japanDateParts.find((part) => part.type === "day")?.value ?? "";
+
+  const japanToday = `${japanYear}-${japanMonth}-${japanDay}`;
+  const performanceDate =
+    performanceRequest.performance_date?.slice(0, 10) ?? "";
+
+  const isBeforePerformanceDate =
+    !!performanceDate && performanceDate > japanToday;
 
   // 個人マッチングは本人が操作可能。
   // バンドマッチングはAPIが返すリーダー情報に基づいて表示を制御する。
@@ -919,19 +946,31 @@ export default function PerformerMatchDetailPage() {
 
               {!performerReported ? (
                 canManageMatch ? (
-                  <button
-                    onClick={handleComplete}
-                    disabled={completing || cancelling}
-                    className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm active:bg-green-700 disabled:opacity-50"
-                  >
-                    {completing
-                      ? "報告中..."
-                      : "🎵 演奏完了を報告"}
-                  </button>
+                  <>
+                    <button
+                      onClick={handleComplete}
+                      disabled={
+                        completing ||
+                        cancelling ||
+                        isBeforePerformanceDate
+                      }
+                      className="w-full mt-4 rounded-2xl bg-green-600 px-5 py-4 text-sm font-bold text-white shadow-sm active:bg-green-700 disabled:opacity-50"
+                    >
+                      {completing
+                        ? "報告中..."
+                        : "🎵 演奏完了を報告"}
+                    </button>
+
+                    {isBeforePerformanceDate && (
+                      <p className="mt-2 text-sm text-amber-600">
+                        演奏予定日当日以降に完了報告できます。
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <div className="mt-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
-                    <p className="text-sm font-bold text-gray-700">
-                      演奏完了の報告はまだ行われていません
+                    <p className="font-bold text-gray-700">
+                      演奏者側は未報告です
                     </p>
                     <p className="mt-1 text-sm text-gray-600">
                       バンドリーダーが代表して報告します。

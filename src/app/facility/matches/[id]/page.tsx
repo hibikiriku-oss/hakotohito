@@ -324,9 +324,7 @@ export default function FacilityMatchDetailPage() {
   async function handleAgreeDispute() {
     if (!match || agreeingDispute) return;
 
-    if (
-      match.completion_dispute_facility_agreed_at
-    ) {
+    if (match.completion_dispute_facility_agreed_at) {
       setNotice("施設側はすでに同意済みです。演奏者側の同意を待っています。");
       return;
     }
@@ -518,6 +516,18 @@ export default function FacilityMatchDetailPage() {
   }
 
   const performanceRequest = getRequest(match.performance_requests);
+
+  const japanToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const isBeforePerformanceDate =
+    !!performanceRequest?.performance_date &&
+    performanceRequest.performance_date > japanToday;
+
   const performer = getPerformer(match.performers);
   const lineUser = getUser(performer?.users);
 
@@ -628,64 +638,64 @@ export default function FacilityMatchDetailPage() {
                   )}
                 </div>
                 <div className="mt-4 rounded-xl bg-white border border-amber-200 p-4">
-                    <p className="font-bold text-gray-800">
-                      🤝 取り下げへの同意状況
-                    </p>
+                  <p className="font-bold text-gray-800">
+                    🤝 取り下げへの同意状況
+                  </p>
 
-                    <p className="mt-3 text-sm">
-                      施設側：
-                      {match.completion_dispute_facility_agreed_at ? (
-                        <span className="text-green-700 font-bold">
-                          ✅ 同意済み
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">
-                          未同意
-                        </span>
-                      )}
-                    </p>
-
-                    <p className="mt-2 text-sm">
-                      演奏者側：
-                      {match.completion_dispute_performer_agreed_at ? (
-                        <span className="text-green-700 font-bold">
-                          ✅ 同意済み
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">
-                          未同意
-                        </span>
-                      )}
-                    </p>
-
+                  <p className="mt-3 text-sm">
+                    施設側：
                     {match.completion_dispute_facility_agreed_at ? (
-                      <div className="mt-4 rounded-lg bg-green-50 p-3">
-                        <p className="text-sm font-bold text-green-700">
-                          施設側は同意済みです
-                        </p>
-                        <p className="mt-1 text-sm text-gray-600">
-                          演奏者側の同意がそろうと、異議申し立てが解除されます。
-                        </p>
-                      </div>
+                      <span className="text-green-700 font-bold">
+                        ✅ 同意済み
+                      </span>
                     ) : (
-                      <>
-                        <p className="mt-3 text-sm text-gray-600">
-                          双方が取り下げに同意すると、異議申し立てが解除され、演奏完了の報告を再開できます。
-                        </p>
-
-                        <button
-                          onClick={handleAgreeDispute}
-                          disabled={agreeingDispute}
-                          className="w-full mt-4 bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
-                        >
-                          {agreeingDispute
-                            ? "同意を登録中..."
-                            : "🤝 取り下げに同意する"}
-                        </button>
-                      </>
+                      <span className="text-gray-500">
+                        未同意
+                      </span>
                     )}
-                  </div>
-                </>
+                  </p>
+
+                  <p className="mt-2 text-sm">
+                    演奏者側：
+                    {match.completion_dispute_performer_agreed_at ? (
+                      <span className="text-green-700 font-bold">
+                        ✅ 同意済み
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">
+                        未同意
+                      </span>
+                    )}
+                  </p>
+
+                  {match.completion_dispute_facility_agreed_at ? (
+                    <div className="mt-4 rounded-lg bg-green-50 p-3">
+                      <p className="text-sm font-bold text-green-700">
+                        施設側は同意済みです
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        演奏者側の同意がそろうと、異議申し立てが解除されます。
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mt-3 text-sm text-gray-600">
+                        双方が取り下げに同意すると、異議申し立てが解除され、演奏完了の報告を再開できます。
+                      </p>
+
+                      <button
+                        onClick={handleAgreeDispute}
+                        disabled={agreeingDispute}
+                        className="w-full mt-4 bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
+                      >
+                        {agreeingDispute
+                          ? "同意を登録中..."
+                          : "🤝 取り下げに同意する"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="mt-4 bg-white rounded-xl p-4">
                 <p className="text-blue-600 font-bold">
@@ -729,15 +739,23 @@ export default function FacilityMatchDetailPage() {
                 </p>
 
                 {!facilityReported ? (
-                  <button
-                    onClick={handleComplete}
-                    disabled={reportingCompletion}
-                    className="w-full mt-5 bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
-                  >
-                    {reportingCompletion
-                      ? "報告中..."
-                      : "🎵 演奏完了を報告"}
-                  </button>
+                  <>
+                    <button
+                      onClick={handleComplete}
+                      disabled={reportingCompletion || isBeforePerformanceDate}
+                      className="w-full mt-5 bg-green-600 text-white rounded-xl p-4 font-bold disabled:opacity-50"
+                    >
+                      {reportingCompletion
+                        ? "報告中..."
+                        : "🎵 演奏完了を報告"}
+                    </button>
+
+                    {isBeforePerformanceDate && (
+                      <p className="mt-2 text-sm text-amber-600">
+                        演奏予定日当日以降に完了報告できます。
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <div className="mt-5 bg-green-50 rounded-xl p-3 text-center">
                     <p className="font-bold text-green-700">

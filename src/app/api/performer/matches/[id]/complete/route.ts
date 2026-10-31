@@ -34,6 +34,21 @@ type CompletionResult = {
   message?: string;
 };
 
+function getJapanDateString() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
 export async function POST(
   request: NextRequest,
   {
@@ -176,6 +191,30 @@ export async function POST(
 
     // 演奏者の完了報告を記録。既存の報告日時は上書きしない。
     if (!match.performer_completion_reported_at) {
+      const { data: performanceRequest, error: requestError } =
+        await supabase
+          .from("performance_requests")
+          .select("performance_date")
+          .eq("id", match.request_id)
+          .maybeSingle();
+
+      if (requestError || !performanceRequest?.performance_date) {
+        console.error("演奏予定日の取得エラー:", requestError);
+        return NextResponse.json(
+          { error: "演奏予定日を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (performanceRequest.performance_date > getJapanDateString()) {
+        return NextResponse.json(
+          {
+            error:
+              "演奏予定日より前は、演奏完了を報告できません。演奏予定日当日以降に報告してください。",
+          },
+          { status: 400 }
+        );
+      }
       const { data: reportRows, error: reportError } = await supabase
         .from("matches")
         .update({
