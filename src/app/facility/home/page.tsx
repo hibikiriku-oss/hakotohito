@@ -5,6 +5,13 @@ import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 import AnnouncementTicker from "@/components/AnnouncementTicker";
 
+type UserProfile = {
+  display_name: string | null;
+  picture_url: string | null;
+  avatar_type: "line" | "emoji";
+  avatar_emoji: string | null;
+};
+
 export default function FacilityHomePage() {
   const router = useRouter();
 
@@ -14,12 +21,14 @@ export default function FacilityHomePage() {
   const [coinLoading, setCoinLoading] =
     useState(true);
 
+  const [profile, setProfile] =
+    useState<UserProfile | null>(null);
+
   useEffect(() => {
-    async function loadCoinBalance() {
+    async function loadUserData() {
       try {
         await liff.init({
-          liffId:
-            process.env.NEXT_PUBLIC_LIFF_ID!,
+          liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
         });
 
         if (!liff.isLoggedIn()) {
@@ -27,7 +36,7 @@ export default function FacilityHomePage() {
           return;
         }
 
-                const idToken = liff.getIDToken();
+        const idToken = liff.getIDToken();
 
         if (!idToken) {
           throw new Error(
@@ -35,41 +44,64 @@ export default function FacilityHomePage() {
           );
         }
 
-        const response = await fetch(
-          "/api/coins/balance",
-          {
-            headers: {
-              Authorization: `Bearer ${idToken}`,
-            },
-            cache: "no-store",
-          }
-        );
+        const headers = {
+          Authorization: `Bearer ${idToken}`,
+        };
 
-        const data =
-          await response.json();
+        const [profileResponse, coinResponse] =
+          await Promise.all([
+            fetch("/api/users", {
+              headers,
+              cache: "no-store",
+            }),
+            fetch("/api/coins/balance", {
+              headers,
+              cache: "no-store",
+            }),
+          ]);
 
-        if (!response.ok) {
+        const profileData = await profileResponse.json();
+        const coinData = await coinResponse.json();
+
+        if (!profileResponse.ok) {
           throw new Error(
-            data.error ||
+            profileData.error ||
+              "プロフィール情報の取得に失敗しました"
+          );
+        }
+
+        if (!coinResponse.ok) {
+          throw new Error(
+            coinData.error ||
               "コイン残高の取得に失敗しました"
           );
         }
 
-        setCoinBalance(
-          data.coinBalance ?? 0
-        );
+        const user = profileData.user ?? profileData;
+
+        setProfile({
+          display_name: user.display_name ?? null,
+          picture_url: user.picture_url ?? null,
+          avatar_type: user.avatar_type ?? "line",
+          avatar_emoji: user.avatar_emoji ?? null,
+        });
+
+        setCoinBalance(coinData.coinBalance ?? 0);
       } catch (error) {
-        console.error(
-          "コイン残高取得エラー:",
-          error
-        );
+        console.error("施設ホーム情報取得エラー:", error);
       } finally {
         setCoinLoading(false);
       }
     }
 
-    loadCoinBalance();
+    loadUserData();
   }, []);
+
+  const avatarEmoji =
+    profile?.avatar_type === "emoji" &&
+    profile.avatar_emoji
+      ? profile.avatar_emoji
+      : "🏢";
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -85,21 +117,44 @@ export default function FacilityHomePage() {
               </p>
 
               <h1 className="text-2xl font-bold text-gray-900 mt-1">
-                🏢 施設ホーム
+                施設ホーム
               </h1>
+
+              {profile?.display_name && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {profile.display_name}
+                </p>
+              )}
             </div>
 
-            <button
-              onClick={() => router.push("/coins/history")}
-              className="shrink-0 rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
-              aria-label="コイン履歴を開く"
-            >
-              🪙{" "}
-              {coinLoading
-                ? "..."
-                : (coinBalance ?? 0).toLocaleString()}
-              コイン
-            </button>
+            <div className="flex flex-col items-center gap-2 shrink-0">
+              <div className="w-14 h-14 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center overflow-hidden">
+                {profile?.avatar_type === "line" &&
+                profile.picture_url ? (
+                  <img
+                    src={profile.picture_url}
+                    alt="プロフィール画像"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-3xl">
+                    {avatarEmoji}
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={() => router.push("/coins/history")}
+                className="rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
+                aria-label="コイン履歴を開く"
+              >
+                🪙{" "}
+                {coinLoading
+                  ? "..."
+                  : (coinBalance ?? 0).toLocaleString()}
+                コイン
+              </button>
+            </div>
           </div>
 
           <p className="text-sm text-gray-600 mt-3 leading-relaxed">
@@ -114,7 +169,6 @@ export default function FacilityHomePage() {
           </p>
 
           <div className="space-y-3">
-
             <button
               onClick={() =>
                 router.push("/facility/performers")
@@ -160,7 +214,6 @@ export default function FacilityHomePage() {
                 </span>
               </div>
             </button>
-
           </div>
         </section>
 
@@ -171,7 +224,6 @@ export default function FacilityHomePage() {
           </p>
 
           <div className="grid grid-cols-2 gap-3">
-
             <button
               onClick={() =>
                 router.push("/facility/requests")
@@ -228,7 +280,7 @@ export default function FacilityHomePage() {
                 気になる演奏者を確認
               </p>
             </button>
-            
+
             {/* お問い合わせ */}
             <button
               onClick={() => router.push("/inquiry")}
@@ -253,7 +305,6 @@ export default function FacilityHomePage() {
             演奏者と施設をつなぐ、演奏マッチング
           </p>
         </footer>
-
       </div>
     </main>
   );
