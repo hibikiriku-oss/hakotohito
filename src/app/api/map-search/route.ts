@@ -23,9 +23,7 @@ function getJapanToday(): string {
 }
 
 function isValidDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
 
   const parsed = new Date(`${value}T00:00:00Z`);
 
@@ -33,6 +31,24 @@ function isValidDate(value: string): boolean {
     !Number.isNaN(parsed.getTime()) &&
     parsed.toISOString().slice(0, 10) === value
   );
+}
+
+function isValidTime(value: string): boolean {
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
+  return true;
+}
+
+function parseList(value: string | null): string[] {
+  if (!value) return [];
+
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ),
+  ];
 }
 
 async function getCurrentPerformerId(lineUserId: string) {
@@ -58,7 +74,7 @@ async function getCurrentPerformerId(lineUserId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-        const authorization = request.headers.get("authorization");
+    const authorization = request.headers.get("authorization");
     const idToken = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length)
       : "";
@@ -85,26 +101,71 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const lineUserId = verified.userId;
+    const params = request.nextUrl.searchParams;
 
-    const requestedDate = request.nextUrl.searchParams.get("date");
-    let selectedDate = getJapanToday();
+    let startDate = params.get("startDate");
+    let endDate = params.get("endDate");
 
-    if (requestedDate !== null) {
-      if (!isValidDate(requestedDate)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "対象日が正しくありません。",
-          },
-          { status: 400 }
-        );
-      }
-
-      selectedDate = requestedDate;
+    if (startDate && !isValidDate(startDate)) {
+      return NextResponse.json(
+        { success: false, error: "開始日が正しくありません。" },
+        { status: 400 }
+      );
     }
 
-    const performerId = await getCurrentPerformerId(lineUserId);
+    if (endDate && !isValidDate(endDate)) {
+      return NextResponse.json(
+        { success: false, error: "終了日が正しくありません。" },
+        { status: 400 }
+      );
+    }
+
+    if (startDate && endDate && startDate > endDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "終了日は開始日以降の日付を指定してください。",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 期間が両方未指定の場合は従来どおり今日を対象にする
+    if (!startDate && !endDate) {
+      startDate = getJapanToday();
+      endDate = startDate;
+    }
+
+    const startTime = params.get("startTime");
+    const endTime = params.get("endTime");
+
+    if (
+      (startTime && !isValidTime(startTime)) ||
+      (endTime && !isValidTime(endTime))
+    ) {
+      return NextResponse.json(
+        { success: false, error: "時間帯の指定が正しくありません。" },
+        { status: 400 }
+      );
+    }
+
+    if (startTime && endTime && startTime >= endTime) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "終了時間は開始時間より後にしてください。",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 時間帯検索は開始・終了の両方が指定された場合のみ適用
+    const useTimeFilter = Boolean(startTime && endTime);
+
+    const instruments = parseList(params.get("instruments"));
+    const genres = parseList(params.get("genres"));
+
+    const performerId = await getCurrentPerformerId(verified.userId);
 
     if (!performerId) {
       return NextResponse.json(
@@ -134,32 +195,70 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 選択した日付の演奏案件を取得
-    const { data: performanceRequests, error: requestsError } =
-      await supabase
-        .from("performance_requests")
-        .select(`
+    // 演奏案件を期間で取得
+    let performanceQuery = supabase
+      .from("performance_requests")
+      .select(`
+        id,
+        title,
+        description,
+        performance_date,
+        start_time,
+        end_time,
+        area,
+        instruments,
+        genres,
+        reward,
+        request_type,
+        status,
+        facilities (
           id,
-          title,
-          description,
-          performance_date,
-          start_time,
-          end_time,
-          area,
-          instruments,
-          genres,
-          reward,
-          request_type,
-          status,
-          facilities (
-            id,
-            name,
-            facility_type,
-            address
-          )
-        `)
-        .eq("performance_date", selectedDate)
-        .order("performance_date", { ascending: true });
+          name,
+          facility_type,
+          address
+        )
+      `);
+
+    if (startDate) {
+      performanceQuery = performanceQuery.gte(
+        "performance_date",
+        startDate
+      );
+    }
+
+    if (endDate) {
+      performanceQuery = performanceQuery.lte(
+        "performance_date",
+        endDate
+      );
+    }
+
+    if (useTimeFilter) {
+      performanceQuery = performanceQuery
+        .not("start_time", "is", null)
+        .not("end_time", "is", null)
+        .lt("start_time", endTime!)
+        .gt("end_time", startTime!);
+    }
+
+    if (instruments.length > 0) {
+      performanceQuery = performanceQuery.overlaps(
+        "instruments",
+        instruments
+      );
+    }
+
+    if (genres.length > 0) {
+      performanceQuery = performanceQuery.overlaps(
+        "genres",
+        genres
+      );
+    }
+
+    const { data: performanceRequests, error: requestsError } =
+      await performanceQuery.order("performance_date", {
+        ascending: true,
+      });
 
     if (requestsError) throw requestsError;
 
@@ -205,39 +304,77 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 選択した日付のレッスン募集と、日付未設定の募集を取得
-    const { data: lessonOffers, error: lessonOffersError } =
-      await supabase
-        .from("lesson_offers")
-        .select(`
+    // レッスン募集を取得（日付未設定の募集も対象）
+    let lessonQuery = supabase
+      .from("lesson_offers")
+      .select(`
+        id,
+        performer_id,
+        title,
+        description,
+        instruments,
+        genres,
+        area,
+        lesson_date,
+        start_time,
+        end_time,
+        lesson_fee,
+        capacity,
+        target_levels,
+        status,
+        performers (
           id,
-          performer_id,
-          title,
-          description,
-          instruments,
-          genres,
+          name,
           area,
-          lesson_date,
-          start_time,
-          end_time,
-          lesson_fee,
-          capacity,
-          target_levels,
-          status,
-          performers (
-            id,
-            name,
-            area,
-            areas
-          )
-        `)
-        .or(
-          `lesson_date.eq.${selectedDate},lesson_date.is.null`
+          areas
         )
-        .order("lesson_date", {
-          ascending: true,
-          nullsFirst: false,
-        });
+      `);
+
+    if (startDate && endDate && startDate === endDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.eq.${startDate},lesson_date.is.null`
+      );
+    } else if (startDate && endDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.is.null,and(lesson_date.gte.${startDate},lesson_date.lte.${endDate})`
+      );
+    } else if (startDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.is.null,lesson_date.gte.${startDate}`
+      );
+    } else if (endDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.is.null,lesson_date.lte.${endDate}`
+      );
+    }
+
+    if (useTimeFilter) {
+      lessonQuery = lessonQuery
+        .not("start_time", "is", null)
+        .not("end_time", "is", null)
+        .lt("start_time", endTime!)
+        .gt("end_time", startTime!);
+    }
+
+    if (instruments.length > 0) {
+      lessonQuery = lessonQuery.overlaps(
+        "instruments",
+        instruments
+      );
+    }
+
+    if (genres.length > 0) {
+      lessonQuery = lessonQuery.overlaps(
+        "genres",
+        genres
+      );
+    }
+
+    const { data: lessonOffers, error: lessonOffersError } =
+      await lessonQuery.order("lesson_date", {
+        ascending: true,
+        nullsFirst: false,
+      });
 
     if (lessonOffersError) throw lessonOffersError;
 
@@ -258,7 +395,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      date: selectedDate,
+      date: startDate === endDate ? startDate : null,
+      startDate,
+      endDate,
       performances: visiblePerformanceRequests,
       lessons: visibleLessonOffers,
       total:
