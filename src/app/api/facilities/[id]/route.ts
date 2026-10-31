@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,16 +12,38 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    // LINE IDトークンを検証し、ログイン済みの利用者に限定する
+    const authorization = request.headers.get("authorization");
+    const token = authorization?.startsWith("Bearer ")
+      ? authorization.slice(7).trim()
+      : "";
+
+    if (!token) {
+      return NextResponse.json(
+        { error: "ログインが必要です。" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const verified = await verifyLineIdToken(token);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "認証に失敗しました。再度ログインしてください。" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     const { id } = await context.params;
 
     if (!id) {
       return NextResponse.json(
-        { error: "施設IDが指定されていません" },
-        { status: 400 }
+        { error: "施設IDが指定されていません。" },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const { data: facility, error } = await supabase
+    const { data: facility, error: facilityError } = await supabase
       .from("facilities")
       .select(`
         id,
@@ -33,47 +56,61 @@ export async function GET(
       .eq("id", id)
       .maybeSingle();
 
-    if (error) {
-      console.error("Facility lookup failed:", error);
+    if (facilityError) {
+      console.error("Facility lookup failed:", facilityError);
       return NextResponse.json(
-        { error: "施設情報の取得に失敗しました" },
-        { status: 500 }
+        { error: "施設情報の取得に失敗しました。" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 
     if (!facility) {
       return NextResponse.json(
-        { error: "施設が見つかりません" },
-        { status: 404 }
+        { error: "施設が見つかりません。" },
+        { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const { data: completedMatches, error: matchesError } = await supabase
-      .from("matches")
+    // 対象施設が登録した演奏案件を取得する
+    const { data: facilityRequests, error: requestsError } = await supabase
+      .from("performance_requests")
       .select("id")
-      .eq("performance_status", "completed")
-      .not("completed_at", "is", null)
-      .in(
-        "request_id",
-        (
-          await supabase
-            .from("performance_requests")
-            .select("id")
-            .eq("facility_id", facility.id)
-        ).data?.map((request) => request.id) ?? []
-      );
+      .eq("facility_id", facility.id);
 
-    if (matchesError) {
-      console.error("Completed matches lookup failed:", matchesError);
+    if (requestsError) {
+      console.error("Facility performance requests lookup failed:", requestsError);
       return NextResponse.json(
-        { error: "レビュー情報の取得に失敗しました" },
-        { status: 500 }
+        { error: "レビュー情報の取得に失敗しました。" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const completedMatchIds = (completedMatches ?? []).map(
-      (match) => match.id
+    const requestIds = (facilityRequests ?? []).map(
+      (performanceRequest) => performanceRequest.id
     );
+
+    let completedMatches: { id: string }[] = [];
+
+    if (requestIds.length > 0) {
+      const { data, error: matchesError } = await supabase
+        .from("matches")
+        .select("id")
+        .eq("performance_status", "completed")
+        .not("completed_at", "is", null)
+        .in("request_id", requestIds);
+
+      if (matchesError) {
+        console.error("Completed matches lookup failed:", matchesError);
+        return NextResponse.json(
+          { error: "レビュー情報の取得に失敗しました。" },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+
+      completedMatches = data ?? [];
+    }
+
+    const completedMatchIds = completedMatches.map((match) => match.id);
 
     let reviews: {
       rating: number;
@@ -92,8 +129,8 @@ export async function GET(
       if (reviewsError) {
         console.error("Reviews lookup failed:", reviewsError);
         return NextResponse.json(
-          { error: "レビュー情報の取得に失敗しました" },
-          { status: 500 }
+          { error: "レビュー情報の取得に失敗しました。" },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -115,17 +152,20 @@ export async function GET(
           )
         : null;
 
-    return NextResponse.json({
-      facility,
-      rating,
-      review_count: reviewCount,
-      reviews,
-    });
+    return NextResponse.json(
+      {
+        facility,
+        rating,
+        review_count: reviewCount,
+        reviews,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("Facility API error:", error);
     return NextResponse.json(
-      { error: "施設情報の取得中にエラーが発生しました" },
-      { status: 500 }
+      { error: "施設情報の取得中にエラーが発生しました。" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

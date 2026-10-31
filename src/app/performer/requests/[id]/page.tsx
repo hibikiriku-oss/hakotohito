@@ -270,7 +270,12 @@ export default function PerformerRequestDetailPage() {
           try {
             const facilityResponse = await fetch(
               `/api/facilities/${data.request.facilities.id}`,
-              { cache: "no-store" }
+              {
+                headers: {
+                  Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+                },
+                cache: "no-store",
+              }
             );
 
             const facilityData = await facilityResponse.json();

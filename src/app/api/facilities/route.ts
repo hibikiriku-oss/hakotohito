@@ -16,69 +16,102 @@ export async function POST(request: NextRequest) {
       facilityType,
       address,
       description,
+      avatarType,
+      avatarEmoji,
     } = body;
 
     // 必須項目チェック
     if (!name || !facilityType || !address) {
       return NextResponse.json(
-        {
-          error: "必須項目が入力されていません",
-        },
+        { error: "必須項目が入力されていません" },
         { status: 400 }
       );
     }
 
-    // LINEユーザーID取得
-        const authorization = request.headers.get("authorization");
+    // アイコン設定チェック
+    const normalizedAvatarType = avatarType ?? "line";
+
+    if (
+      normalizedAvatarType !== "line" &&
+      normalizedAvatarType !== "emoji"
+    ) {
+      return NextResponse.json(
+        { error: "プロフィールアイコンの設定が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      normalizedAvatarType === "emoji" &&
+      (typeof avatarEmoji !== "string" || !avatarEmoji.trim())
+    ) {
+      return NextResponse.json(
+        { error: "絵文字アイコンを選択してください" },
+        { status: 400 }
+      );
+    }
+
+    // LINE IDトークン取得
+    const authorization = request.headers.get("authorization");
     const idToken = authorization?.startsWith("Bearer ")
       ? authorization.slice("Bearer ".length)
       : "";
 
     if (!idToken) {
       return NextResponse.json(
-        {
-          error: "LINEの本人確認情報がありません。再ログインしてください。",
-        },
+        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
         { status: 401 }
       );
     }
 
+    // LINE本人確認
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
       return NextResponse.json(
-        {
-          error: "LINEの本人確認に失敗しました。再ログインしてください。",
-        },
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
         { status: 401 }
       );
     }
 
     const lineUserId = verified.userId;
 
-    // usersテーブルからユーザー取得
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+    // ユーザー取得
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", lineUserId)
+      .single();
 
     if (userError || !user) {
-      console.error(
-        "ユーザー取得エラー:",
-        userError
-      );
-
+      console.error("ユーザー取得エラー:", userError);
       return NextResponse.json(
-        {
-          error: "ユーザー情報が見つかりません",
-        },
+        { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    // facilitiesテーブルに登録
+    // プロフィールアイコン保存
+    const { error: avatarError } = await supabase
+      .from("users")
+      .update({
+        avatar_type: normalizedAvatarType,
+        avatar_emoji:
+          normalizedAvatarType === "emoji"
+            ? avatarEmoji.trim()
+            : null,
+      })
+      .eq("id", user.id);
+
+    if (avatarError) {
+      console.error("プロフィールアイコン保存エラー:", avatarError);
+      return NextResponse.json(
+        { error: "プロフィールアイコンの保存に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    // 施設プロフィール登録
     const { data, error } = await supabase
       .from("facilities")
       .upsert(
@@ -89,42 +122,21 @@ export async function POST(request: NextRequest) {
           address,
           description,
         },
-        {
-          onConflict: "user_id",
-        }
+        { onConflict: "user_id" }
       )
       .select()
       .single();
 
     if (error) {
-      console.error(
-        "施設登録エラー:",
-        error
-      );
-
-      return NextResponse.json(
-        {
-          error: error.message,
-        },
-        { status: 500 }
-      );
+      console.error("施設登録エラー:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
-      success: true,
-      facility: data,
-    });
-
+    return NextResponse.json({ success: true, facility: data });
   } catch (error) {
-    console.error(
-      "施設APIエラー:",
-      error
-    );
-
+    console.error("施設APIエラー:", error);
     return NextResponse.json(
-      {
-        error: "サーバーエラーが発生しました",
-      },
+      { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
   }

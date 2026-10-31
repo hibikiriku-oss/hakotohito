@@ -676,7 +676,7 @@ export default function PerformerBandsPage() {
               onClick={() => router.push("/performer/home")}
               className="mb-5 text-sm font-bold text-gray-500"
             >
-              ← 演奏者ホームへ戻る
+              ← ホームに戻る
             </button>
           )}
 
@@ -907,7 +907,7 @@ export default function PerformerBandsPage() {
             )}
 
             {/* バンドを組む */}
-                        {view === "participating" && (
+            {view === "participating" && (
               <section className="mt-4 rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
                 <button
                   type="button"
@@ -980,6 +980,7 @@ export default function PerformerBandsPage() {
                 )}
               </section>
             )}
+
             {view === "create" && (
               <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-sm">
                 <h2 className="mb-4 text-lg font-bold text-gray-900">

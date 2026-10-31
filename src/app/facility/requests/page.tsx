@@ -489,7 +489,7 @@ export default function FacilityRequestsPage() {
             onClick={() => router.push("/facility/home")}
             className="w-full mt-5 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-700"
           >
-            ← 施設ホームへ戻る
+            ← ホームに戻る
           </button>
         </div>
       </main>
@@ -504,7 +504,7 @@ export default function FacilityRequestsPage() {
             onClick={() => router.push("/facility/home")}
             className="text-sm text-gray-500 mb-4"
           >
-            ← 施設ホーム
+            ← ホームに戻る
           </button>
 
           <p className="text-sm font-medium text-gray-500">
@@ -907,7 +907,7 @@ export default function FacilityRequestsPage() {
           onClick={() => router.push("/facility/home")}
           className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-medium text-gray-600"
         >
-          ← 施設ホームへ戻る
+          ← ホームに戻る
         </button>
 
         <p className="text-center text-xs text-gray-400 mt-6 pb-4">

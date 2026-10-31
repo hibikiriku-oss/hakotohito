@@ -220,7 +220,7 @@ export default function PerformerInvitationsPage() {
             onClick={() => router.push("/performer/home")}
             className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition"
           >
-            ← 演奏者ホーム
+            ← ホームに戻る
           </button>
 
           <div className="mt-5">
@@ -438,7 +438,7 @@ export default function PerformerInvitationsPage() {
             onClick={() => router.push("/performer/home")}
             className="w-full mt-6 border border-gray-200 bg-white text-gray-700 rounded-xl py-3.5 font-medium hover:bg-gray-50 transition"
           >
-            演奏者ホームへ戻る
+            ← ホームに戻る
           </button>
         )}
       </div>

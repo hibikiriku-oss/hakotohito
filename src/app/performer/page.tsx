@@ -5,29 +5,21 @@ import { useEffect, useState } from "react";
 import liff from "@line/liff";
 
 const instrumentOptions = [
-  "\u30D4\u30A2\u30CE", // ピアノ
-  "\u30AE\u30BF\u30FC", // ギター
-  "\u30D9\u30FC\u30B9", // ベース
-  "\u30C9\u30E9\u30E0", // ドラム
-  "\u30F4\u30A9\u30FC\u30AB\u30EB", // ヴォーカル
-  "\u30B5\u30C3\u30AF\u30B9", // サックス
-  "\u30C8\u30E9\u30F3\u30DA\u30C3\u30C8", // トランペット
-  "\u30D1\u30FC\u30AB\u30C3\u30B7\u30E7\u30F3", // パーカッション
-  "DJ",
-  "\u548C\u697D\u5668", // 和楽器
+  "ピアノ", "ギター", "ベース", "ドラム", "ヴォーカル",
+  "サックス", "トランペット", "パーカッション", "DJ", "和楽器",
 ];
 
 const genreOptions = [
-  "\u30AF\u30E9\u30B7\u30C3\u30AF",
-  "\u30ED\u30C3\u30AF\u30FB\u30DD\u30C3\u30D7\u30B9",
-  "\u30B8\u30E3\u30BA\u30FB\u30D5\u30E5\u30FC\u30B8\u30E7\u30F3",
-  "\u30E9\u30C6\u30F3\u30FB\u30DC\u30B5\u30CE\u30D0",
-  "\u30D2\u30C3\u30D7\u30DB\u30C3\u30D7\u30FB\u30E9\u30C3\u30D7",
-  "R&B",
-  "\u30A2\u30AB\u30DA\u30E9",
-  "DJ\u30FB\u30A8\u30EC\u30AF\u30C8\u30ED",
-  "\u30EF\u30FC\u30EB\u30C9\u30DF\u30E5\u30FC\u30B8\u30C3\u30AF",
-  "\u6F14\u6B4C\u30FB\u6B4C\u8B21\u66F2",
+  "クラシック", "ロック・ポップス", "ジャズ・フュージョン",
+  "ラテン・ボサノバ", "ヒップホップ・ラップ", "R&B",
+  "アカペラ", "DJ・エレクトロ", "ワールドミュージック",
+  "演歌・歌謡曲",
+];
+
+const avatarEmojis = [
+  "🎸", "🎹", "🎤", "🥁", "🎷",
+  "🎺", "🎻", "🎼", "🎵", "🎶",
+  "🌟", "😊", "🌸", "🐱", "🐶",
 ];
 
 const inputClass =
@@ -36,6 +28,9 @@ const inputClass =
 export default function PerformerPage() {
   const [lineUserId, setLineUserId] = useState("");
   const [name, setName] = useState("");
+
+  const [avatarType, setAvatarType] = useState<"line" | "emoji">("line");
+  const [avatarEmoji, setAvatarEmoji] = useState("🎸");
 
   const [areas, setAreas] = useState<string[]>([]);
   const [areaInput, setAreaInput] = useState("");
@@ -95,7 +90,7 @@ export default function PerformerPage() {
     const area = areaInput.trim().replace(/\s+/g, " ");
 
     if (!area) {
-      alert("\u6D3B\u52D5\u30A8\u30EA\u30A2\u3092\u5165\u529B\u3057\u3066\u304F\u3060\u3055\u3044\u3002");
+      alert("活動エリアを入力してください。");
       return;
     }
 
@@ -104,7 +99,7 @@ export default function PerformerPage() {
         (item) => item.toLocaleLowerCase() === area.toLocaleLowerCase()
       )
     ) {
-      alert("\u3053\u306E\u6D3B\u52D5\u30A8\u30EA\u30A2\u306F\u3059\u3067\u306B\u8FFD\u52A0\u3055\u308C\u3066\u3044\u307E\u3059\u3002");
+      alert("この活動エリアはすでに追加されています。");
       return;
     }
 
@@ -116,6 +111,18 @@ export default function PerformerPage() {
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
+
+    const inputArea = areaInput.trim().replace(/\s+/g, " ");
+    const finalAreas = [...areas];
+
+    if (
+      inputArea &&
+      !finalAreas.some(
+        (item) => item.toLocaleLowerCase() === inputArea.toLocaleLowerCase()
+      )
+    ) {
+      finalAreas.push(inputArea);
+    }
 
     const finalInstruments = [
       ...instruments,
@@ -131,45 +138,47 @@ export default function PerformerPage() {
         : []),
     ];
 
-const missingFields = {
-  name: !name.trim(),
-  areas: areas.length === 0,
-  instruments: finalInstruments.length === 0,
-  genres: finalGenres.length === 0,
-};
+    const missingFields = {
+      name: !name.trim(),
+      areas: finalAreas.length === 0,
+      instruments: finalInstruments.length === 0,
+      genres: finalGenres.length === 0,
+    };
 
-console.log("演奏者登録の入力チェック:", {
-  name,
-  areas,
-  instruments,
-  otherInstrument,
-  finalInstruments,
-  genres,
-  otherGenre,
-  finalGenres,
-  missingFields,
-});
+    console.log("演奏者登録の入力チェック:", {
+      name,
+      areas,
+      areaInput,
+      finalAreas,
+      instruments,
+      otherInstrument,
+      finalInstruments,
+      genres,
+      otherGenre,
+      finalGenres,
+      missingFields,
+    });
 
-if (
-  missingFields.name ||
-  missingFields.areas ||
-  missingFields.instruments ||
-  missingFields.genres
-) {
-  alert(
-    `入力不足の項目：${
-      [
-        missingFields.name && "名前",
-        missingFields.areas && "活動エリア",
-        missingFields.instruments && "楽器",
-        missingFields.genres && "音楽ジャンル",
-      ]
-        .filter(Boolean)
-        .join("・")
-    }`
-  );
-  return;
-}
+    if (
+      missingFields.name ||
+      missingFields.areas ||
+      missingFields.instruments ||
+      missingFields.genres
+    ) {
+      alert(
+        `入力不足の項目：${
+          [
+            missingFields.name && "名前",
+            missingFields.areas && "活動エリア",
+            missingFields.instruments && "楽器",
+            missingFields.genres && "音楽ジャンル",
+          ]
+            .filter(Boolean)
+            .join("・")
+        }`
+      );
+      return;
+    }
 
     if (!lineUserId) {
       alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
@@ -187,12 +196,13 @@ if (
         },
         body: JSON.stringify({
           name: name.trim(),
-          areas,
-          // 既存機能との互換性のため、代表エリアも送信
-          area: areas[0],
+          areas: finalAreas,
+          area: finalAreas[0],
           instruments: [...new Set(finalInstruments)],
           genres: [...new Set(finalGenres)],
           bio,
+          avatarType,
+          avatarEmoji: avatarType === "emoji" ? avatarEmoji : null,
         }),
       });
 
@@ -251,19 +261,79 @@ if (
               />
 
               <div className="mt-5">
+                <label className="block text-sm font-bold text-gray-800 mb-3">
+                  プロフィールアイコン
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAvatarType("line")}
+                    className={`rounded-xl border p-3 text-sm font-bold ${
+                      avatarType === "line"
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    LINEプロフィール画像
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAvatarType("emoji")}
+                    className={`rounded-xl border p-3 text-sm font-bold ${
+                      avatarType === "emoji"
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    絵文字アイコン
+                  </button>
+                </div>
+
+                {avatarType === "emoji" && (
+                  <div className="mt-4">
+                    <p className="text-xs text-gray-500 mb-3">
+                      使用する絵文字を1つ選択してください。
+                    </p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {avatarEmojis.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setAvatarEmoji(emoji)}
+                          aria-label={`アイコン ${emoji}`}
+                          aria-pressed={avatarEmoji === emoji}
+                          className={`aspect-square rounded-xl border text-2xl ${
+                            avatarEmoji === emoji
+                              ? "border-black bg-gray-100"
+                              : "border-gray-200 bg-white"
+                          }`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-center text-3xl mt-3">
+                      {avatarEmoji}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5">
                 <label className="block text-sm font-bold text-gray-800 mb-2">
-                  {"\u6D3B\u52D5\u30A8\u30EA\u30A2"} <span className="text-red-500">*</span>
+                  活動エリア <span className="text-red-500">*</span>
                 </label>
 
                 <p className="text-xs text-gray-500 mb-3">
-                  {"\u6D3B\u52D5\u3067\u304D\u308B\u5730\u57DF\u3092\u81EA\u7531\u306B\u5165\u529B\u3057\u3001\u8907\u6570\u8FFD\u52A0\u3067\u304D\u307E\u3059\u3002"}
+                  活動できる地域を自由に入力し、複数追加できます。
                 </p>
 
                 <div className="flex gap-2 mt-3">
                   <input
                     value={areaInput}
                     onChange={(e) => setAreaInput(e.target.value)}
-                    placeholder={"\u4F8B\uFF1A\u540D\u53E4\u5C4B\u5E02\u3001\u6771\u4E09\u6CB3\u3001\u611B\u77E5\u770C\u5168\u57DF"}
+                    placeholder="例：名古屋市、東三河、愛知県全域"
                     className={inputClass}
                     maxLength={100}
                     onKeyDown={(e) => {
@@ -279,12 +349,12 @@ if (
                     onClick={addArea}
                     className="shrink-0 rounded-2xl bg-gray-900 text-white px-4 font-bold"
                   >
-                    {"\u8FFD\u52A0"}
+                    追加
                   </button>
                 </div>
 
                 <p className="text-xs text-gray-400 mt-2">
-                  {"\u5E02\u533A\u753A\u6751\u3001\u8907\u6570\u306E\u5E02\u3001\u5730\u57DF\u540D\u306A\u3069\u3092\u5165\u529B\u3067\u304D\u307E\u3059\u3002"}
+                  市区町村、複数の市、地域名などを入力できます。
                 </p>
 
                 {areas.length > 0 && (
@@ -304,9 +374,9 @@ if (
                             )
                           }
                           className="text-sm text-red-600 font-bold"
-                          aria-label={"\u6D3B\u52D5\u30A8\u30EA\u30A2\u3092\u524A\u9664"}
+                          aria-label="活動エリアを削除"
                         >
-                          {"\u524A\u9664"}
+                          削除
                         </button>
                       </div>
                     ))}

@@ -68,7 +68,7 @@ export default function FacilityPerformersPage() {
           return;
         }
 
-                const idToken = liff.getIDToken();
+        const idToken = liff.getIDToken();
 
         if (!idToken) {
           throw new Error(
@@ -364,7 +364,7 @@ export default function FacilityPerformersPage() {
         return;
       }
 
-            const idToken = liff.getIDToken();
+      const idToken = liff.getIDToken();
 
       if (!idToken) {
         throw new Error(
@@ -471,7 +471,7 @@ export default function FacilityPerformersPage() {
             onClick={() => router.push("/facility/home")}
             className="w-full mt-5 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-700"
           >
-            ← 施設ホームへ戻る
+            ← ホームに戻る
           </button>
         </div>
       </main>
@@ -487,7 +487,7 @@ export default function FacilityPerformersPage() {
             onClick={() => router.push("/facility/home")}
             className="text-sm text-gray-500 mb-4"
           >
-            ← 施設ホーム
+            ← ホームに戻る
           </button>
 
           <p className="text-sm font-medium text-gray-500">演奏者検索</p>
@@ -818,7 +818,7 @@ export default function FacilityPerformersPage() {
           onClick={() => router.push("/facility/home")}
           className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-600"
         >
-          ← 施設ホームへ戻る
+          ← ホームに戻る
         </button>
 
         <p className="text-center text-xs text-gray-400 mt-6 pb-4">
@@ -956,9 +956,8 @@ export default function FacilityPerformersPage() {
                         className="text-sm bg-blue-50 text-blue-700 rounded-full px-3 py-1.5"
                       >
                         {genre}
-                        </span>
-                      )
-                    )}
+                      </span>
+                    ))}
                   </div>
                 </div>
 

@@ -711,7 +711,7 @@ export default function PerformerInvitationDetailPage() {
               disabled={processing}
               className="w-full text-gray-500 py-3 text-sm font-medium disabled:opacity-50"
             >
-              演奏者ホームへ戻る
+              ← ホームに戻る
             </button>
           </div>
         </div>

@@ -380,7 +380,7 @@ export default function PerformerHomePage() {
               onClick={() => setMenu("home")}
               className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-bold text-gray-600 active:bg-gray-50"
             >
-              ← 4つのメニューに戻る
+              ← ホームに戻る
             </button>
           </section>
         )}

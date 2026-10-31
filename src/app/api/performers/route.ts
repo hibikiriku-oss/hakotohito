@@ -26,7 +26,9 @@ export async function GET() {
           users (
             id,
             display_name,
-            picture_url
+            picture_url,
+            avatar_type,
+            avatar_emoji
           )
         `)
         .order("created_at", {
@@ -83,7 +85,6 @@ export async function GET() {
 
         return {
           ...performer,
-          // 旧データでareasが空の場合も、従来のareaを利用する
           areas:
             performer.areas?.length > 0
               ? performer.areas
@@ -121,9 +122,10 @@ export async function POST(request: NextRequest) {
       genres,
       bio,
       status_level,
+      avatarType,
+      avatarEmoji,
     } = body;
 
-    // 新方式の複数エリアと、従来方式のareaの両方に対応
     const normalizedAreas: string[] = Array.isArray(submittedAreas)
       ? [
           ...new Set(
@@ -172,6 +174,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // アイコン設定の検証
+    const normalizedAvatarType =
+      avatarType === "emoji" ? "emoji" : "line";
+
+    if (
+      avatarType !== undefined &&
+      avatarType !== "line" &&
+      avatarType !== "emoji"
+    ) {
+      return NextResponse.json(
+        { error: "アイコンの種類が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      normalizedAvatarType === "emoji" &&
+      (typeof avatarEmoji !== "string" || !avatarEmoji.trim())
+    ) {
+      return NextResponse.json(
+        { error: "絵文字アイコンを選択してください" },
+        { status: 400 }
+      );
+    }
+
     // LINE IDトークンを検証
     const authorization = request.headers.get("authorization");
     const idToken = authorization?.startsWith("Bearer ")
@@ -215,15 +242,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // usersテーブルにアイコン設定を保存
+    const { error: avatarError } = await supabase
+      .from("users")
+      .update({
+        avatar_type: normalizedAvatarType,
+        avatar_emoji:
+          normalizedAvatarType === "emoji"
+            ? avatarEmoji.trim()
+            : null,
+      })
+      .eq("id", user.id);
+
+    if (avatarError) {
+      console.error("アイコン設定保存エラー:", avatarError);
+
+      return NextResponse.json(
+        { error: "プロフィールアイコンの保存に失敗しました" },
+        { status: 500 }
+      );
+    }
+
     const { data, error } = await supabase
       .from("performers")
       .upsert(
         {
           user_id: user.id,
           name: name.trim(),
-          // 既存の検索・表示機能との互換性を維持
           area: primaryArea,
-          // 新しい複数エリア
           areas: normalizedAreas,
           instruments: [
             ...new Set(
