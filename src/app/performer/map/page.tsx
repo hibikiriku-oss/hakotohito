@@ -46,39 +46,19 @@ type MapSearchResponse = {
 const instrumentOptions = [
   "ピアノ",
   "ギター",
-  "ウクレレ",
-  "バイオリン",
-  "ビオラ",
-  "チェロ",
-  "コントラバス",
-  "フルート",
-  "クラリネット",
+  "ベース",
+  "ドラム",
   "サックス",
-  "トランペット",
-  "トロンボーン",
-  "リコーダー",
-  "ハーモニカ",
-  "オカリナ",
-  "箏",
-  "尺八",
-  "和太鼓",
-  "打楽器",
-  "声楽・歌",
+  "バイオリン",
+  "その他",
 ];
 
 const genreOptions = [
-  "クラシック",
   "ポップス",
-  "ジャズ",
-  "演歌・歌謡曲",
-  "童謡・唱歌",
-  "アニメ・ゲーム音楽",
-  "映画音楽",
-  "民謡",
-  "邦楽",
   "ロック",
-  "フォーク",
-  "ゴスペル",
+  "ジャズ",
+  "クラシック",
+  "その他",
 ];
 
 function escapeHtml(value: string): string {
@@ -112,8 +92,6 @@ function getInitialSearchValues() {
   }
 
   const params = new URLSearchParams(window.location.search);
-
-  // 旧URLの date パラメータにも対応
   const oldDate = params.get("date") || "";
 
   return {
@@ -146,7 +124,6 @@ export default function PerformerMapPage() {
   const [endTime, setEndTime] = useState("");
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-
   const [filtersInitialized, setFiltersInitialized] = useState(false);
 
   useEffect(() => {
@@ -174,6 +151,8 @@ export default function PerformerMapPage() {
   }
 
   function handleSearch() {
+    setError("");
+
     if (startDate && endDate && startDate > endDate) {
       setError("終了日は開始日以降の日付を指定してください。");
       return;
@@ -238,9 +217,7 @@ export default function PerformerMapPage() {
               ? profileError.message
               : String(profileError);
 
-          if (
-            /access token expired|invalid access token/i.test(message)
-          ) {
+          if (/access token expired|invalid access token/i.test(message)) {
             setStatus("LINEの認証を更新しています...");
             liff.logout();
             liff.login();
@@ -252,8 +229,7 @@ export default function PerformerMapPage() {
 
         if (cancelled || !mapRef.current) return;
 
-        const apiKey =
-          process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+        const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
         if (!apiKey) {
           throw new Error(
@@ -267,8 +243,7 @@ export default function PerformerMapPage() {
         });
 
         const mapsLibrary: any = await importLibrary("maps");
-        const geocodingLibrary: any =
-          await importLibrary("geocoding");
+        const geocodingLibrary: any = await importLibrary("geocoding");
 
         if (cancelled || !mapRef.current) return;
 
@@ -281,7 +256,6 @@ export default function PerformerMapPage() {
         });
 
         const params = new URLSearchParams(window.location.search);
-
         const searchParams = new URLSearchParams();
 
         const requestedStartDate = params.get("startDate");
@@ -311,7 +285,6 @@ export default function PerformerMapPage() {
         }
 
         const query = searchParams.toString();
-
         const searchUrl = query
           ? `/api/map-search?${query}`
           : "/api/map-search";
@@ -327,8 +300,7 @@ export default function PerformerMapPage() {
 
         if (!response.ok || !data.success) {
           throw new Error(
-            data.error ||
-              "地図検索データを取得できませんでした。"
+            data.error || "地図検索データを取得できませんでした。"
           );
         }
 
@@ -382,8 +354,7 @@ export default function PerformerMapPage() {
 
             if (cancelled) return;
 
-            const location =
-              result.results?.[0]?.geometry?.location;
+            const location = result.results?.[0]?.geometry?.location;
 
             if (!location) {
               geocodeFailedCount++;
@@ -398,8 +369,7 @@ export default function PerformerMapPage() {
 
             geocodeSuccessCount++;
 
-            const isPerformance =
-              item.map_type === "performance";
+            const isPerformance = item.map_type === "performance";
 
             const detailPath = isPerformance
               ? `/performer/requests/${encodeURIComponent(item.id)}`
@@ -416,9 +386,7 @@ export default function PerformerMapPage() {
               },
               icon: {
                 path: "M 0,-18 C -10,-18 -17,-10 -17,0 C -17,10 0,25 0,25 C 0,25 17,10 17,0 C 17,-10 10,-18 0,-18 Z",
-                fillColor: isPerformance
-                  ? "#2563eb"
-                  : "#16a34a",
+                fillColor: isPerformance ? "#2563eb" : "#16a34a",
                 fillOpacity: 1,
                 strokeColor: "#ffffff",
                 strokeWeight: 2,
@@ -427,13 +395,9 @@ export default function PerformerMapPage() {
             });
 
             marker.addListener("click", () => {
-              const title = escapeHtml(
-                item.title || "タイトルなし"
-              );
+              const title = escapeHtml(item.title || "タイトルなし");
               const locationText = escapeHtml(address);
-              const typeLabel = isPerformance
-                ? "演奏案件"
-                : "レッスン募集";
+              const typeLabel = isPerformance ? "演奏案件" : "レッスン募集";
 
               const facilityName = item.facilities?.name
                 ? `<p>施設名：${escapeHtml(item.facilities.name)}</p>`
@@ -443,9 +407,7 @@ export default function PerformerMapPage() {
                 ? item.performance_date
                 : item.lesson_date;
 
-              const dateText = dateValue
-                ? escapeHtml(dateValue)
-                : "未指定";
+              const dateText = dateValue ? escapeHtml(dateValue) : "未指定";
 
               const itemStartTime = formatTime(item.start_time);
               const itemEndTime = formatTime(item.end_time);
@@ -542,13 +504,9 @@ export default function PerformerMapPage() {
 
         if (!cancelled) {
           const message =
-            err instanceof Error
-              ? err.message
-              : String(err);
+            err instanceof Error ? err.message : String(err);
 
-          setError(
-            message || "地図の読み込みに失敗しました。"
-          );
+          setError(message || "地図の読み込みに失敗しました。");
           setStatus("地図を表示できませんでした。");
         }
       }
@@ -567,12 +525,23 @@ export default function PerformerMapPage() {
     };
   }, [filtersInitialized]);
 
+  const compactLabelStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "5px 8px",
+    background: "#fff",
+    border: "1px solid #e2e8f0",
+    borderRadius: 6,
+    whiteSpace: "nowrap",
+  };
+
   return (
     <main
       style={{
         maxWidth: 900,
         margin: "0 auto",
-        padding: 16,
+        padding: 12,
         color: "#222",
       }}
     >
@@ -580,8 +549,8 @@ export default function PerformerMapPage() {
         type="button"
         onClick={() => router.push("/performer/home")}
         style={{
-          padding: "8px 12px",
-          marginBottom: 12,
+          padding: "7px 11px",
+          marginBottom: 8,
           border: "1px solid #ddd",
           borderRadius: 8,
           background: "#fff",
@@ -593,7 +562,7 @@ export default function PerformerMapPage() {
 
       <h1
         style={{
-          fontSize: 24,
+          fontSize: 22,
           fontWeight: "bold",
           marginBottom: 8,
         }}
@@ -601,47 +570,48 @@ export default function PerformerMapPage() {
         地図から探す
       </h1>
 
-      <p
-        style={{
-          fontSize: 14,
-          color: "#555",
-          marginBottom: 12,
-        }}
-      >
-        期間・時間帯・楽器・ジャンルを指定して、演奏案件やレッスン募集を地図で探せます。
-      </p>
-
       <div
         style={{
           display: "flex",
-          gap: 16,
+          gap: 14,
           flexWrap: "wrap",
-          fontSize: 14,
-          marginBottom: 12,
+          fontSize: 13,
+          marginBottom: 8,
         }}
       >
         <span>
-          <strong style={{ color: "#2563eb" }}>●</strong>{" "}
-          演奏案件
+          <strong style={{ color: "#2563eb" }}>●</strong> 演奏案件
         </span>
         <span>
-          <strong style={{ color: "#16a34a" }}>●</strong>{" "}
-          レッスン募集
+          <strong style={{ color: "#16a34a" }}>●</strong> レッスン募集
         </span>
-        <span>マーカーを押すと案件の詳細を確認できます。</span>
+        <span>マーカーを押すと詳細を確認できます。</span>
       </div>
 
-      <section
+      {/* 地図を検索条件より上に配置 */}
+      <div
+        ref={mapRef}
         style={{
-          padding: 14,
+          width: "100%",
+          height: 420,
+          borderRadius: 12,
+          border: "1px solid #ddd",
+          background: "#f1f5f9",
+          marginBottom: 12,
+        }}
+      />
+
+      <div
+        style={{
+          padding: 12,
           background: "#f8fafc",
           border: "1px solid #e2e8f0",
           borderRadius: 10,
-          marginBottom: 14,
-          fontSize: 14,
+          marginBottom: 12,
+          fontSize: 13,
         }}
       >
-        <h2 style={{ fontSize: 17, fontWeight: "bold", marginBottom: 12 }}>
+        <h2 style={{ fontSize: 16, fontWeight: "bold", marginBottom: 10 }}>
           検索条件
         </h2>
 
@@ -649,140 +619,93 @@ export default function PerformerMapPage() {
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 12,
-            marginBottom: 14,
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 6,
           }}
         >
-          <div>
-            <label
-              htmlFor="map-start-date"
-              style={{ display: "block", fontWeight: "bold", marginBottom: 5 }}
-            >
-              開始日
-            </label>
-            <input
-              id="map-start-date"
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              style={{
-                padding: 8,
-                border: "1px solid #cbd5e1",
-                borderRadius: 8,
-                background: "#fff",
-                color: "#222",
-              }}
-            />
-          </div>
+          <label htmlFor="map-start-date">開始日</label>
+          <input
+            id="map-start-date"
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+            style={{
+              padding: 6,
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              background: "#fff",
+            }}
+          />
 
-          <div>
-            <label
-              htmlFor="map-end-date"
-              style={{ display: "block", fontWeight: "bold", marginBottom: 5 }}
-            >
-              終了日
-            </label>
-            <input
-              id="map-end-date"
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              style={{
-                padding: 8,
-                border: "1px solid #cbd5e1",
-                borderRadius: 8,
-                background: "#fff",
-                color: "#222",
-              }}
-            />
-          </div>
+          <label htmlFor="map-end-date">終了日</label>
+          <input
+            id="map-end-date"
+            type="date"
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value)}
+            style={{
+              padding: 6,
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              background: "#fff",
+            }}
+          />
         </div>
 
-        <p style={{ color: "#64748b", fontSize: 12, marginBottom: 14 }}>
-          開始日のみならその日以降、終了日のみならその日までを検索します。両方未指定の場合は今日以降が対象です。
+        <p style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>
+          開始日のみ・終了日のみでも検索できます。両方未指定の場合は今日以降が対象です。
         </p>
 
         <div
           style={{
             display: "flex",
             flexWrap: "wrap",
-            gap: 12,
-            marginBottom: 8,
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 5,
           }}
         >
-          <div>
-            <label
-              htmlFor="map-start-time"
-              style={{ display: "block", fontWeight: "bold", marginBottom: 5 }}
-            >
-              開始時間
-            </label>
-            <input
-              id="map-start-time"
-              type="time"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
-              style={{
-                padding: 8,
-                border: "1px solid #cbd5e1",
-                borderRadius: 8,
-                background: "#fff",
-                color: "#222",
-              }}
-            />
-          </div>
+          <label htmlFor="map-start-time">開始時間</label>
+          <input
+            id="map-start-time"
+            type="time"
+            value={startTime}
+            onChange={(event) => setStartTime(event.target.value)}
+            style={{
+              padding: 6,
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              background: "#fff",
+            }}
+          />
 
-          <div>
-            <label
-              htmlFor="map-end-time"
-              style={{ display: "block", fontWeight: "bold", marginBottom: 5 }}
-            >
-              終了時間
-            </label>
-            <input
-              id="map-end-time"
-              type="time"
-              value={endTime}
-              onChange={(event) => setEndTime(event.target.value)}
-              style={{
-                padding: 8,
-                border: "1px solid #cbd5e1",
-                borderRadius: 8,
-                background: "#fff",
-                color: "#222",
-              }}
-            />
-          </div>
+          <label htmlFor="map-end-time">終了時間</label>
+          <input
+            id="map-end-time"
+            type="time"
+            value={endTime}
+            onChange={(event) => setEndTime(event.target.value)}
+            style={{
+              padding: 6,
+              border: "1px solid #cbd5e1",
+              borderRadius: 6,
+              background: "#fff",
+            }}
+          />
         </div>
 
-        <p style={{ color: "#64748b", fontSize: 12, marginBottom: 14 }}>
-          時間帯は開始・終了の両方を指定した場合のみ検索条件になります。案件の時間と一部でも重なるものを表示します。
+        <p style={{ color: "#64748b", fontSize: 11, marginBottom: 10 }}>
+          時間帯は開始・終了の両方を指定した場合のみ適用されます。
         </p>
 
-        <div style={{ marginBottom: 14 }}>
-          <h3 style={{ fontWeight: "bold", marginBottom: 8 }}>
+        <div style={{ marginBottom: 10 }}>
+          <strong style={{ display: "block", marginBottom: 6 }}>
             楽器（複数選択可）
-          </h3>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-              gap: 8,
-            }}
-          >
+          </strong>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {instrumentOptions.map((instrument) => (
-              <label
-                key={instrument}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 8px",
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 6,
-                }}
-              >
+              <label key={instrument} style={compactLabelStyle}>
                 <input
                   type="checkbox"
                   checked={selectedInstruments.includes(instrument)}
@@ -800,30 +723,13 @@ export default function PerformerMapPage() {
           </div>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <h3 style={{ fontWeight: "bold", marginBottom: 8 }}>
+        <div style={{ marginBottom: 12 }}>
+          <strong style={{ display: "block", marginBottom: 6 }}>
             ジャンル（複数選択可）
-          </h3>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              gap: 8,
-            }}
-          >
+          </strong>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {genreOptions.map((genre) => (
-              <label
-                key={genre}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "6px 8px",
-                  background: "#fff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 6,
-                }}
-              >
+              <label key={genre} style={compactLabelStyle}>
                 <input
                   type="checkbox"
                   checked={selectedGenres.includes(genre)}
@@ -846,7 +752,7 @@ export default function PerformerMapPage() {
             type="button"
             onClick={handleSearch}
             style={{
-              padding: "10px 20px",
+              padding: "9px 18px",
               border: "none",
               borderRadius: 8,
               background: "#2563eb",
@@ -870,7 +776,7 @@ export default function PerformerMapPage() {
               window.location.assign("/performer/map");
             }}
             style={{
-              padding: "10px 16px",
+              padding: "9px 14px",
               border: "1px solid #cbd5e1",
               borderRadius: 8,
               background: "#fff",
@@ -881,15 +787,15 @@ export default function PerformerMapPage() {
             条件をクリア
           </button>
         </div>
-      </section>
+      </div>
 
       <div
         style={{
-          padding: 12,
+          padding: 10,
           background: "#f8fafc",
           borderRadius: 8,
-          marginBottom: 12,
-          fontSize: 14,
+          marginBottom: 10,
+          fontSize: 13,
         }}
       >
         <p>検索対象：{total}件</p>
@@ -897,27 +803,16 @@ export default function PerformerMapPage() {
         <p>{status}</p>
 
         {error && (
-          <p style={{ color: "#dc2626", marginTop: 8 }}>
+          <p style={{ color: "#dc2626", marginTop: 6 }}>
             エラー：{error}
           </p>
         )}
       </div>
 
-      <div
-        ref={mapRef}
-        style={{
-          width: "100%",
-          height: 480,
-          borderRadius: 12,
-          border: "1px solid #ddd",
-          background: "#f1f5f9",
-        }}
-      />
-
       <p
         style={{
-          marginTop: 10,
-          fontSize: 12,
+          marginTop: 8,
+          fontSize: 11,
           color: "#666",
           lineHeight: 1.6,
         }}

@@ -7,6 +7,24 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const OTHER_VALUE = "__OTHER__";
+
+const STANDARD_INSTRUMENTS = [
+  "ピアノ",
+  "ギター",
+  "ベース",
+  "ドラム",
+  "サックス",
+  "バイオリン",
+];
+
+const STANDARD_GENRES = [
+  "ポップス",
+  "ロック",
+  "ジャズ",
+  "クラシック",
+];
+
 function getJapanToday(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Tokyo",
@@ -34,8 +52,7 @@ function isValidDate(value: string): boolean {
 }
 
 function isValidTime(value: string): boolean {
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return false;
-  return true;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
 
 function parseList(value: string | null): string[] {
@@ -49,6 +66,42 @@ function parseList(value: string | null): string[] {
         .filter(Boolean)
     ),
   ];
+}
+
+function matchesCategory(
+  itemValues: string[] | null | undefined,
+  selectedValues: string[],
+  standardValues: string[]
+): boolean {
+  if (selectedValues.length === 0) return true;
+
+  const values = Array.isArray(itemValues)
+    ? itemValues.filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0
+      )
+    : [];
+
+  if (values.length === 0) return false;
+
+  // 「その他」と「__OTHER__」の両方に対応
+  const normalSelections = selectedValues.filter(
+    (value) => value !== OTHER_VALUE && value !== "その他"
+  );
+
+  const includeOther =
+    selectedValues.includes(OTHER_VALUE) ||
+    selectedValues.includes("その他");
+
+  const matchesNormal =
+    normalSelections.length > 0 &&
+    values.some((value) => normalSelections.includes(value));
+
+  const matchesOther =
+    includeOther &&
+    values.some((value) => !standardValues.includes(value));
+
+  return matchesNormal || matchesOther;
 }
 
 async function getCurrentPerformerId(lineUserId: string) {
@@ -104,7 +157,7 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
 
     let startDate = params.get("startDate");
-    let endDate = params.get("endDate");
+    const endDate = params.get("endDate");
 
     if (startDate && !isValidDate(startDate)) {
       return NextResponse.json(
@@ -130,10 +183,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 期間が両方未指定の場合は従来どおり今日を対象にする
+    // 開始日・終了日とも未指定なら今日以降を対象にする
     if (!startDate && !endDate) {
       startDate = getJapanToday();
-      endDate = startDate;
     }
 
     const startTime = params.get("startTime");
@@ -159,7 +211,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 時間帯検索は開始・終了の両方が指定された場合のみ適用
     const useTimeFilter = Boolean(startTime && endTime);
 
     const instruments = parseList(params.get("instruments"));
@@ -195,7 +246,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 演奏案件を期間で取得
+    // 演奏案件を取得
     let performanceQuery = supabase
       .from("performance_requests")
       .select(`
@@ -241,24 +292,12 @@ export async function GET(request: NextRequest) {
         .gt("end_time", startTime!);
     }
 
-    if (instruments.length > 0) {
-      performanceQuery = performanceQuery.overlaps(
-        "instruments",
-        instruments
-      );
-    }
-
-    if (genres.length > 0) {
-      performanceQuery = performanceQuery.overlaps(
-        "genres",
-        genres
-      );
-    }
-
-    const { data: performanceRequests, error: requestsError } =
-      await performanceQuery.order("performance_date", {
-        ascending: true,
-      });
+    const {
+      data: performanceRequests,
+      error: requestsError,
+    } = await performanceQuery.order("performance_date", {
+      ascending: true,
+    });
 
     if (requestsError) throw requestsError;
 
@@ -268,6 +307,21 @@ export async function GET(request: NextRequest) {
           item.status === "open" ||
           applicationStatusByRequestId.has(item.id)
       )
+      .filter((item) => {
+        const instrumentMatch = matchesCategory(
+          item.instruments,
+          instruments,
+          STANDARD_INSTRUMENTS
+        );
+
+        const genreMatch = matchesCategory(
+          item.genres,
+          genres,
+          STANDARD_GENRES
+        );
+
+        return instrumentMatch && genreMatch;
+      })
       .map((item) => {
         const facilityData: any = item.facilities;
         const facility = Array.isArray(facilityData)
@@ -356,20 +410,6 @@ export async function GET(request: NextRequest) {
         .gt("end_time", startTime!);
     }
 
-    if (instruments.length > 0) {
-      lessonQuery = lessonQuery.overlaps(
-        "instruments",
-        instruments
-      );
-    }
-
-    if (genres.length > 0) {
-      lessonQuery = lessonQuery.overlaps(
-        "genres",
-        genres
-      );
-    }
-
     const { data: lessonOffers, error: lessonOffersError } =
       await lessonQuery.order("lesson_date", {
         ascending: true,
@@ -384,6 +424,21 @@ export async function GET(request: NextRequest) {
           item.status === "open" ||
           lessonApplicationStatusByOfferId.has(item.id)
       )
+      .filter((item) => {
+        const instrumentMatch = matchesCategory(
+          item.instruments,
+          instruments,
+          STANDARD_INSTRUMENTS
+        );
+
+        const genreMatch = matchesCategory(
+          item.genres,
+          genres,
+          STANDARD_GENRES
+        );
+
+        return instrumentMatch && genreMatch;
+      })
       .map((item) => ({
         ...item,
         map_type: "lesson",
