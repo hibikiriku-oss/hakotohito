@@ -192,8 +192,9 @@ export async function POST(
         p_match_id: matchId,
         p_disputed_by: "performer",
         p_reason: reason,
+        p_user_id: user.id,
       }
-    );
+);
 
     if (disputeError) {
       console.error("演奏者側の異議申し立てエラー:", disputeError);

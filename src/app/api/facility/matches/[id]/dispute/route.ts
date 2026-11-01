@@ -171,6 +171,7 @@ export async function POST(
         p_match_id: matchId,
         p_disputed_by: "facility",
         p_reason: reason,
+        p_user_id: user.id,
       }
     );
 
