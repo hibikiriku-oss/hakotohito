@@ -9,14 +9,11 @@ const PAGE_SIZE = 10;
 type SortOrder = "newest" | "date";
 
 type User = {
-  id: string;
-  display_name: string | null;
   picture_url: string | null;
 };
 
 type Performer = {
   id: string;
-  user_id: string;
   name: string;
   instruments: string[];
   genres: string[];

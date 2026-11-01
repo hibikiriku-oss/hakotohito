@@ -31,8 +31,6 @@ export async function GET(
         area,
         bio,
         users (
-          id,
-          display_name,
           picture_url
         )
       `)
@@ -113,8 +111,14 @@ export async function GET(
           )
         : null;
 
+    // 内部処理用のuser_idはAPIレスポンスに含めない
+    const {
+      user_id: _userId,
+      ...publicPerformer
+    } = performer;
+
     return NextResponse.json({
-      performer,
+      performer: publicPerformer,
       rating,
       review_count: reviewCount,
       reviews,
