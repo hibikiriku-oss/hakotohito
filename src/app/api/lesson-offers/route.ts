@@ -103,6 +103,15 @@ const idToken = authorization?.startsWith("Bearer ")
   ? authorization.slice("Bearer ".length)
   : "";
 
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "ログインが必要です。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
 if (idToken) {
   const verified = await verifyLineIdToken(idToken);
 

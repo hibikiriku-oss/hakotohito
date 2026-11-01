@@ -334,11 +334,18 @@ export default function FacilityReviewPage() {
 
                 <textarea
                   value={comment}
-                  onChange={(e) => setComment(e.target.value)}
+                  maxLength={1000}
+                  onChange={(e) =>
+                    setComment(e.target.value.slice(0, 1000))
+                  }
                   placeholder="演奏者についての感想を入力してください"
                   rows={5}
                   className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white p-4 text-sm leading-6 outline-none transition focus:border-gray-400 focus:ring-2 focus:ring-gray-100"
                 />
+
+                <p className="mt-1 text-right text-xs text-gray-400">
+                  {comment.length} / 1000文字
+                </p>
               </div>
 
               {error && (

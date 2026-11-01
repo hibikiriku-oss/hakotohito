@@ -92,9 +92,34 @@ export default function FacilityRequestEditPage() {
       setLoading(true);
       setError("");
 
+      await liff.init({
+        liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
+        withLoginOnExternalBrowser: true,
+      });
+
+      if (!liff.isLoggedIn()) {
+        liff.login();
+        return;
+      }
+
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
       const response = await fetch(
-        `/api/performance-requests/${requestId}`
+        `/api/performance-requests/${requestId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+          cache: "no-store",
+        }
       );
+
       const data = await response.json();
 
       if (!response.ok) {
@@ -153,7 +178,7 @@ export default function FacilityRequestEditPage() {
           : ""
       );
 
-      // 旧案件で募集対象ランクが未設定の場合は、従来の応募仕様に合わせて全ランクを選択する。
+      // 旧案件で募集対象ランクが未設定の場合は、全ランクを選択する。
       const validTargetLevels = ["beginner", "amateur", "pro"];
       const savedTargetLevels = Array.isArray(loadedRequest.target_levels)
         ? loadedRequest.target_levels.filter((level) =>

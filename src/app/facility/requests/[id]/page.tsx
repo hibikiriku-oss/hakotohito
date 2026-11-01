@@ -83,12 +83,15 @@ export default function FacilityRequestDetailPage() {
         }
 
         // 案件情報を取得
-        const response = await fetch(
-          `/api/performance-requests/${requestId}`,
-          {
-            cache: "no-store",
-          }
-        );
+const response = await fetch(
+  `/api/performance-requests/${requestId}`,
+  {
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: "no-store",
+  }
+);
 
         const data =
           await response.json();

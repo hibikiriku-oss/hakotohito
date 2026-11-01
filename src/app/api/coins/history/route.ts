@@ -2,36 +2,54 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+export const dynamic = "force-dynamic";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization");
     const match = authorization?.match(/^Bearer\s+(.+)$/i);
-    const idToken = match?.[1]?.trim();
+    const idToken = match?.[1]?.trim() ?? "";
 
     if (!idToken) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "LINEの本人確認情報がありません。再ログインしてください。",
         },
-        { status: 401 }
+        401
       );
     }
 
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "LINEの本人確認に失敗しました。再ログインしてください。",
         },
-        { status: 401 }
+        401
       );
     }
 
@@ -42,18 +60,21 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (userError) {
-      console.error("コイン履歴のユーザー取得エラー:", userError.message);
+      console.error(
+        "コイン履歴のユーザー取得エラー:",
+        userError.code ?? "UNKNOWN"
+      );
 
-      return NextResponse.json(
-        { error: "ユーザー情報の取得に失敗しました" },
-        { status: 500 }
+      return jsonResponse(
+        { error: "ユーザー情報の取得に失敗しました。" },
+        500
       );
     }
 
     if (!user) {
-      return NextResponse.json(
-        { error: "ユーザーが見つかりません" },
-        { status: 404 }
+      return jsonResponse(
+        { error: "ユーザーが見つかりません。" },
+        404
       );
     }
 
@@ -67,24 +88,30 @@ export async function GET(request: NextRequest) {
       .limit(100);
 
     if (error) {
-      console.error("コイン履歴取得エラー:", error.message);
+      console.error(
+        "コイン履歴取得エラー:",
+        error.code ?? "UNKNOWN"
+      );
 
-      return NextResponse.json(
-        { error: "コイン履歴の取得に失敗しました" },
-        { status: 500 }
+      return jsonResponse(
+        { error: "コイン履歴の取得に失敗しました。" },
+        500
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       transactions: transactions ?? [],
     });
   } catch (error) {
-    console.error("コイン履歴APIエラー:", error);
+    console.error(
+      "コイン履歴APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
-    return NextResponse.json(
-      { error: "コイン履歴の取得に失敗しました" },
-      { status: 500 }
+    return jsonResponse(
+      { error: "コイン履歴の取得に失敗しました。" },
+      500
     );
   }
 }

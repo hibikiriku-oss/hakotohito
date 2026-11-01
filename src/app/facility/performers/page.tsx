@@ -80,7 +80,12 @@ export default function FacilityPerformersPage() {
 
         const [performersResponse, favoritesResponse] =
           await Promise.all([
-            fetch("/api/performers"),
+            fetch("/api/performers", {
+              headers: {
+                Authorization: `Bearer ${idToken}`,
+              },
+              cache: "no-store",
+            }),
             fetch("/api/favorites", {
               headers: {
                 Authorization: `Bearer ${idToken}`,

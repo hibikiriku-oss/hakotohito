@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  UIEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
@@ -23,6 +29,7 @@ type Message = {
 type ChatResponse = {
   currentUserId: string;
   messages: Message[];
+  hasMore?: boolean;
 };
 
 function getUser(
@@ -49,6 +56,33 @@ function formatTime(date: string) {
   );
 }
 
+function mergeMessages(
+  existing: Message[],
+  incoming: Message[]
+) {
+  const map = new Map<string, Message>();
+
+  for (const message of existing) {
+    map.set(message.id, message);
+  }
+
+  for (const message of incoming) {
+    map.set(message.id, message);
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    const timeDifference =
+      new Date(a.created_at).getTime() -
+      new Date(b.created_at).getTime();
+
+    if (timeDifference !== 0) {
+      return timeDifference;
+    }
+
+    return a.id.localeCompare(b.id);
+  });
+}
+
 export default function FacilityMatchChatPage() {
   const router = useRouter();
   const params = useParams();
@@ -56,33 +90,39 @@ export default function FacilityMatchChatPage() {
   const matchId = params.id as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentUserId, setCurrentUserId] =
-    useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
 
-  const [messageText, setMessageText] =
-    useState("");
+  const [messageText, setMessageText] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
 
-  const [sending, setSending] =
-    useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
+  const [accessDenied, setAccessDenied] = useState(false);
 
-  const messagesEndRef =
-    useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const loadingOlderRef = useRef(false);
+
+  const pendingScrollRestoreRef = useRef<{
+    scrollHeight: number;
+    scrollTop: number;
+  } | null>(null);
+
+  const shouldScrollToBottomRef = useRef(false);
 
   async function loadMessages(
     showLoading = false
-  ) {
+  ): Promise<boolean> {
     try {
       if (showLoading) {
         setLoading(true);
       }
 
-            const idToken = liff.getIDToken();
+      const idToken = liff.getIDToken();
 
       if (!idToken) {
         throw new Error(
@@ -106,6 +146,13 @@ export default function FacilityMatchChatPage() {
           | { error: string };
 
       if (!response.ok) {
+        if (response.status === 403) {
+          setAccessDenied(true);
+          setMessages([]);
+          setHasMore(false);
+          return false;
+        }
+
         throw new Error(
           "error" in data
             ? data.error
@@ -113,16 +160,52 @@ export default function FacilityMatchChatPage() {
         );
       }
 
-      const chatData =
-        data as ChatResponse;
+      const chatData = data as ChatResponse;
 
-      setCurrentUserId(
-        chatData.currentUserId
-      );
+      setAccessDenied(false);
+      setCurrentUserId(chatData.currentUserId);
+      setError("");
 
-      setMessages(
-        chatData.messages ?? []
-      );
+      const container = messagesContainerRef.current;
+
+      const isNearBottom = container
+        ? container.scrollHeight -
+            container.scrollTop -
+            container.clientHeight <
+          120
+        : true;
+
+      setMessages((previous) => {
+        if (showLoading) {
+          shouldScrollToBottomRef.current = true;
+          return chatData.messages ?? [];
+        }
+
+        const previousLastId =
+          previous[previous.length - 1]?.id;
+
+        const incomingLastId =
+          chatData.messages?.[
+            chatData.messages.length - 1
+          ]?.id;
+
+        if (
+          incomingLastId &&
+          incomingLastId !== previousLastId &&
+          isNearBottom
+        ) {
+          shouldScrollToBottomRef.current = true;
+        }
+
+        return mergeMessages(
+          previous,
+          chatData.messages ?? []
+        );
+      });
+
+      setHasMore(chatData.hasMore ?? false);
+
+      return true;
     } catch (err) {
       console.error(err);
 
@@ -131,10 +214,115 @@ export default function FacilityMatchChatPage() {
           ? err.message
           : "チャット情報の取得に失敗しました"
       );
+
+      return true;
     } finally {
       if (showLoading) {
         setLoading(false);
       }
+    }
+  }
+
+  async function loadOlderMessages() {
+    if (
+      loadingOlderRef.current ||
+      !hasMore ||
+      messages.length === 0 ||
+      accessDenied
+    ) {
+      return;
+    }
+
+    const oldestMessage = messages[0];
+
+    const container = messagesContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    setError("");
+
+    try {
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
+      const params = new URLSearchParams({
+        beforeCreatedAt: oldestMessage.created_at,
+        beforeId: oldestMessage.id,
+      });
+
+      const response = await fetch(
+        `/api/matches/${matchId}/chat?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+          cache: "no-store",
+        }
+      );
+
+      const data =
+        (await response.json()) as
+          | ChatResponse
+          | { error: string };
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          setAccessDenied(true);
+          setMessages([]);
+          setHasMore(false);
+          return;
+        }
+
+        throw new Error(
+          "error" in data
+            ? data.error
+            : "過去のメッセージを取得できませんでした"
+        );
+      }
+
+      const chatData = data as ChatResponse;
+
+      pendingScrollRestoreRef.current = {
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+      };
+
+      setMessages((previous) =>
+        mergeMessages(
+          previous,
+          chatData.messages ?? []
+        )
+      );
+
+      setHasMore(chatData.hasMore ?? false);
+    } catch (err) {
+      console.error(err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "過去のメッセージを取得できませんでした"
+      );
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }
+
+  function handleMessagesScroll(
+    event: UIEvent<HTMLDivElement>
+  ) {
+    if (event.currentTarget.scrollTop <= 60) {
+      void loadOlderMessages();
     }
   }
 
@@ -143,12 +331,13 @@ export default function FacilityMatchChatPage() {
       | ReturnType<typeof setInterval>
       | undefined;
 
+    let cancelled = false;
+
     async function initialize() {
       try {
         await liff.init({
           liffId:
-            process.env
-              .NEXT_PUBLIC_LIFF_ID!,
+            process.env.NEXT_PUBLIC_LIFF_ID!,
         });
 
         if (!liff.isLoggedIn()) {
@@ -156,10 +345,19 @@ export default function FacilityMatchChatPage() {
           return;
         }
 
-        await loadMessages(true);
+        const canContinue = await loadMessages(true);
 
-        intervalId = setInterval(() => {
-          loadMessages(false);
+        if (cancelled || !canContinue) {
+          return;
+        }
+
+        intervalId = setInterval(async () => {
+          const canContinuePolling =
+            await loadMessages(false);
+
+          if (!canContinuePolling && intervalId) {
+            clearInterval(intervalId);
+          }
         }, 3000);
       } catch (err) {
         console.error(err);
@@ -177,6 +375,8 @@ export default function FacilityMatchChatPage() {
     initialize();
 
     return () => {
+      cancelled = true;
+
       if (intervalId) {
         clearInterval(intervalId);
       }
@@ -184,9 +384,29 @@ export default function FacilityMatchChatPage() {
   }, [matchId]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({
-      behavior: "smooth",
-    });
+    const container = messagesContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const pendingRestore =
+      pendingScrollRestoreRef.current;
+
+    if (pendingRestore) {
+      container.scrollTop =
+        pendingRestore.scrollTop +
+        (container.scrollHeight -
+          pendingRestore.scrollHeight);
+
+      pendingScrollRestoreRef.current = null;
+      return;
+    }
+
+    if (shouldScrollToBottomRef.current) {
+      container.scrollTop = container.scrollHeight;
+      shouldScrollToBottomRef.current = false;
+    }
   }, [messages]);
 
   async function handleSubmit(
@@ -194,14 +414,9 @@ export default function FacilityMatchChatPage() {
   ) {
     event.preventDefault();
 
-    const message =
-      messageText.trim();
+    const message = messageText.trim();
 
-    if (!message) {
-      return;
-    }
-
-    if (sending) {
+    if (!message || sending || accessDenied) {
       return;
     }
 
@@ -209,7 +424,7 @@ export default function FacilityMatchChatPage() {
       setSending(true);
       setError("");
 
-            const idToken = liff.getIDToken();
+      const idToken = liff.getIDToken();
 
       if (!idToken) {
         throw new Error(
@@ -231,10 +446,13 @@ export default function FacilityMatchChatPage() {
         }
       );
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 403) {
+          setAccessDenied(true);
+        }
+
         throw new Error(
           data.error ||
             "メッセージの送信に失敗しました"
@@ -242,6 +460,8 @@ export default function FacilityMatchChatPage() {
       }
 
       setMessageText("");
+
+      shouldScrollToBottomRef.current = true;
 
       await loadMessages(false);
     } catch (err) {
@@ -272,7 +492,6 @@ export default function FacilityMatchChatPage() {
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen flex flex-col">
-
         {/* ヘッダー */}
         <header className="bg-white border-b p-4 sticky top-0 z-10">
           <button
@@ -304,123 +523,143 @@ export default function FacilityMatchChatPage() {
           </div>
         )}
 
-        {/* メッセージ */}
-        <div className="flex-1 p-4 space-y-3 overflow-y-auto">
+        {accessDenied ? (
+          <div className="flex-1 p-6 flex items-center justify-center">
+            <div className="text-center bg-white border rounded-2xl p-6">
+              <div className="text-3xl">🔒</div>
 
-          {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-4xl">
-                💬
-              </div>
+              <h2 className="font-bold text-gray-800 mt-4">
+                チャットを利用できません
+              </h2>
 
-              <p className="mt-3 text-gray-600">
-                まだメッセージはありません。
-              </p>
-
-              <p className="mt-1 text-sm text-gray-400">
-                演奏者に確認したいことを送ってみましょう。
+              <p className="text-sm text-gray-500 mt-2 leading-6">
+                現在、このチャットを利用する権限がありません。
+                バンドの場合は、現在のリーダーのみ利用できます。
               </p>
             </div>
-          ) : (
-            messages.map((item) => {
-              const isMine =
-                item.sender_id ===
-                currentUserId;
+          </div>
+        ) : (
+          <>
+            {/* メッセージ */}
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleMessagesScroll}
+              className="flex-1 p-4 space-y-3 overflow-y-auto"
+            >
+              {loadingOlder && (
+                <div className="text-center py-3">
+                  <span className="inline-flex items-center gap-2 text-xs text-gray-400">
+                    <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-700 rounded-full animate-spin" />
+                    過去のメッセージを読み込み中...
+                  </span>
+                </div>
+              )}
 
-              const user =
-                getUser(item.users);
+              {!loadingOlder && hasMore && (
+                <p className="text-center text-xs text-gray-400 py-3">
+                  上にスクロールすると過去のメッセージを読み込めます
+                </p>
+              )}
 
-              return (
-                <div
-                  key={item.id}
-                  className={`flex ${
-                    isMine
-                      ? "justify-end"
-                      : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-[80%] ${
-                      isMine
-                        ? "items-end"
-                        : "items-start"
-                    } flex flex-col`}
-                  >
-                    {!isMine && (
-                      <p className="text-xs text-gray-500 mb-1 px-1">
-                        {user?.display_name ||
-                          "演奏者"}
-                      </p>
-                    )}
+              {messages.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl">💬</div>
 
+                  <p className="mt-3 text-gray-600">
+                    まだメッセージはありません。
+                  </p>
+
+                  <p className="mt-1 text-sm text-gray-400">
+                    演奏者に確認したいことを送ってみましょう。
+                  </p>
+                </div>
+              ) : (
+                messages.map((item) => {
+                  const isMine =
+                    item.sender_id === currentUserId;
+
+                  const user = getUser(item.users);
+
+                  return (
                     <div
-                      className={`rounded-2xl px-4 py-3 ${
+                      key={item.id}
+                      className={`flex ${
                         isMine
-                          ? "bg-black text-white rounded-br-md"
-                          : "bg-white border text-gray-800 rounded-bl-md"
+                          ? "justify-end"
+                          : "justify-start"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap break-words">
-                        {item.message}
-                      </p>
+                      <div
+                        className={`max-w-[80%] ${
+                          isMine
+                            ? "items-end"
+                            : "items-start"
+                        } flex flex-col`}
+                      >
+                        {!isMine && (
+                          <p className="text-xs text-gray-500 mb-1 px-1">
+                            {user?.display_name || "演奏者"}
+                          </p>
+                        )}
+
+                        <div
+                          className={`rounded-2xl px-4 py-3 ${
+                            isMine
+                              ? "bg-black text-white rounded-br-md"
+                              : "bg-white border text-gray-800 rounded-bl-md"
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap break-words">
+                            {item.message}
+                          </p>
+                        </div>
+
+                        <p className="text-xs text-gray-400 mt-1 px-1">
+                          {formatTime(item.created_at)}
+                        </p>
+                      </div>
                     </div>
+                  );
+                })
+              )}
+            </div>
 
-                    <p className="text-xs text-gray-400 mt-1 px-1">
-                      {formatTime(
-                        item.created_at
-                      )}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
-
-          <div ref={messagesEndRef} />
-
-        </div>
-
-        {/* 入力欄 */}
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white border-t p-3 sticky bottom-0"
-        >
-          <div className="flex items-end gap-2">
-
-            <textarea
-              value={messageText}
-              onChange={(event) =>
-                setMessageText(
-                  event.target.value
-                )
-              }
-              placeholder="メッセージを入力..."
-              rows={1}
-              maxLength={1000}
-              disabled={sending}
-              className="flex-1 resize-none border rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-black disabled:bg-gray-100"
-            />
-
-            <button
-              type="submit"
-              disabled={
-                sending ||
-                !messageText.trim()
-              }
-              className="bg-black text-white rounded-2xl px-5 py-3 font-bold disabled:bg-gray-300"
+            {/* 入力欄 */}
+            <form
+              onSubmit={handleSubmit}
+              className="bg-white border-t p-3 sticky bottom-0"
             >
-              {sending
-                ? "送信中..."
-                : "送信"}
-            </button>
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={messageText}
+                  onChange={(event) =>
+                    setMessageText(event.target.value)
+                  }
+                  placeholder="メッセージを入力..."
+                  rows={1}
+                  maxLength={1000}
+                  disabled={sending}
+                  className="flex-1 resize-none border rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-black disabled:bg-gray-100"
+                />
 
-          </div>
+                <button
+                  type="submit"
+                  disabled={
+                    sending ||
+                    !messageText.trim()
+                  }
+                  className="bg-black text-white rounded-2xl px-5 py-3 font-bold disabled:bg-gray-300"
+                >
+                  {sending ? "送信中..." : "送信"}
+                </button>
+              </div>
 
-          <p className="text-right text-xs text-gray-400 mt-1">
-            {messageText.length}/1000
-          </p>
-        </form>
-
+              <p className="text-right text-xs text-gray-400 mt-1">
+                {messageText.length}/1000
+              </p>
+            </form>
+          </>
+        )}
       </div>
     </main>
   );

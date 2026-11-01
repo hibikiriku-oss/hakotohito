@@ -11,6 +11,9 @@ const supabase =
     ? createClient(supabaseUrl, serviceRoleKey)
     : null;
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function getAuthenticatedPerformer(request: NextRequest) {
   const authorization = request.headers.get("authorization");
   const match = authorization?.match(/^Bearer\s+(.+)$/i);
@@ -118,7 +121,6 @@ export async function GET(request: NextRequest) {
     const selectFields =
       "id, band_id, inviter_performer_id, invitee_performer_id, message, status, created_at, responded_at";
 
-    // 自分宛ての未回答の招待を取得
     const { data: receivedRows, error: receivedError } =
       await supabase
         .from("band_invitations")
@@ -137,7 +139,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 自分が送信した招待を、回答状態にかかわらず取得
     const { data: sentRows, error: sentError } = await supabase
       .from("band_invitations")
       .select(selectFields)
@@ -262,11 +263,18 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      performerId: auth.performerId,
-      invitations: receivedInvitations,
-      sentInvitations,
-    });
+    return NextResponse.json(
+      {
+        performerId: auth.performerId,
+        invitations: receivedInvitations,
+        sentInvitations,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error("招待一覧APIエラー:", error);
 
@@ -318,10 +326,12 @@ export async function POST(request: NextRequest) {
 
     if (
       typeof input.bandId !== "string" ||
-      typeof input.inviteePerformerId !== "string"
+      !UUID_PATTERN.test(input.bandId) ||
+      typeof input.inviteePerformerId !== "string" ||
+      !UUID_PATTERN.test(input.inviteePerformerId)
     ) {
       return NextResponse.json(
-        { error: "バンドと招待相手を選択してください" },
+        { error: "バンドと招待相手を正しく選択してください" },
         { status: 400 }
       );
     }
@@ -376,9 +386,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 招待を送信できるのは、アクティブなリーダーのみ
     const { data: membership, error: membershipError } = await supabase
       .from("band_members")
-      .select("id")
+      .select("id, role")
       .eq("band_id", band.id)
       .eq("performer_id", auth.performerId)
       .eq("status", "active")
@@ -395,7 +406,14 @@ export async function POST(request: NextRequest) {
 
     if (!membership) {
       return NextResponse.json(
-        { error: "このバンドのメンバーだけが招待を送信できます" },
+        { error: "このバンドのメンバーではありません" },
+        { status: 403 }
+      );
+    }
+
+    if (membership.role !== "leader") {
+      return NextResponse.json(
+        { error: "バンド招待を送信できるのはリーダーのみです" },
         { status: 403 }
       );
     }
@@ -485,6 +503,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
+      if (insertError.code === "23505") {
+        return NextResponse.json(
+          { error: "この演奏者には、すでに未回答の招待を送っています" },
+          { status: 409 }
+        );
+      }
+
       console.error("バンド招待登録エラー:", insertError);
 
       return NextResponse.json(
@@ -493,7 +518,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-        // 招待先のLINEユーザーIDを取得
+    // 招待先のLINEユーザーIDを取得
     let notificationSent = false;
 
     const { data: inviteeUser, error: inviteeUserError } =
@@ -712,10 +737,10 @@ export async function PATCH(request: NextRequest) {
 
     if (
       typeof input.invitationId !== "string" ||
-      !input.invitationId.trim()
+      !UUID_PATTERN.test(input.invitationId)
     ) {
       return NextResponse.json(
-        { error: "回答する招待を選択してください" },
+        { error: "回答する招待を正しく選択してください" },
         { status: 400 }
       );
     }

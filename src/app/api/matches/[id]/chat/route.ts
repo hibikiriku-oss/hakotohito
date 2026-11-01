@@ -2,16 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+export const dynamic = "force-dynamic";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
 );
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const PAGE_SIZE = 100;
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type RouteContext = {
   params: Promise<{
     id: string;
   }>;
 };
+
+function jsonError(message: string, status: number) {
+  return NextResponse.json(
+    { error: message },
+    { status, headers: NO_STORE_HEADERS }
+  );
+}
 
 async function getAuthorizedMatch(
   request: NextRequest,
@@ -20,18 +44,14 @@ async function getAuthorizedMatch(
   const authorization =
     request.headers.get("authorization");
 
-  const idToken = authorization?.startsWith("Bearer ")
-    ? authorization.slice("Bearer ".length)
-    : "";
+  const idToken =
+    authorization?.match(/^Bearer\s+(.+)$/i)?.[1] ?? "";
 
   if (!idToken) {
     return {
-      error: NextResponse.json(
-        {
-          error:
-            "LINEの本人確認情報がありません。再ログインしてください。",
-        },
-        { status: 401 }
+      error: jsonError(
+        "LINEの本人確認情報がありません。再ログインしてください。",
+        401
       ),
     };
   }
@@ -40,195 +60,171 @@ async function getAuthorizedMatch(
 
   if (!verified) {
     return {
-      error: NextResponse.json(
-        {
-          error:
-            "LINEの本人確認に失敗しました。再ログインしてください。",
-        },
-        { status: 401 }
+      error: jsonError(
+        "LINEの本人確認に失敗しました。再ログインしてください。",
+        401
       ),
     };
   }
 
-  const lineUserId = verified.userId;
-  const {
-    data: currentUser,
-    error: currentUserError,
-  } =
+  const { data: currentUser, error: currentUserError } =
     await supabase
       .from("users")
       .select("id")
-      .eq("line_user_id", lineUserId)
+      .eq("line_user_id", verified.userId)
       .single();
 
   if (currentUserError || !currentUser) {
     return {
-      error: NextResponse.json(
-        {
-          error: "ユーザーが見つかりません",
-        },
-        { status: 404 }
-      ),
+      error: jsonError("ユーザーが見つかりません", 404),
     };
   }
 
-  const {
-    data: match,
-    error: matchError,
-  } = await supabase
-    .from("matches")
-    .select(
-      `
-      id,
-      status,
-      performance_status,
-      performer_id,
-      request_id
-      `
-    )
-    .eq("id", matchId)
-    .single();
+  const { data: match, error: matchError } =
+    await supabase
+      .from("matches")
+      .select(
+        `
+        id,
+        status,
+        performance_status,
+        performer_id,
+        request_id,
+        band_id
+        `
+      )
+      .eq("id", matchId)
+      .single();
 
   if (matchError || !match) {
-    console.error(
-      "マッチング取得エラー:",
-      matchError
-    );
+    console.error("マッチング取得エラー:", matchError);
 
     return {
-      error: NextResponse.json(
-        {
-          error: "マッチングが見つかりません",
-        },
-        { status: 404 }
-      ),
-    };
-  }
-
-  if (match.status !== "active") {
-    return {
-      error: NextResponse.json(
-        {
-          error:
-            "このマッチングではチャットを利用できません",
-        },
-        { status: 403 }
-      ),
+      error: jsonError("マッチングが見つかりません", 404),
     };
   }
 
   if (
-    match.performance_status ===
-    "cancelled"
+    match.status !== "active" ||
+    match.performance_status === "cancelled"
   ) {
     return {
-      error: NextResponse.json(
-        {
-          error:
-            "キャンセルされたマッチングではチャットを利用できません",
-        },
-        { status: 403 }
+      error: jsonError(
+        "このマッチングではチャットを利用できません",
+        403
       ),
     };
   }
 
-  const {
-    data: performer,
-    error: performerError,
-  } = await supabase
-    .from("performers")
-    .select("user_id")
-    .eq("id", match.performer_id)
-    .single();
+  const { data: performer, error: performerError } =
+    await supabase
+      .from("performers")
+      .select("user_id")
+      .eq("id", match.performer_id)
+      .single();
 
   if (performerError || !performer) {
-    console.error(
-      "演奏者取得エラー:",
-      performerError
-    );
+    console.error("演奏者取得エラー:", performerError);
 
     return {
-      error: NextResponse.json(
-        {
-          error: "演奏者情報が見つかりません",
-        },
-        { status: 404 }
-      ),
+      error: jsonError("演奏者情報が見つかりません", 404),
     };
   }
 
-  const {
-    data: performanceRequest,
-    error: requestError,
-  } =
+  const { data: performanceRequest, error: requestError } =
     await supabase
       .from("performance_requests")
       .select("facility_id")
       .eq("id", match.request_id)
       .single();
 
-  if (
-    requestError ||
-    !performanceRequest
-  ) {
-    console.error(
-      "演奏依頼取得エラー:",
-      requestError
-    );
+  if (requestError || !performanceRequest) {
+    console.error("演奏依頼取得エラー:", requestError);
 
     return {
-      error: NextResponse.json(
-        {
-          error: "演奏依頼が見つかりません",
-        },
-        { status: 404 }
-      ),
+      error: jsonError("演奏依頼が見つかりません", 404),
     };
   }
 
-  const {
-    data: facility,
-    error: facilityError,
-  } =
+  const { data: facility, error: facilityError } =
     await supabase
       .from("facilities")
       .select("user_id")
-      .eq(
-        "id",
-        performanceRequest.facility_id
-      )
+      .eq("id", performanceRequest.facility_id)
       .single();
 
   if (facilityError || !facility) {
-    console.error(
-      "施設取得エラー:",
-      facilityError
-    );
+    console.error("施設取得エラー:", facilityError);
 
     return {
-      error: NextResponse.json(
-        {
-          error: "施設情報が見つかりません",
-        },
-        { status: 404 }
-      ),
+      error: jsonError("施設情報が見つかりません", 404),
     };
   }
-
-  const isPerformer =
-    currentUser.id === performer.user_id;
 
   const isFacility =
     currentUser.id === facility.user_id;
 
+  let isPerformer = false;
+
+  if (match.band_id) {
+    // バンドの場合は現在のアクティブなリーダーだけを許可する。
+    const { data: leaders, error: leaderError } =
+      await supabase
+        .from("band_members")
+        .select("performer_id")
+        .eq("band_id", match.band_id)
+        .eq("role", "leader")
+        .eq("status", "active");
+
+    if (leaderError) {
+      console.error("バンドリーダー取得エラー:", leaderError);
+
+      return {
+        error: jsonError(
+          "バンドの利用権限を確認できませんでした",
+          500
+        ),
+      };
+    }
+
+    const leaderPerformerIds =
+      (leaders ?? []).map((leader) => leader.performer_id);
+
+    if (leaderPerformerIds.length > 0) {
+      const { data: leaderUsers, error: leaderUserError } =
+        await supabase
+          .from("performers")
+          .select("user_id")
+          .in("id", leaderPerformerIds);
+
+      if (leaderUserError) {
+        console.error(
+          "バンドリーダーユーザー取得エラー:",
+          leaderUserError
+        );
+
+        return {
+          error: jsonError(
+            "バンドの利用権限を確認できませんでした",
+            500
+          ),
+        };
+      }
+
+      isPerformer = (leaderUsers ?? []).some(
+        (leader) => leader.user_id === currentUser.id
+      );
+    }
+  } else {
+    isPerformer =
+      currentUser.id === performer.user_id;
+  }
+
   if (!isPerformer && !isFacility) {
     return {
-      error: NextResponse.json(
-        {
-          error:
-            "このチャットを利用する権限がありません",
-        },
-        { status: 403 }
+      error: jsonError(
+        "このチャットを利用する権限がありません",
+        403
       ),
     };
   }
@@ -239,18 +235,11 @@ async function getAuthorizedMatch(
   };
 }
 
-async function getOrCreateConversation(
-  matchId: string
-) {
-  const {
-    data: existingConversation,
-    error: existingError,
-  } =
+async function getOrCreateConversation(matchId: string) {
+  const { data: existingConversation, error: existingError } =
     await supabase
       .from("conversations")
-      .select(
-        "id, match_id, created_at"
-      )
+      .select("id, match_id, created_at")
       .eq("match_id", matchId)
       .maybeSingle();
 
@@ -262,37 +251,24 @@ async function getOrCreateConversation(
     return existingConversation;
   }
 
-  const {
-    data: newConversation,
-    error: createError,
-  } =
+  const { data: newConversation, error: createError } =
     await supabase
       .from("conversations")
       .insert({
         match_id: matchId,
       })
-      .select(
-        "id, match_id, created_at"
-      )
+      .select("id, match_id, created_at")
       .single();
 
   if (createError) {
-    const {
-      data: retryConversation,
-      error: retryError,
-    } =
+    const { data: retryConversation, error: retryError } =
       await supabase
         .from("conversations")
-        .select(
-          "id, match_id, created_at"
-        )
+        .select("id, match_id, created_at")
         .eq("match_id", matchId)
         .single();
 
-    if (
-      retryError ||
-      !retryConversation
-    ) {
+    if (retryError || !retryConversation) {
       throw createError;
     }
 
@@ -307,169 +283,185 @@ export async function GET(
   context: RouteContext
 ) {
   try {
-    const { id: matchId } =
-      await context.params;
+    const { id: matchId } = await context.params;
 
-    const authorization =
-      await getAuthorizedMatch(
-        request,
-        matchId
-      );
+    if (!UUID_PATTERN.test(matchId)) {
+      return jsonError("マッチングIDが正しくありません", 400);
+    }
+
+    const authorization = await getAuthorizedMatch(
+      request,
+      matchId
+    );
 
     if (authorization.error) {
       return authorization.error;
     }
 
-    const { currentUser } =
-      authorization;
+    const { currentUser } = authorization;
 
     const conversation =
-      await getOrCreateConversation(
-        matchId
-      );
+      await getOrCreateConversation(matchId);
 
-    /*
-     * summary=true の場合は、
-     * チャットを開かずに未読件数だけ取得する。
-     *
-     * マッチング一覧などから未読件数を表示するときに使用する。
-     */
+    const searchParams = request.nextUrl.searchParams;
+
     const isSummary =
-      request.nextUrl.searchParams.get(
-        "summary"
-      ) === "true";
+      searchParams.get("summary") === "true";
 
-    if (isSummary) {
-      const {
-        count: unreadCount,
-        error: unreadError,
-      } = await supabase
-        .from("messages")
-        .select("id", {
-          count: "exact",
-          head: true,
-        })
-        .eq(
-          "conversation_id",
-          conversation.id
-        )
-        .neq(
-          "sender_id",
-          currentUser.id
-        )
-        .is("read_at", null);
+    const beforeCreatedAt =
+      searchParams.get("beforeCreatedAt");
 
-      if (unreadError) {
-        console.error(
-          "未読件数取得エラー:",
-          unreadError
-        );
+    const beforeId =
+      searchParams.get("beforeId");
 
-        return NextResponse.json(
-          {
-            error:
-              "未読件数の取得に失敗しました",
-          },
-          { status: 500 }
+    const hasCreatedAt = beforeCreatedAt !== null;
+    const hasId = beforeId !== null;
+
+    if (hasCreatedAt !== hasId) {
+      return jsonError(
+        "過去メッセージの取得条件が正しくありません",
+        400
+      );
+    }
+
+    if (isSummary && hasCreatedAt) {
+      return jsonError(
+        "未読件数取得と過去メッセージ取得は同時に指定できません",
+        400
+      );
+    }
+
+    let cursorCreatedAt: string | null = null;
+
+    if (hasCreatedAt && hasId) {
+      if (
+        !UUID_PATTERN.test(beforeId!) ||
+        !beforeCreatedAt ||
+        !Number.isFinite(Date.parse(beforeCreatedAt))
+      ) {
+        return jsonError(
+          "過去メッセージの取得条件が正しくありません",
+          400
         );
       }
 
-      return NextResponse.json({
-        conversation,
-        currentUserId: currentUser.id,
-        unreadCount: unreadCount ?? 0,
-      });
+      cursorCreatedAt =
+        new Date(beforeCreatedAt).toISOString();
     }
 
-    /*
-     * 通常のチャット画面では、
-     * 相手から届いた未読メッセージを既読にする。
-     */
-    const { error: readError } =
-      await supabase
-        .from("messages")
-        .update({
-          read_at:
-            new Date().toISOString(),
-        })
-        .eq(
-          "conversation_id",
-          conversation.id
-        )
-        .neq(
-          "sender_id",
-          currentUser.id
-        )
-        .is("read_at", null);
+    if (isSummary) {
+      const { count: unreadCount, error: unreadError } =
+        await supabase
+          .from("messages")
+          .select("id", {
+            count: "exact",
+            head: true,
+          })
+          .eq("conversation_id", conversation.id)
+          .neq("sender_id", currentUser.id)
+          .is("read_at", null);
 
-    if (readError) {
-      console.error(
-        "既読更新エラー:",
-        readError
-      );
-    }
+      if (unreadError) {
+        console.error("未読件数取得エラー:", unreadError);
 
-    const {
-      data: messages,
-      error: messagesError,
-    } =
-      await supabase
-        .from("messages")
-        .select(
-          `
-          id,
-          conversation_id,
-          sender_id,
-          message,
-          read_at,
-          created_at,
-          users (
-            id,
-            display_name,
-            picture_url
-          )
-          `
-        )
-        .eq(
-          "conversation_id",
-          conversation.id
-        )
-        .order("created_at", {
-          ascending: true,
-        });
-
-    if (messagesError) {
-      console.error(
-        "メッセージ取得エラー:",
-        messagesError
-      );
+        return jsonError(
+          "未読件数の取得に失敗しました",
+          500
+        );
+      }
 
       return NextResponse.json(
         {
-          error:
-            "メッセージの取得に失敗しました",
+          conversation,
+          currentUserId: currentUser.id,
+          unreadCount: unreadCount ?? 0,
         },
-        { status: 500 }
+        { headers: NO_STORE_HEADERS }
       );
     }
 
-    return NextResponse.json({
-      conversation,
-      currentUserId: currentUser.id,
-      messages: messages ?? [],
-    });
-  } catch (error) {
-    console.error(
-      "チャット取得APIエラー:",
-      error
-    );
+    const isOlderPage = cursorCreatedAt !== null;
+
+    // 過去ページの取得では既読処理を行わない。
+    if (!isOlderPage) {
+      const { error: readError } =
+        await supabase
+          .from("messages")
+          .update({
+            read_at: new Date().toISOString(),
+          })
+          .eq("conversation_id", conversation.id)
+          .neq("sender_id", currentUser.id)
+          .is("read_at", null);
+
+      if (readError) {
+        console.error("既読更新エラー:", readError);
+      }
+    }
+
+    let messagesQuery = supabase
+      .from("messages")
+      .select(
+        `
+        id,
+        conversation_id,
+        sender_id,
+        message,
+        read_at,
+        created_at,
+        users (
+          id,
+          display_name,
+          picture_url
+        )
+        `
+      )
+      .eq("conversation_id", conversation.id)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(PAGE_SIZE + 1);
+
+    if (isOlderPage) {
+      // 日時が同じ場合もUUIDで順序を確定し、取りこぼしを防ぐ。
+      messagesQuery = messagesQuery.or(
+        `created_at.lt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},id.lt.${beforeId})`
+      );
+    }
+
+    const { data: fetchedMessages, error: messagesError } =
+      await messagesQuery;
+
+    if (messagesError) {
+      console.error("メッセージ取得エラー:", messagesError);
+
+      return jsonError(
+        "メッセージの取得に失敗しました",
+        500
+      );
+    }
+
+    const rows = fetchedMessages ?? [];
+    const hasMore = rows.length > PAGE_SIZE;
+
+    const pageMessages = rows
+      .slice(0, PAGE_SIZE)
+      .reverse();
 
     return NextResponse.json(
       {
-        error:
-          "チャット情報の取得中にエラーが発生しました",
+        conversation,
+        currentUserId: currentUser.id,
+        messages: pageMessages,
+        hasMore,
       },
-      { status: 500 }
+      { headers: NO_STORE_HEADERS }
+    );
+  } catch (error) {
+    console.error("チャット取得APIエラー:", error);
+
+    return jsonError(
+      "チャット情報の取得中にエラーが発生しました",
+      500
     );
   }
 }
@@ -479,64 +471,70 @@ export async function POST(
   context: RouteContext
 ) {
   try {
-    const { id: matchId } =
-      await context.params;
+    const { id: matchId } = await context.params;
 
-    const authorization =
-      await getAuthorizedMatch(
-        request,
-        matchId
-      );
+    if (!UUID_PATTERN.test(matchId)) {
+      return jsonError("マッチングIDが正しくありません", 400);
+    }
+
+    const authorization = await getAuthorizedMatch(
+      request,
+      matchId
+    );
 
     if (authorization.error) {
       return authorization.error;
     }
 
-    const { currentUser } =
-      authorization;
+    const { currentUser } = authorization;
 
-    const body =
-      await request.json();
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return jsonError(
+        "送信データの形式が正しくありません",
+        400
+      );
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return jsonError(
+        "送信データの形式が正しくありません",
+        400
+      );
+    }
+
+    const input = body as Record<string, unknown>;
 
     const message =
-      typeof body.message === "string"
-        ? body.message.trim()
+      typeof input.message === "string"
+        ? input.message.trim()
         : "";
 
     if (!message) {
-      return NextResponse.json(
-        {
-          error:
-            "メッセージを入力してください",
-        },
-        { status: 400 }
+      return jsonError(
+        "メッセージを入力してください",
+        400
       );
     }
 
     if (message.length > 1000) {
-      return NextResponse.json(
-        {
-          error:
-            "メッセージは1000文字以内で入力してください",
-        },
-        { status: 400 }
+      return jsonError(
+        "メッセージは1000文字以内で入力してください",
+        400
       );
     }
 
     const conversation =
-      await getOrCreateConversation(
-        matchId
-      );
+      await getOrCreateConversation(matchId);
 
-    const {
-      data: newMessage,
-      error: messageError,
-    } =
+    const { data: newMessage, error: messageError } =
       await supabase
         .from("messages")
         .insert({
-          conversation_id:
-            conversation.id,
+          conversation_id: conversation.id,
           sender_id: currentUser.id,
           message,
         })
@@ -558,35 +556,26 @@ export async function POST(
         .single();
 
     if (messageError) {
-      console.error(
-        "メッセージ送信エラー:",
-        messageError
-      );
+      console.error("メッセージ送信エラー:", messageError);
 
-      return NextResponse.json(
-        {
-          error:
-            "メッセージの送信に失敗しました",
-        },
-        { status: 500 }
+      return jsonError(
+        "メッセージの送信に失敗しました",
+        500
       );
     }
 
-    return NextResponse.json({
-      message: newMessage,
-    });
-  } catch (error) {
-    console.error(
-      "チャット送信APIエラー:",
-      error
-    );
-
     return NextResponse.json(
       {
-        error:
-          "メッセージ送信中にエラーが発生しました",
+        message: newMessage,
       },
-      { status: 500 }
+      { headers: NO_STORE_HEADERS }
+    );
+  } catch (error) {
+    console.error("チャット送信APIエラー:", error);
+
+    return jsonError(
+      "メッセージ送信中にエラーが発生しました",
+      500
     );
   }
 }

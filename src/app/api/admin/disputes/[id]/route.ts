@@ -20,6 +20,9 @@ type RouteContext = {
 
 type ActionType = "started" | "note" | "resolved";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function PATCH(
   request: NextRequest,
   context: RouteContext
@@ -33,10 +36,7 @@ export async function PATCH(
 
     const { id } = await context.params;
 
-    if (
-      !id ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-    ) {
+    if (!id || !UUID_PATTERN.test(id)) {
       return NextResponse.json(
         { error: "案件IDが不正です。" },
         { status: 400 }
@@ -54,7 +54,11 @@ export async function PATCH(
       );
     }
 
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
       return NextResponse.json(
         { error: "入力内容が不正です。" },
         { status: 400 }
@@ -100,7 +104,9 @@ export async function PATCH(
     );
 
     if (error) {
-      console.error("Admin dispute action error:", error);
+      console.error("Admin dispute action error:", {
+        code: error.code,
+      });
 
       const message = error.message ?? "";
 
@@ -109,7 +115,7 @@ export async function PATCH(
         message.includes("解決可能な異議申し立て状態ではありません")
       ) {
         return NextResponse.json(
-          { error: message },
+          { error: "この異議申し立ては現在更新できない状態です。" },
           { status: 409 }
         );
       }
@@ -119,7 +125,7 @@ export async function PATCH(
         message.includes("入力内容が不正")
       ) {
         return NextResponse.json(
-          { error: message },
+          { error: "対象の異議申し立て、または入力内容を確認してください。" },
           { status: 400 }
         );
       }
@@ -135,7 +141,10 @@ export async function PATCH(
       result,
     });
   } catch (error) {
-    console.error("Admin dispute PATCH error:", error);
+    console.error(
+      "Admin dispute PATCH error:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
     return NextResponse.json(
       { error: "管理者処理中にエラーが発生しました。" },

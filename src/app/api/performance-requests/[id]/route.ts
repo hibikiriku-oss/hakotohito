@@ -40,6 +40,37 @@ export async function GET(
   context: Context
 ) {
   try {
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "ログインが必要です。LINEでログインしてください。",
+        },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
     const { id } = await context.params;
 
     const { data, error } = await supabase
@@ -48,7 +79,7 @@ export async function GET(
         *,
         facilities (
           id,
-          user_id,
+          user_id
           name,
           facility_type,
           address,
@@ -61,17 +92,28 @@ export async function GET(
     if (error || !data) {
       return NextResponse.json(
         { error: "案件が見つかりません" },
-        { status: 404 }
+        {
+          status: 404,
+          headers: { "Cache-Control": "no-store" },
+        }
       );
     }
 
-    return NextResponse.json({ request: data });
+    return NextResponse.json(
+      { request: data },
+      {
+        headers: { "Cache-Control": "no-store" },
+      }
+    );
   } catch (error) {
     console.error("案件詳細APIエラー:", error);
 
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: { "Cache-Control": "no-store" },
+      }
     );
   }
 }
@@ -83,32 +125,32 @@ export async function PATCH(
   try {
     const { id } = await context.params;
 
-const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-if (!idToken) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認情報がありません。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const verified = await verifyLineIdToken(idToken);
+    const verified = await verifyLineIdToken(idToken);
 
-if (!verified) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認に失敗しました。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const facility = await getFacilityByLineUserId(verified.userId);
+    const facility = await getFacilityByLineUserId(verified.userId);
 
     if (!facility) {
       return NextResponse.json(
@@ -415,32 +457,32 @@ export async function DELETE(
   try {
     const { id } = await context.params;
 
-const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-if (!idToken) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認情報がありません。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const verified = await verifyLineIdToken(idToken);
+    const verified = await verifyLineIdToken(idToken);
 
-if (!verified) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認に失敗しました。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const facility = await getFacilityByLineUserId(verified.userId);
+    const facility = await getFacilityByLineUserId(verified.userId);
 
     if (!facility) {
       return NextResponse.json(

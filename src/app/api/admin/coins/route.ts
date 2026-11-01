@@ -18,25 +18,49 @@ export async function POST(request: NextRequest) {
       return auth.response;
     }
 
-    const body = await request.json();
+    // JSON形式を確認
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "リクエストのJSON形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    // null・配列・文字列などを拒否
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body)
+    ) {
+      return NextResponse.json(
+        { error: "リクエスト内容が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const data = body as Record<string, unknown>;
 
     const userId =
-      typeof body.userId === "string" ? body.userId.trim() : "";
-    const amount = body.amount;
+      typeof data.userId === "string" ? data.userId.trim() : "";
+    const amount = data.amount;
     const description =
-      typeof body.description === "string"
-        ? body.description.trim()
+      typeof data.description === "string"
+        ? data.description.trim()
         : "";
     const idempotencyKey =
-      typeof body.idempotencyKey === "string"
-        ? body.idempotencyKey.trim()
+      typeof data.idempotencyKey === "string"
+        ? data.idempotencyKey.trim()
         : "";
 
     if (
       !userId ||
       !Number.isSafeInteger(amount) ||
-      amount <= 0 ||
-      amount > 1000000 ||
+      (amount as number) <= 0 ||
+      (amount as number) > 1000000 ||
       !description ||
       description.length > 200 ||
       !idempotencyKey ||
@@ -99,7 +123,7 @@ export async function POST(request: NextRequest) {
       "admin_grant_coins",
       {
         p_user_id: userId,
-        p_amount: amount,
+        p_amount: amount as number,
         p_description: description,
         p_created_by_user_id: adminUser.id,
         p_idempotency_key: idempotencyKey,
@@ -140,7 +164,10 @@ export async function POST(request: NextRequest) {
       description,
     });
   } catch (error) {
-    console.error("管理者コイン付与APIエラー:", error);
+    console.error(
+      "管理者コイン付与APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },

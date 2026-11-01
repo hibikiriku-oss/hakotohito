@@ -7,6 +7,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -14,10 +17,15 @@ export async function POST(
   try {
     const { id: matchId } = await params;
 
+    if (!UUID_PATTERN.test(matchId)) {
+      return NextResponse.json(
+        { error: "マッチングIDが不正です" },
+        { status: 400 }
+      );
+    }
+
     const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+    const idToken = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
 
     if (!idToken) {
       return NextResponse.json(
@@ -194,7 +202,7 @@ export async function POST(
         p_reason: reason,
         p_user_id: user.id,
       }
-);
+    );
 
     if (disputeError) {
       console.error("演奏者側の異議申し立てエラー:", disputeError);

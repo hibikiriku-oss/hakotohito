@@ -87,7 +87,12 @@ export default function FacilityPerformerInvitePage() {
 
         const [performerResponse, requestsResponse] =
           await Promise.all([
-            fetch(`/api/performers/${performerId}`),
+            fetch(`/api/performers/${performerId}`, {
+              headers: {
+                Authorization: `Bearer ${idToken}`,
+              },
+              cache: "no-store",
+            }),
             fetch("/api/facility/requests", {
               headers: {
                 Authorization: `Bearer ${idToken}`,

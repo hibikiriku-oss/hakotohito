@@ -83,9 +83,15 @@ export default function PerformerReviewsPage() {
           );
         }
 
-        const reviewsResponse = await fetch(
-          `/api/performers/${profileData.performer.id}/reviews`
-        );
+const reviewsResponse = await fetch(
+  `/api/performers/${profileData.performer.id}/reviews`,
+  {
+    headers: {
+      Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+    },
+    cache: "no-store",
+  }
+);
 
         const reviewsData = await reviewsResponse.json();
 

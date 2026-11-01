@@ -337,14 +337,19 @@ export default function ReviewPage() {
                   <textarea
                     id="review-comment"
                     value={comment}
+                    maxLength={1000}
                     onChange={(event) =>
-                      setComment(event.target.value)
+                      setComment(event.target.value.slice(0, 1000))
                     }
                     placeholder="施設での演奏について、感想を入力してください"
                     rows={5}
                     disabled={submitting}
                     className="w-full bg-gray-50 border border-gray-200 rounded-2xl p-4 text-sm text-gray-900 placeholder:text-gray-400 outline-none resize-none focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 disabled:opacity-50 leading-6"
                   />
+
+                  <p className="mt-1 text-right text-xs text-gray-400">
+                    {comment.length} / 1000文字
+                  </p>
                 </div>
 
                 <p className="text-xs text-gray-400 mt-2">

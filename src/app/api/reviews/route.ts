@@ -2,10 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const MAX_COMMENT_LENGTH = 1000;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
+function getBearerToken(request: NextRequest) {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+
+  return match?.[1]?.trim() ?? "";
+}
 
 async function getUserByLineUserId(lineUserId: string) {
   const { data: user, error } = await supabase
@@ -23,10 +54,7 @@ async function getUserByLineUserId(lineUserId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+    const idToken = getBearerToken(request);
 
     const verified = idToken
       ? await verifyLineIdToken(idToken)
@@ -36,28 +64,28 @@ export async function GET(request: NextRequest) {
     const matchId = request.nextUrl.searchParams.get("match_id");
 
     if (!lineUserId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "LINEユーザー情報がありません" },
-        { status: 401 }
+        401
       );
     }
 
-    if (!matchId) {
-      return NextResponse.json(
-        { error: "マッチングIDがありません" },
-        { status: 400 }
+    if (!matchId || !UUID_PATTERN.test(matchId)) {
+      return jsonResponse(
+        { error: "マッチングIDが不正です" },
+        400
       );
     }
 
     const user = await getUserByLineUserId(lineUserId);
 
     if (!user) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザーが見つかりません" },
-        { status: 404 }
+        404
       );
     }
- 
+
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -74,9 +102,9 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (matchError || !match) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "マッチングが見つかりません" },
-        { status: 404 }
+        404
       );
     }
 
@@ -85,9 +113,9 @@ export async function GET(request: NextRequest) {
       : match.performers;
 
     if (!performer) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "演奏者情報が見つかりません" },
-        { status: 404 }
+        404
       );
     }
 
@@ -148,9 +176,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (!isParticipant || !revieweeId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "このマッチングを評価する権限がありません" },
-        { status: 403 }
+        403
       );
     }
 
@@ -162,15 +190,17 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (reviewError) {
-      console.error("評価確認エラー:", reviewError);
+      console.error("評価確認エラー:", {
+        code: reviewError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "評価情報の取得に失敗しました" },
-        { status: 500 }
+        500
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       reviewed: !!review,
       review: review || null,
       reviewee_id: revieweeId,
@@ -180,71 +210,99 @@ export async function GET(request: NextRequest) {
         match.performance_status === "completed" &&
         !!match.completed_at,
     });
-
   } catch (error) {
-    console.error("評価確認APIエラー:", error);
+    console.error(
+      "評価確認APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
-      { status: 500 }
+      500
     );
   }
 }
 
-
 export async function POST(request: NextRequest) {
   try {
-    const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+    const idToken = getBearerToken(request);
 
     const verified = idToken
       ? await verifyLineIdToken(idToken)
       : null;
 
     const lineUserId = verified?.userId;
+
     if (!lineUserId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "LINEユーザー情報がありません" },
-        { status: 401 }
+        401
       );
     }
 
     const user = await getUserByLineUserId(lineUserId);
 
     if (!user) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザーが見つかりません" },
-        { status: 404 }
+        404
       );
     }
 
-    const body = await request.json();
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse(
+        { error: "リクエストのJSON形式が正しくありません" },
+        400
+      );
+    }
+
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body)
+    ) {
+      return jsonResponse(
+        { error: "リクエスト内容が不正です" },
+        400
+      );
+    }
+
+    const data = body as Record<string, unknown>;
 
     const matchId =
-      typeof body.match_id === "string"
-        ? body.match_id
+      typeof data.match_id === "string"
+        ? data.match_id.trim()
         : "";
 
-    const rating = Number(body.rating);
+    const rating = Number(data.rating);
 
     const comment =
-      typeof body.comment === "string"
-        ? body.comment.trim()
+      typeof data.comment === "string"
+        ? data.comment.trim()
         : "";
 
-    if (!matchId) {
-      return NextResponse.json(
-        { error: "マッチングIDがありません" },
-        { status: 400 }
+    if (!matchId || !UUID_PATTERN.test(matchId)) {
+      return jsonResponse(
+        { error: "マッチングIDが不正です" },
+        400
       );
     }
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "評価は1〜5の整数で入力してください" },
-        { status: 400 }
+        400
+      );
+    }
+
+    if (comment.length > MAX_COMMENT_LENGTH) {
+      return jsonResponse(
+        { error: "レビューコメントは1,000文字以内で入力してください" },
+        400
       );
     }
 
@@ -265,9 +323,9 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (matchError || !match) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "マッチングが見つかりません" },
-        { status: 404 }
+        404
       );
     }
 
@@ -276,9 +334,9 @@ export async function POST(request: NextRequest) {
       : match.performers;
 
     if (!performer) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "演奏者情報が見つかりません" },
-        { status: 404 }
+        404
       );
     }
 
@@ -287,9 +345,9 @@ export async function POST(request: NextRequest) {
 
     if (user.user_type === "performer") {
       if (performerUserId !== user.id) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "このマッチングを評価する権限がありません" },
-          { status: 403 }
+          403
         );
       }
 
@@ -301,9 +359,9 @@ export async function POST(request: NextRequest) {
           .single();
 
       if (requestError || !requestData) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "依頼情報が見つかりません" },
-          { status: 404 }
+          404
         );
       }
 
@@ -315,9 +373,9 @@ export async function POST(request: NextRequest) {
           .single();
 
       if (facilityError || !facility) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "施設情報が見つかりません" },
-          { status: 404 }
+          404
         );
       }
 
@@ -331,9 +389,9 @@ export async function POST(request: NextRequest) {
           .single();
 
       if (requestError || !requestData) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "依頼情報が見つかりません" },
-          { status: 404 }
+          404
         );
       }
 
@@ -345,17 +403,17 @@ export async function POST(request: NextRequest) {
           .single();
 
       if (facilityError || !facility || facility.user_id !== user.id) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "このマッチングを評価する権限がありません" },
-          { status: 403 }
+          403
         );
       }
 
       revieweeId = performerUserId;
     } else {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "このユーザー種別では評価できません" },
-        { status: 403 }
+        403
       );
     }
 
@@ -372,14 +430,16 @@ export async function POST(request: NextRequest) {
     );
 
     if (rpcError || !result?.success) {
-      console.error("評価登録・報酬付与エラー:", rpcError || result);
+      console.error("評価登録・報酬付与エラー:", {
+        code: rpcError?.code,
+      });
 
       const message = rpcError?.message || "";
 
       if (message.includes("演奏完了後に評価できます")) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "演奏完了後に評価できます" },
-          { status: 400 }
+          400
         );
       }
 
@@ -387,26 +447,26 @@ export async function POST(request: NextRequest) {
         message.includes("すでに評価済み") ||
         message.includes("すでに付与")
       ) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "このマッチングはすでに評価済みです" },
-          { status: 400 }
+          400
         );
       }
 
       if (message.includes("権限がありません")) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "このマッチングを評価する権限がありません" },
-          { status: 403 }
+          403
         );
       }
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "評価の登録に失敗しました" },
-        { status: 500 }
+        500
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       message: "評価を登録しました",
       review_id: result.reviewId,
@@ -414,11 +474,14 @@ export async function POST(request: NextRequest) {
       balanceAfter: result.balanceAfter,
     });
   } catch (error) {
-    console.error("評価登録APIエラー:", error);
+    console.error(
+      "評価登録APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
-      { status: 500 }
+      500
     );
   }
 }

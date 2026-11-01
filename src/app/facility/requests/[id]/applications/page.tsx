@@ -221,14 +221,23 @@ export default function FacilityRequestApplicationsPage() {
     init();
   }, [requestId]);
 
-  const loadReviews = async (performerId: string) => {
+  const loadReviews = async (
+  performerId: string,
+  idToken: string
+) => {
     try {
       setReviewLoading(true);
       setReviewData(null);
 
-      const response = await fetch(
-        `/api/performers/${performerId}/reviews`
-      );
+const response = await fetch(
+  `/api/performers/${performerId}/reviews`,
+  {
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: "no-store",
+  }
+);
 
       const result = await response.json();
 
@@ -255,10 +264,20 @@ export default function FacilityRequestApplicationsPage() {
     }
   };
 
-  const handleSelectPerformer = (performer: Performer) => {
-    setSelectedPerformer(performer);
-    loadReviews(performer.id);
-  };
+const handleSelectPerformer = (performer: Performer) => {
+  setSelectedPerformer(performer);
+
+  const idToken = liff.getIDToken();
+
+  if (!idToken) {
+    setError(
+      "LINEの本人確認情報を取得できません。再ログインしてください。"
+    );
+    return;
+  }
+
+  loadReviews(performer.id, idToken);
+};
 
   const handleAccept = async (application: Application) => {
     const isBandApplication =

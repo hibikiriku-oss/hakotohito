@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,26 +18,55 @@ const ALLOWED_CATEGORIES = [
   "other",
 ] as const;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
+function isObjectBody(
+  body: unknown
+): body is Record<string, unknown> {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body)
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice(7).trim()
-      : "";
+    const tokenMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+    const idToken = tokenMatch?.[1]?.trim() ?? "";
 
     if (!idToken) {
-      return NextResponse.json(
-        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
-        { status: 401 }
+      return jsonResponse(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        401
       );
     }
 
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
-        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
-        { status: 401 }
+      return jsonResponse(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        401
       );
     }
 
@@ -47,18 +77,22 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (userError) {
-      console.error("問い合わせ履歴のユーザー取得エラー:", userError.message);
+      console.error("問い合わせ履歴のユーザー取得エラー:", {
+        code: userError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザー情報を取得できませんでした。" },
-        { status: 500 }
+        500
       );
     }
 
     if (!user) {
-      return NextResponse.json(
-        { error: "ユーザー登録が見つかりません。先に登録してください。" },
-        { status: 403 }
+      return jsonResponse(
+        {
+          error: "ユーザー登録が見つかりません。先に登録してください。",
+        },
+        403
       );
     }
 
@@ -72,33 +106,54 @@ export async function GET(request: NextRequest) {
       .limit(100);
 
     if (error) {
-      console.error("問い合わせ履歴取得エラー:", error.message);
+      console.error("問い合わせ履歴取得エラー:", {
+        code: error.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "問い合わせ履歴を取得できませんでした。" },
-        { status: 500 }
+        500
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       inquiries: data ?? [],
     });
   } catch (error) {
-    console.error("問い合わせ履歴APIエラー:", error);
+    console.error(
+      "問い合わせ履歴APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました。" },
-      { status: 500 }
+      500
     );
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse(
+        { error: "リクエストのJSON形式が正しくありません。" },
+        400
+      );
+    }
+
+    if (!isObjectBody(body)) {
+      return jsonResponse(
+        { error: "リクエスト内容が正しくありません。" },
+        400
+      );
+    }
 
     const idToken =
-      typeof body.idToken === "string" ? body.idToken : "";
+      typeof body.idToken === "string" ? body.idToken.trim() : "";
     const category =
       typeof body.category === "string" ? body.category : "";
     const subject =
@@ -107,9 +162,11 @@ export async function POST(request: NextRequest) {
       typeof body.message === "string" ? body.message.trim() : "";
 
     if (!idToken) {
-      return NextResponse.json(
-        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
-        { status: 401 }
+      return jsonResponse(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        401
       );
     }
 
@@ -122,9 +179,11 @@ export async function POST(request: NextRequest) {
       message.length < 1 ||
       message.length > 5000
     ) {
-      return NextResponse.json(
-        { error: "カテゴリ・件名・問い合わせ内容を確認してください。" },
-        { status: 400 }
+      return jsonResponse(
+        {
+          error: "カテゴリ・件名・問い合わせ内容を確認してください。",
+        },
+        400
       );
     }
 
@@ -132,9 +191,11 @@ export async function POST(request: NextRequest) {
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
-        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
-        { status: 401 }
+      return jsonResponse(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        401
       );
     }
 
@@ -146,18 +207,22 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (userError) {
-      console.error("問い合わせユーザー取得エラー:", userError.message);
+      console.error("問い合わせユーザー取得エラー:", {
+        code: userError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザー情報を取得できませんでした。" },
-        { status: 500 }
+        500
       );
     }
 
     if (!user) {
-      return NextResponse.json(
-        { error: "ユーザー登録が見つかりません。先にホーム画面から登録してください。" },
-        { status: 403 }
+      return jsonResponse(
+        {
+          error: "ユーザー登録が見つかりません。先にホーム画面から登録してください。",
+        },
+        403
       );
     }
 
@@ -173,27 +238,32 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (insertError) {
-      console.error("問い合わせ保存エラー:", insertError.message);
+      console.error("問い合わせ保存エラー:", {
+        code: insertError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "問い合わせを保存できませんでした。" },
-        { status: 500 }
+        500
       );
     }
 
-    return NextResponse.json(
+    return jsonResponse(
       {
         success: true,
         inquiry,
       },
-      { status: 201 }
+      201
     );
   } catch (error) {
-    console.error("問い合わせ送信APIエラー:", error);
+    console.error(
+      "問い合わせ送信APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
+    );
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました。" },
-      { status: 500 }
+      500
     );
   }
 }

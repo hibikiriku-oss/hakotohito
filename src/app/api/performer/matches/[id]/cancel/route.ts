@@ -8,6 +8,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(
   request: NextRequest,
   context: {
@@ -18,9 +21,8 @@ export async function POST(
 ) {
   try {
     const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+    const idToken =
+      authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
 
     if (!idToken) {
       return NextResponse.json(
@@ -39,17 +41,15 @@ export async function POST(
     }
 
     const lineUserId = verified.userId;
-
     const { id: matchId } = await context.params;
 
-    if (!matchId) {
+    if (!UUID_PATTERN.test(matchId)) {
       return NextResponse.json(
-        { error: "マッチングIDが指定されていません" },
+        { error: "マッチングIDが不正です" },
         { status: 400 }
       );
     }
 
-    // LINEユーザーを取得
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id, line_user_id, display_name")
@@ -65,7 +65,6 @@ export async function POST(
       );
     }
 
-    // 演奏者プロフィールを取得
     const { data: performer, error: performerError } =
       await supabase
         .from("performers")
@@ -82,7 +81,6 @@ export async function POST(
       );
     }
 
-    // 自分のマッチングか確認し、通知に必要な情報を取得
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -92,6 +90,7 @@ export async function POST(
         band_id,
         status,
         performance_status,
+        completion_disputed_at,
         performance_requests (
           id,
           title,
@@ -126,8 +125,6 @@ export async function POST(
       );
     }
 
-    // バンドマッチングは、現在のアクティブなリーダーだけが
-    // キャンセルできる
     if (match.band_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("band_members")
@@ -153,13 +150,22 @@ export async function POST(
         );
       }
     } else {
-      // 個人マッチングは従来どおり本人のみ操作できる
       if (match.performer_id !== performer.id) {
         return NextResponse.json(
           { error: "マッチングが見つからないか、操作する権限がありません" },
           { status: 404 }
         );
       }
+    }
+
+    if (match.completion_disputed_at) {
+      return NextResponse.json(
+        {
+          error:
+            "異議申し立ての対応が完了するまでキャンセルできません",
+        },
+        { status: 409 }
+      );
     }
 
     if (
@@ -214,7 +220,6 @@ export async function POST(
       );
     }
 
-    // DB関数でキャンセル・案件再募集・直接依頼の返金をまとめて処理
     const { data: cancelResult, error: cancelError } =
       await supabase.rpc(
         "cancel_match_with_direct_invite_refund",
@@ -242,19 +247,22 @@ export async function POST(
     } | null;
 
     if (!result?.success) {
+      const errorMessage =
+        result?.errorMessage ||
+        "マッチングをキャンセルできませんでした";
+
+      const status = errorMessage.includes("異議申し立て")
+        ? 409
+        : 400;
+
       return NextResponse.json(
-        {
-          error:
-            result?.errorMessage ||
-            "マッチングをキャンセルできませんでした",
-        },
-        { status: 400 }
+        { error: errorMessage },
+        { status }
       );
     }
 
     let notificationSent = false;
 
-    // 施設のLINEユーザーIDを取得
     const facilityUser = facility.users
       ? Array.isArray(facility.users)
         ? facility.users[0]
@@ -263,8 +271,6 @@ export async function POST(
 
     const facilityLineUserId = facilityUser?.line_user_id;
 
-    // 施設へLINE通知
-    // 通知に失敗してもキャンセル処理自体は成功とする
     if (facilityLineUserId) {
       const miniAppBaseUrl =
         "https://miniapp.line.me/2011785379-l5XCTbIf";

@@ -114,7 +114,8 @@ function matchesTimeRange(
 
 /**
  * LINEログイン中の演奏者の活動エリアを取得します。
- * areas が未設定の旧データは、従来の area を使用します。
+ * areas に有効な値があれば areas を優先し、
+ * 空の場合のみ従来の area を使用します。
  */
 async function getPerformerAreas(lineUserId: string): Promise<string[]> {
   const { data: user, error: userError } = await supabase
@@ -143,18 +144,22 @@ async function getPerformerAreas(lineUserId: string): Promise<string[]> {
 
   const savedAreas = Array.isArray(performer.areas)
     ? performer.areas
-    : [];
-
-  return Array.from(
-    new Set(
-      [...savedAreas, performer.area]
         .filter(
           (value): value is string =>
             typeof value === "string" && value.trim().length > 0
         )
         .map((value) => value.trim())
-    )
-  );
+    : [];
+
+  // areas に有効な値があれば、新形式の areas だけを使用
+  if (savedAreas.length > 0) {
+    return Array.from(new Set(savedAreas));
+  }
+
+  // areas が空の場合のみ、旧形式の area を使用
+  return typeof performer.area === "string" && performer.area.trim()
+    ? [performer.area.trim()]
+    : [];
 }
 
 // 演奏依頼一覧取得
@@ -264,34 +269,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // LINEユーザーIDが送信された場合は、活動エリアを自動適用します。
-// IDトークンが送信された場合は本人確認し、活動エリアを自動適用します。
-// 未ログインの案件検索は引き続き許可します。
-const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    // IDトークンが送信された場合は本人確認し、活動エリアを自動適用します。
+    // 未ログインの案件検索は引き続き許可します。
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-let lineUserId: string | null = null;
+    let lineUserId: string | null = null;
 
-if (idToken) {
-  const verified = await verifyLineIdToken(idToken);
+    if (idToken) {
+      const verified = await verifyLineIdToken(idToken);
 
-  if (!verified) {
-    return NextResponse.json(
-      {
-        error: "LINEの本人確認に失敗しました。再ログインしてください。",
-      },
-      { status: 401 }
-    );
-  }
+      if (!verified) {
+        return NextResponse.json(
+          {
+            error: "LINEの本人確認に失敗しました。再ログインしてください。",
+          },
+          { status: 401 }
+        );
+      }
 
-  lineUserId = verified.userId;
-}
+      lineUserId = verified.userId;
+    }
 
-const performerAreas = lineUserId
-  ? await getPerformerAreas(lineUserId)
-  : null;
+    const performerAreas = lineUserId
+      ? await getPerformerAreas(lineUserId)
+      : null;
 
     const escapedKeyword = keyword.replace(/[,%()]/g, " ");
     const allMatchingRequests: Record<string, any>[] = [];
@@ -325,7 +329,6 @@ const performerAreas = lineUserId
           )
         `)
         .eq("status", "open")
-        // 応募期限当日は表示。日本時間で翌日になったら除外。
         .gte("application_deadline", today);
 
       if (requestType === "performance") {
@@ -458,10 +461,21 @@ const performerAreas = lineUserId
       });
     }
 
-
     const total = filteredRequests.length;
     const from = (page - 1) * limit;
-    const requests = filteredRequests.slice(from, from + limit);
+    const selectedRequests = filteredRequests.slice(
+      from,
+      from + limit
+    );
+
+    // 未ログイン利用者には施設プロフィール情報を返さない。
+    // selectedRequests の型を維持したまま施設情報だけを null にする。
+    const requests: typeof selectedRequests = lineUserId
+      ? selectedRequests
+      : selectedRequests.map((item) => ({
+          ...item,
+          facilities: null,
+        }));
 
     // ログイン中の演奏者の応募状況を取得
     let requestsWithApplicationStatus = requests.map((item) => ({
@@ -524,7 +538,6 @@ const performerAreas = lineUserId
         }
       }
     }
-
 
     return NextResponse.json({
       requests: requestsWithApplicationStatus,
@@ -741,32 +754,32 @@ export async function POST(request: NextRequest) {
       new Set<TargetLevel>(targetLevels)
     );
 
-const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-if (!idToken) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認情報がありません。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const verified = await verifyLineIdToken(idToken);
+    const verified = await verifyLineIdToken(idToken);
 
-if (!verified) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認に失敗しました。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const lineUserId = verified.userId;
+    const lineUserId = verified.userId;
 
     const { data: user, error: userError } = await supabase
       .from("users")
@@ -827,8 +840,8 @@ const lineUserId = verified.userId;
           rentalFee !== "" &&
           rentalFee != null
             ? Number(rentalFee)
-            : null,        
-            target_levels: normalizedTargetLevels,
+            : null,
+        target_levels: normalizedTargetLevels,
         status: "open",
       })
       .select()

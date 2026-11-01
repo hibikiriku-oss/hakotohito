@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
 // 日本時間の今日を YYYY-MM-DD 形式で取得
 function getJapanToday(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -34,6 +36,13 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+if (!UUID_PATTERN.test(requestId)) {
+  return NextResponse.json(
+    { error: "案件IDの形式が正しくありません" },
+    { status: 400 }
+  );
+}
 
     // LINE本人確認
     const authorization = request.headers.get("authorization");
@@ -136,6 +145,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+if (
+  typeof requestId !== "string" ||
+  !UUID_PATTERN.test(requestId) ||
+  (message !== undefined &&
+    message !== null &&
+    typeof message !== "string") ||
+  (typeof message === "string" && message.length > 2000)
+) {
+  return NextResponse.json(
+    { error: "入力内容を確認してください（メッセージは2000文字以内です）" },
+    { status: 400 }
+  );
+}
 
     // ==============================
     // LINE本人確認

@@ -7,8 +7,30 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // LINE IDトークンを検証
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "ログインが必要です。再ログインしてください。" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     const { data: performers, error: performersError } =
       await supabase
         .from("performers")
@@ -24,7 +46,6 @@ export async function GET() {
           status_level,
           created_at,
           users (
-            id,
             display_name,
             picture_url,
             avatar_type,
@@ -40,34 +61,69 @@ export async function GET() {
 
       return NextResponse.json(
         { error: "演奏者一覧の取得に失敗しました" },
-        { status: 500 }
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const userIds = (performers || [])
+    const performerList = performers || [];
+    const performerIds = performerList.map(
+      (performer) => performer.id
+    );
+    const userIds = performerList
       .map((performer) => performer.user_id)
       .filter(Boolean);
+
+    let completedMatchIds: string[] = [];
+
+    if (performerIds.length > 0) {
+      const { data: completedMatches, error: matchesError } =
+        await supabase
+          .from("matches")
+          .select("id")
+          .in("performer_id", performerIds)
+          .eq("performance_status", "completed")
+          .not("completed_at", "is", null);
+
+      if (matchesError) {
+        console.error("完了済みマッチング取得エラー:", matchesError);
+
+        return NextResponse.json(
+          { error: "評価情報の取得に失敗しました" },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+
+      completedMatchIds = (completedMatches || []).map(
+        (match) => match.id
+      );
+    }
 
     let reviews: {
       reviewee_id: string;
       rating: number;
     }[] = [];
 
-    if (userIds.length > 0) {
+    if (userIds.length > 0 && completedMatchIds.length > 0) {
       const { data: reviewData, error: reviewError } =
         await supabase
           .from("reviews")
           .select("reviewee_id, rating")
-          .in("reviewee_id", userIds);
+          .in("reviewee_id", userIds)
+          .in("match_id", completedMatchIds);
 
       if (reviewError) {
         console.error("評価取得エラー:", reviewError);
-      } else {
-        reviews = reviewData || [];
+
+        return NextResponse.json(
+          { error: "評価情報の取得に失敗しました" },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
+        );
       }
+
+      reviews = reviewData || [];
     }
 
-    const performersWithReviews = (performers || []).map(
+    const performersWithReviews = performerList.map(
       (performer) => {
         const performerReviews = reviews.filter(
           (review) => review.reviewee_id === performer.user_id
@@ -77,14 +133,24 @@ export async function GET() {
 
         const averageRating =
           reviewCount > 0
-            ? performerReviews.reduce(
-                (sum, review) => sum + review.rating,
-                0
-              ) / reviewCount
+            ? Number(
+                (
+                  performerReviews.reduce(
+                    (sum, review) => sum + review.rating,
+                    0
+                  ) / reviewCount
+                ).toFixed(1)
+              )
             : null;
 
+        // 内部処理用のuser_idはレスポンスに含めない
+        const {
+          user_id: _userId,
+          ...publicPerformer
+        } = performer;
+
         return {
-          ...performer,
+          ...publicPerformer,
           areas:
             performer.areas?.length > 0
               ? performer.areas
@@ -97,15 +163,22 @@ export async function GET() {
       }
     );
 
-    return NextResponse.json({
-      performers: performersWithReviews,
-    });
+    return NextResponse.json(
+      {
+        performers: performersWithReviews,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
+    );
   } catch (error) {
     console.error("演奏者一覧取得エラー:", error);
 
     return NextResponse.json(
       { error: "サーバーエラーが発生しました" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

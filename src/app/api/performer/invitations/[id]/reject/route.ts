@@ -8,6 +8,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -15,18 +18,17 @@ export async function POST(
   try {
     const { id } = await context.params;
 
-    if (!id) {
+    if (!id || !UUID_PATTERN.test(id)) {
       return NextResponse.json(
-        { error: "依頼IDが指定されていません" },
+        { error: "有効な依頼IDを指定してください" },
         { status: 400 }
       );
     }
 
-        // LINE IDトークンを検証
+    // LINE IDトークンを検証
     const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+    const idToken =
+      authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
 
     if (!idToken) {
       return NextResponse.json(
@@ -138,7 +140,7 @@ export async function POST(
       );
     }
 
-    // 辞退と施設への100コイン返金をDB関数で実行
+    // 辞退と施設への手数料返金をDB関数で実行
     const { data: refundResult, error: refundError } =
       await supabase.rpc(
         "reject_direct_invitation_with_refund",

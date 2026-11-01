@@ -7,6 +7,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const USER_FIELDS =
+  "id, display_name, picture_url, avatar_type, avatar_emoji";
+
 // ログイン中の本人のユーザー情報を取得
 export async function GET(request: NextRequest) {
   try {
@@ -39,9 +42,7 @@ export async function GET(request: NextRequest) {
 
     const { data: user, error } = await supabase
       .from("users")
-      .select(
-        "id, display_name, picture_url, avatar_type, avatar_emoji"
-      )
+      .select(USER_FIELDS)
       .eq("line_user_id", verified.userId)
       .single();
 
@@ -74,6 +75,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// 新規ユーザー登録
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -116,8 +118,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 検証済みトークンから取得したユーザーIDを使用する
-    const { data, error } = await supabase
+    // 新規登録のみ実行する。
+    // 既存ユーザーがいる場合は、その情報を上書きしない。
+    const { data: insertedUser, error: insertError } = await supabase
       .from("users")
       .upsert(
         {
@@ -134,13 +137,14 @@ export async function POST(request: NextRequest) {
         },
         {
           onConflict: "line_user_id",
+          ignoreDuplicates: true,
         }
       )
-      .select()
-      .single();
+      .select(USER_FIELDS)
+      .maybeSingle();
 
-    if (error) {
-      console.error("ユーザー登録DBエラー:", error.message);
+    if (insertError) {
+      console.error("ユーザー登録DBエラー:", insertError.message);
 
       return NextResponse.json(
         { error: "ユーザー登録に失敗しました" },
@@ -148,7 +152,34 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ user: data });
+    // 新規登録できた場合はそのユーザー情報を返す
+    if (insertedUser) {
+      return NextResponse.json(
+        { user: insertedUser },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    // 既存ユーザーの場合は登録済みの情報を取得する
+    const { data: existingUser, error: fetchError } = await supabase
+      .from("users")
+      .select(USER_FIELDS)
+      .eq("line_user_id", verified.userId)
+      .single();
+
+    if (fetchError || !existingUser) {
+      console.error("既存ユーザー情報取得エラー:", fetchError);
+
+      return NextResponse.json(
+        { error: "ユーザー情報の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      { user: existingUser },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (error) {
     console.error("ユーザー登録APIエラー:", error);
 

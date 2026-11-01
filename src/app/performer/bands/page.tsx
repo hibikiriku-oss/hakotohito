@@ -274,9 +274,12 @@ export default function PerformerBandsPage() {
         : []
     );
 
-    const performerResponse = await fetch("/api/performers", {
-      cache: "no-store",
-    });
+const performerResponse = await fetch("/api/performers", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+  cache: "no-store",
+});
 
     const performerData = await performerResponse.json();
 

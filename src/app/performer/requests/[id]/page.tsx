@@ -270,10 +270,15 @@ export default function PerformerRequestDetailPage() {
         }
 
         // 案件情報の取得
-        const response = await fetch(
-          `/api/performance-requests/${requestId}`,
-          { cache: "no-store" }
-        );
+const response = await fetch(
+  `/api/performance-requests/${requestId}`,
+  {
+    headers: {
+      Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+    },
+    cache: "no-store",
+  }
+);
 
         const data = await response.json();
 

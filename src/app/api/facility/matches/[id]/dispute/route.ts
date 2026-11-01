@@ -7,15 +7,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: matchId } = await params;
+
+    if (!UUID_PATTERN.test(matchId)) {
+      return NextResponse.json(
+        { error: "マッチングIDが不正です" },
+        { status: 400 }
+      );
+    }
+
     const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+    const idToken = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
 
     if (!idToken) {
       return NextResponse.json(
@@ -34,7 +44,6 @@ export async function POST(
     }
 
     const lineUserId = verified.userId;
-    const { id: matchId } = await params;
 
     let body: unknown;
 

@@ -232,9 +232,15 @@ export default function PerformerProfileEditPage() {
 
     // 評価は件数と平均点だけ取得。個別コメントは詳細画面で表示する。
     try {
-      const reviewResponse = await fetch(
-        `/api/performers/${performer.id}/reviews`
-      );
+const reviewResponse = await fetch(
+  `/api/performers/${performer.id}/reviews`,
+  {
+    headers: {
+      Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+    },
+    cache: "no-store",
+  }
+);
       if (reviewResponse.ok) {
         const reviewData = await reviewResponse.json();
         setReviewSummary({
