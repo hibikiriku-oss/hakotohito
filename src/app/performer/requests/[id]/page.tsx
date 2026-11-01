@@ -89,6 +89,16 @@ export default function PerformerRequestDetailPage() {
   const [applicationFeeCoins, setApplicationFeeCoins] = useState(10);
   const [error, setError] = useState("");
 
+  // 個人応募状態
+  const [personalApplicationStatus, setPersonalApplicationStatus] =
+    useState<string | null>(null);
+
+  const [applicationStatusLoading, setApplicationStatusLoading] =
+    useState(true);
+
+  const [applicationStatusError, setApplicationStatusError] =
+    useState(false);
+
   const [applicationMode, setApplicationMode] =
     useState<"individual" | "band">("individual");
 
@@ -161,6 +171,8 @@ export default function PerformerRequestDetailPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function initialize() {
       try {
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
@@ -182,6 +194,9 @@ export default function PerformerRequestDetailPage() {
         }
 
         const profile = await liff.getProfile();
+
+        if (cancelled) return;
+
         setLineUserId(profile.userId);
 
         // バンド一覧の取得。取得に失敗しても個人応募は継続できる。
@@ -223,28 +238,35 @@ export default function PerformerRequestDetailPage() {
               band.status === "active"
           );
 
-          setLeaderBands(eligibleBands);
-          setSelectedBandId((current) => {
-            if (
-              current &&
-              eligibleBands.some((band) => band.id === current)
-            ) {
-              return current;
-            }
+          if (!cancelled) {
+            setLeaderBands(eligibleBands);
+            setSelectedBandId((current) => {
+              if (
+                current &&
+                eligibleBands.some((band) => band.id === current)
+              ) {
+                return current;
+              }
 
-            return eligibleBands[0]?.id ?? "";
-          });
+              return eligibleBands[0]?.id ?? "";
+            });
+          }
         } catch (bandError) {
           console.error("バンド一覧取得エラー:", bandError);
-          setLeaderBands([]);
-          setSelectedBandId("");
-          setBandLoadError(
-            bandError instanceof Error
-              ? bandError.message
-              : "バンド一覧を取得できませんでした"
-          );
+
+          if (!cancelled) {
+            setLeaderBands([]);
+            setSelectedBandId("");
+            setBandLoadError(
+              bandError instanceof Error
+                ? bandError.message
+                : "バンド一覧を取得できませんでした"
+            );
+          }
         } finally {
-          setBandsLoading(false);
+          if (!cancelled) {
+            setBandsLoading(false);
+          }
         }
 
         // 案件情報の取得
@@ -261,11 +283,62 @@ export default function PerformerRequestDetailPage() {
           );
         }
 
+        if (cancelled) return;
+
         setRequest(data.request);
+
+        // 個人応募状態の取得
+        try {
+          const idToken = liff.getIDToken();
+
+          if (!idToken) {
+            throw new Error("LINE認証情報を取得できません");
+          }
+
+          const applicationResponse = await fetch(
+            `/api/applications?requestId=${encodeURIComponent(requestId)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${requireLineIdToken(idToken)}`,
+              },
+              cache: "no-store",
+            }
+          );
+
+          const applicationData = await applicationResponse.json();
+
+          if (!applicationResponse.ok) {
+            throw new Error(
+              applicationData.error || "応募状態を取得できませんでした"
+            );
+          }
+
+          if (!cancelled) {
+            setPersonalApplicationStatus(
+              applicationData.application?.status ?? null
+            );
+            setApplicationStatusError(false);
+          }
+        } catch (applicationError) {
+          console.error(
+            "個人応募状態取得エラー:",
+            applicationError
+          );
+
+          if (!cancelled) {
+            setApplicationStatusError(true);
+          }
+        } finally {
+          if (!cancelled) {
+            setApplicationStatusLoading(false);
+          }
+        }
 
         // 施設レビューの取得
         if (data.request.facilities?.id) {
-          setFacilityReviewsLoading(true);
+          if (!cancelled) {
+            setFacilityReviewsLoading(true);
+          }
 
           try {
             const facilityResponse = await fetch(
@@ -280,7 +353,7 @@ export default function PerformerRequestDetailPage() {
 
             const facilityData = await facilityResponse.json();
 
-            if (facilityResponse.ok) {
+            if (!cancelled && facilityResponse.ok) {
               setFacilityRating(facilityData.rating ?? null);
               setFacilityReviewCount(
                 facilityData.review_count ?? 0
@@ -293,7 +366,9 @@ export default function PerformerRequestDetailPage() {
               facilityError
             );
           } finally {
-            setFacilityReviewsLoading(false);
+            if (!cancelled) {
+              setFacilityReviewsLoading(false);
+            }
           }
 
           // お気に入り状態の取得
@@ -303,7 +378,7 @@ export default function PerformerRequestDetailPage() {
               {
                 headers: {
                   Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-},
+                },
                 cache: "no-store",
               }
             );
@@ -311,7 +386,7 @@ export default function PerformerRequestDetailPage() {
             const favoritesData =
               await favoritesResponse.json();
 
-            if (favoritesResponse.ok) {
+            if (!cancelled && favoritesResponse.ok) {
               const favoriteExists =
                 favoritesData.favorites?.some(
                   (favorite: {
@@ -333,17 +408,25 @@ export default function PerformerRequestDetailPage() {
       } catch (error) {
         console.error(error);
 
-        setError(
-          error instanceof Error
-            ? error.message
-            : "エラーが発生しました"
-        );
+        if (!cancelled) {
+          setError(
+            error instanceof Error
+              ? error.message
+              : "エラーが発生しました"
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    initialize();
+    void initialize();
+
+    return () => {
+      cancelled = true;
+    };
   }, [requestId]);
 
   // 期限日当日は応募可能。翌日から期限切れ。
@@ -371,7 +454,7 @@ export default function PerformerRequestDetailPage() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-},
+          },
           body: JSON.stringify({
             targetUserId: request.facilities.user_id,
           }),
@@ -391,7 +474,7 @@ export default function PerformerRequestDetailPage() {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-},
+          },
           body: JSON.stringify({
             targetUserId: request.facilities.user_id,
           }),
@@ -414,7 +497,7 @@ export default function PerformerRequestDetailPage() {
     }
   };
 
-  // 個人名義の既存応募処理
+  // 個人名義の応募処理
   const handleApply = async () => {
     if (!lineUserId) {
       alert("LINEユーザー情報を取得できていません");
@@ -422,6 +505,19 @@ export default function PerformerRequestDetailPage() {
     }
 
     if (!request) {
+      return;
+    }
+
+    if (applicationStatusLoading || applicationStatusError) {
+      alert("応募状態を確認できていません。画面を開き直してください。");
+      return;
+    }
+
+    if (
+      personalApplicationStatus === "pending" ||
+      personalApplicationStatus === "accepted"
+    ) {
+      alert("この案件にはすでに応募済み、または採用済みです。");
       return;
     }
 
@@ -456,7 +552,7 @@ export default function PerformerRequestDetailPage() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-},
+        },
         body: JSON.stringify({
           requestId,
           message,
@@ -469,6 +565,8 @@ export default function PerformerRequestDetailPage() {
         alert(data.error || "応募に失敗しました");
         return;
       }
+
+      setPersonalApplicationStatus("pending");
 
       alert("個人名義で応募しました！");
       router.push("/performer/home");
@@ -894,6 +992,54 @@ export default function PerformerRequestDetailPage() {
               </div>
             </div>
 
+            {/* 個人応募状態の表示 */}
+            {applicationMode === "individual" && (
+              <>
+                {applicationStatusLoading && (
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <p className="text-sm text-gray-600">
+                      応募状態を確認しています...
+                    </p>
+                  </div>
+                )}
+
+                {!applicationStatusLoading &&
+                  applicationStatusError && (
+                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+                      <p className="text-sm font-bold text-red-700">
+                        応募状態を確認できません
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-red-600">
+                        安全のため個人応募を一時的に停止しています。画面を開き直してください。
+                      </p>
+                    </div>
+                  )}
+
+                {!applicationStatusLoading &&
+                  !applicationStatusError &&
+                  personalApplicationStatus === "pending" && (
+                    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-sm font-bold text-blue-800">
+                        応募済みです
+                      </p>
+                      <p className="mt-1 text-sm text-blue-700">
+                        施設からの審査結果をお待ちください。
+                      </p>
+                    </div>
+                  )}
+
+                {!applicationStatusLoading &&
+                  !applicationStatusError &&
+                  personalApplicationStatus === "accepted" && (
+                    <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
+                      <p className="text-sm font-bold text-green-800">
+                        この案件に採用されています
+                      </p>
+                    </div>
+                  )}
+              </>
+            )}
+
             {/* バンド選択 */}
             {applicationMode === "band" && (
               <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50 p-4">
@@ -979,6 +1125,13 @@ export default function PerformerRequestDetailPage() {
               }
               disabled={
                 applying ||
+                (applicationMode === "individual" &&
+                  (
+                    applicationStatusLoading ||
+                    applicationStatusError ||
+                    personalApplicationStatus === "pending" ||
+                    personalApplicationStatus === "accepted"
+                  )) ||
                 (applicationMode === "band" &&
                   (bandsLoading ||
                     Boolean(bandLoadError) ||
@@ -995,7 +1148,15 @@ export default function PerformerRequestDetailPage() {
                 ? "応募中..."
                 : applicationMode === "band"
                   ? "🎸 選択したバンドで応募する"
-                  : "この案件に応募する"}
+                  : applicationStatusLoading
+                    ? "応募状態を確認中..."
+                    : applicationStatusError
+                      ? "応募状態を確認できません"
+                      : personalApplicationStatus === "pending"
+                        ? "応募済み（審査中）"
+                        : personalApplicationStatus === "accepted"
+                          ? "採用済み"
+                          : "この案件に応募する"}
             </button>
 
             <p className="mt-3 text-center text-xs leading-5 text-gray-400">
