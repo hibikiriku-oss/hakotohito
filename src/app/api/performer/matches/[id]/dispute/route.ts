@@ -12,7 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-        const { id: matchId } = await params;
+    const { id: matchId } = await params;
 
     const authorization = request.headers.get("authorization");
     const idToken = authorization?.startsWith("Bearer ")
@@ -37,7 +37,7 @@ export async function POST(
 
     const lineUserId = verified.userId;
 
-    let body: { reason?: unknown };
+    let body: unknown;
 
     try {
       body = await request.json();
@@ -49,7 +49,12 @@ export async function POST(
     }
 
     const reason =
-      typeof body.reason === "string" ? body.reason.trim() : "";
+      typeof body === "object" &&
+      body !== null &&
+      "reason" in body &&
+      typeof body.reason === "string"
+        ? body.reason.trim()
+        : "";
 
     if (!reason) {
       return NextResponse.json(
@@ -91,8 +96,7 @@ export async function POST(
       );
     }
 
-    // マッチングを取得する。バンドマッチングでは、
-    // 続く処理で現在のリーダーかどうかを別途検証する。
+    // マッチングを取得
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -148,7 +152,7 @@ export async function POST(
         );
       }
     } else {
-      // 個人マッチングは従来どおり本人だけが申し立て可能
+      // 個人マッチングは本人だけが申し立て可能
       if (match.performer_id !== performer.id) {
         return NextResponse.json(
           { error: "マッチングが見つからないか、操作する権限がありません" },
@@ -181,23 +185,44 @@ export async function POST(
       );
     }
 
-    const { data: updatedRows, error: updateError } = await supabase
-      .from("matches")
-      .update({
-        completion_disputed_at: new Date().toISOString(),
-        completion_disputed_by: "performer",
-        completion_dispute_reason: reason,
-      })
-      .eq("id", matchId)
-      // 操作対象のマッチングが取得時と同じであることを確認
-      .eq("performer_id", match.performer_id)
-      .eq("status", "active")
-      .eq("performance_status", match.performance_status)
-      .is("completion_disputed_at", null)
-      .select("id");
+    // matchesの更新と管理者対応案件の作成をDB側で一括実行
+    const { data: caseId, error: disputeError } = await supabase.rpc(
+      "register_completion_dispute",
+      {
+        p_match_id: matchId,
+        p_disputed_by: "performer",
+        p_reason: reason,
+      }
+    );
 
-    if (updateError) {
-      console.error("演奏者側の異議申し立てエラー:", updateError);
+    if (disputeError) {
+      console.error("演奏者側の異議申し立てエラー:", disputeError);
+
+      const errorMessage = disputeError.message ?? "";
+
+      if (
+        errorMessage.includes("Dispute already exists") ||
+        errorMessage.includes("duplicate key") ||
+        errorMessage.includes("idx_dispute_admin_cases_one_open_per_match")
+      ) {
+        return NextResponse.json(
+          { error: "この演奏にはすでに異議申し立てがあります" },
+          { status: 409 }
+        );
+      }
+
+      if (
+        errorMessage.includes("Match is not active") ||
+        errorMessage.includes("already completed or cancelled")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "演奏状況が変更されています。画面を再読み込みしてください",
+          },
+          { status: 409 }
+        );
+      }
 
       return NextResponse.json(
         { error: "異議申し立ての登録に失敗しました" },
@@ -205,13 +230,12 @@ export async function POST(
       );
     }
 
-    if (!updatedRows || updatedRows.length === 0) {
+    if (!caseId) {
+      console.error("異議申し立ての管理者案件IDが返されませんでした");
+
       return NextResponse.json(
-        {
-          error:
-            "演奏状況が変更されています。画面を再読み込みしてください",
-        },
-        { status: 409 }
+        { error: "異議申し立ての登録に失敗しました" },
+        { status: 500 }
       );
     }
 

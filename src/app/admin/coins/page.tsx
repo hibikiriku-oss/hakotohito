@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import liff from "@line/liff";
 import AdminAnnouncementPanel from "@/components/AdminAnnouncementPanel";
+import AdminDisputesPanel from "@/components/AdminDisputesPanel";
 
 type AdminUser = {
   id: string;
@@ -40,7 +41,12 @@ type InquiryUpdateResponse = {
   };
 };
 
-type AdminTab = "coins" | "inquiries" | "rates" | "announcements";
+type AdminTab =
+  | "coins"
+  | "inquiries"
+  | "rates"
+  | "announcements"
+  | "disputes";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "不具合・エラー",
@@ -123,7 +129,9 @@ export default function AdminCoinsPage() {
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.error || "問い合わせ一覧を取得できませんでした。");
+          throw new Error(
+            data.error || "問い合わせ一覧を取得できませんでした。"
+          );
         }
 
         const items: Inquiry[] = data.inquiries ?? [];
@@ -135,7 +143,9 @@ export default function AdminCoinsPage() {
         });
         setReplyDrafts((previous) => {
           const next = { ...previous };
-          for (const inquiry of items) next[inquiry.id] = inquiry.admin_reply ?? "";
+          for (const inquiry of items) {
+            next[inquiry.id] = inquiry.admin_reply ?? "";
+          }
           return next;
         });
         setInquiriesLoaded(true);
@@ -338,7 +348,9 @@ export default function AdminCoinsPage() {
         setSelectedUser({ ...selectedUser, coinBalance: data.balanceAfter });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "コイン付与に失敗しました。");
+      setError(
+        err instanceof Error ? err.message : "コイン付与に失敗しました。"
+      );
     } finally {
       setGranting(false);
     }
@@ -388,7 +400,10 @@ export default function AdminCoinsPage() {
             : item
         )
       );
-      setStatusDrafts((previous) => ({ ...previous, [inquiry.id]: updated.status }));
+      setStatusDrafts((previous) => ({
+        ...previous,
+        [inquiry.id]: updated.status,
+      }));
       setReplyDrafts((previous) => ({
         ...previous,
         [inquiry.id]: updated.admin_reply ?? "",
@@ -437,122 +452,133 @@ export default function AdminCoinsPage() {
           <p className="text-sm text-gray-500">ADMINISTRATION</p>
           <h1 className="mt-1 text-2xl font-bold">管理者メニュー</h1>
           <p className="mt-2 text-sm text-gray-600">
-            コイン付与と問い合わせ対応を管理できます。
+            コイン付与、問い合わせ、消費コイン設定、お知らせ、異議申し立てを管理できます。
           </p>
         </header>
 
-      <div
-        className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-4 rounded-2xl bg-white p-2 shadow-sm"
-        role="tablist"
-        aria-label="管理機能"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "coins"}
-          onClick={() => {
-            setActiveTab("coins");
-            setError("");
-            setNotice("");
-          }}
-          className={`rounded-xl px-2 py-3 text-sm font-bold ${
-            activeTab === "coins"
-              ? "bg-black text-white"
-              : "bg-gray-100 text-gray-700"
-          }`}
+        <div
+          className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm sm:grid-cols-5"
+          role="tablist"
+          aria-label="管理機能"
         >
-          🪙 コイン管理
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "coins"}
+            onClick={() => {
+              setActiveTab("coins");
+              setError("");
+              setNotice("");
+            }}
+            className={`rounded-xl px-2 py-3 text-sm font-bold ${
+              activeTab === "coins"
+                ? "bg-black text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            🪙 コイン管理
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "inquiries"}
-          onClick={() => {
-            setActiveTab("inquiries");
-            setError("");
-            setNotice("");
-            if (!inquiriesLoaded && idToken) {
-              void loadInquiries(idToken, statusFilter);
-            }
-          }}
-          className={`rounded-xl px-2 py-3 text-sm font-bold ${
-            activeTab === "inquiries"
-              ? "bg-black text-white"
-              : "bg-gray-100 text-gray-700"
-          }`}
-        >
-          📩 問い合わせ管理
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "inquiries"}
+            onClick={() => {
+              setActiveTab("inquiries");
+              setError("");
+              setNotice("");
+              if (!inquiriesLoaded && idToken) {
+                void loadInquiries(idToken, statusFilter);
+              }
+            }}
+            className={`rounded-xl px-2 py-3 text-sm font-bold ${
+              activeTab === "inquiries"
+                ? "bg-black text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            📩 問い合わせ管理
+          </button>
 
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "rates"}
-          onClick={() => {
-            setActiveTab("rates");
-            setError("");
-            setNotice("");
-          }}
-          className={`rounded-xl px-2 py-3 text-sm font-bold ${
-            activeTab === "rates"
-              ? "bg-black text-white"
-              : "bg-gray-100 text-gray-700"
-          }`}
-        >
-          ⚙️ 消費コイン設定
-        </button>
-        <button
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "rates"}
+            onClick={() => {
+              setActiveTab("rates");
+              setError("");
+              setNotice("");
+            }}
+            className={`rounded-xl px-2 py-3 text-sm font-bold ${
+              activeTab === "rates"
+                ? "bg-black text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            ⚙️ 消費コイン設定
+          </button>
 
-          type="button"
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "announcements"}
+            onClick={() => {
+              setActiveTab("announcements");
+              setError("");
+              setNotice("");
+            }}
+            className={`rounded-xl px-2 py-3 text-sm font-bold ${
+              activeTab === "announcements"
+                ? "bg-black text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            お知らせ管理
+          </button>
 
-          role="tab"
-
-          aria-selected={activeTab === "announcements"}
-
-          onClick={() => {
-
-            setActiveTab("announcements");
-
-            setError("");
-
-            setNotice("");
-
-          }}
-
-          className={`rounded-xl px-2 py-3 text-sm font-bold ${
-
-            activeTab === "announcements"
-
-              ? "bg-black text-white"
-
-              : "bg-gray-100 text-gray-700"
-
-          }`}
-
-        >
-
-          {"\u304A\u77E5\u3089\u305B\u7BA1\u7406"}
-
-        </button>
-
-      </div>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "disputes"}
+            onClick={() => {
+              setActiveTab("disputes");
+              setError("");
+              setNotice("");
+            }}
+            className={`rounded-xl px-2 py-3 text-sm font-bold ${
+              activeTab === "disputes"
+                ? "bg-black text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            異議申し立て管理
+          </button>
+        </div>
 
         {error && (
-          <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-red-700 whitespace-pre-wrap">
+          <div
+            role="alert"
+            className="mb-4 whitespace-pre-wrap rounded-xl border border-red-200 bg-red-50 p-4 text-red-700"
+          >
             {error}
           </div>
         )}
+
         {notice && (
-          <div role="status" className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4 text-green-800">
+          <div
+            role="status"
+            className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4 text-green-800"
+          >
             {notice}
           </div>
         )}
 
-        {activeTab === "announcements" ? (
+        {activeTab === "disputes" ? (
+          <AdminDisputesPanel token={idToken} />
+        ) : activeTab === "announcements" ? (
           <AdminAnnouncementPanel token={idToken} />
         ) : activeTab === "rates" ? (
-            <CoinRateSettingsPanel token={idToken} />
+          <CoinRateSettingsPanel token={idToken} />
         ) : activeTab === "coins" ? (
           <>
             <section className="mb-5 rounded-2xl bg-white p-5 shadow-sm">
@@ -571,11 +597,17 @@ export default function AdminCoinsPage() {
                   placeholder="LINEの表示名で検索（空欄で全件）"
                   className="min-w-0 flex-1 rounded-xl border p-3"
                 />
-                <button type="submit" disabled={searching} className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={searching}
+                  className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-50"
+                >
                   {searching ? "検索中…" : "検索"}
                 </button>
               </form>
-              <p className="mt-2 text-xs text-gray-500">最大50件を表示します。</p>
+              <p className="mt-2 text-xs text-gray-500">
+                最大50件を表示します。
+              </p>
               <div className="mt-4 space-y-2">
                 {users.map((user) => (
                   <button
@@ -586,44 +618,108 @@ export default function AdminCoinsPage() {
                       setError("");
                       setNotice("");
                     }}
-                    className={`w-full rounded-xl border p-4 text-left ${selectedUser?.id === user.id ? "border-black bg-gray-100" : "border-gray-200"}`}
+                    className={`w-full rounded-xl border p-4 text-left ${
+                      selectedUser?.id === user.id
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="break-words font-bold">{user.displayName || "名前未設定"}</p>
-                        <p className="mt-1 text-sm text-gray-500">{getUserTypeLabel(user.userType)}</p>
+                        <p className="break-words font-bold">
+                          {user.displayName || "名前未設定"}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-500">
+                          {getUserTypeLabel(user.userType)}
+                        </p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <p className="font-bold">{user.coinBalance.toLocaleString()}</p>
+                        <p className="font-bold">
+                          {user.coinBalance.toLocaleString()}
+                        </p>
                         <p className="text-xs text-gray-500">コイン</p>
                       </div>
                     </div>
                   </button>
                 ))}
-                {users.length === 0 && <p className="py-4 text-sm text-gray-500">該当するユーザーがいません。</p>}
+                {users.length === 0 && (
+                  <p className="py-4 text-sm text-gray-500">
+                    該当するユーザーがいません。
+                  </p>
+                )}
               </div>
             </section>
 
             <section className="rounded-2xl bg-white p-5 shadow-sm">
               <h2 className="mb-3 font-bold">2. コインを付与</h2>
               {!selectedUser ? (
-                <p className="text-sm text-gray-500">先に検索結果からユーザーを選択してください。</p>
+                <p className="text-sm text-gray-500">
+                  先に検索結果からユーザーを選択してください。
+                </p>
               ) : (
                 <>
                   <div className="mb-4 rounded-xl bg-gray-50 p-4">
-                    <p className="font-bold">{selectedUser.displayName || "名前未設定"}</p>
-                    <p className="mt-1 text-sm text-gray-600">{getUserTypeLabel(selectedUser.userType)}</p>
-                    <p className="mt-2 text-sm">現在の残高：<strong>{selectedUser.coinBalance.toLocaleString()} コイン</strong></p>
+                    <p className="font-bold">
+                      {selectedUser.displayName || "名前未設定"}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      {getUserTypeLabel(selectedUser.userType)}
+                    </p>
+                    <p className="mt-2 text-sm">
+                      現在の残高：
+                      <strong>
+                        {selectedUser.coinBalance.toLocaleString()} コイン
+                      </strong>
+                    </p>
                   </div>
-                  <label htmlFor="coin-amount" className="mb-2 block text-sm font-medium">付与コイン数</label>
-                  <input id="coin-amount" type="number" min="1" max="1000000" step="1" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} className="mb-4 w-full rounded-xl border p-3" />
-                  <label htmlFor="coin-description" className="mb-2 block text-sm font-medium">付与理由</label>
-                  <textarea id="coin-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={200} rows={3} placeholder="例：キャンペーン特典、問い合わせ対応" className="mb-2 w-full rounded-xl border p-3" />
-                  <p className="mb-4 text-right text-xs text-gray-500">{description.length}/200文字</p>
-                  <button type="button" onClick={() => void grantCoins()} disabled={granting} className="w-full rounded-xl bg-black p-4 font-bold text-white disabled:opacity-50">
-                    {granting ? "付与処理中…" : "内容を確認してコインを付与"}
+                  <label
+                    htmlFor="coin-amount"
+                    className="mb-2 block text-sm font-medium"
+                  >
+                    付与コイン数
+                  </label>
+                  <input
+                    id="coin-amount"
+                    type="number"
+                    min="1"
+                    max="1000000"
+                    step="1"
+                    inputMode="numeric"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    className="mb-4 w-full rounded-xl border p-3"
+                  />
+                  <label
+                    htmlFor="coin-description"
+                    className="mb-2 block text-sm font-medium"
+                  >
+                    付与理由
+                  </label>
+                  <textarea
+                    id="coin-description"
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    maxLength={200}
+                    rows={3}
+                    placeholder="例：キャンペーン特典、問い合わせ対応"
+                    className="mb-2 w-full rounded-xl border p-3"
+                  />
+                  <p className="mb-4 text-right text-xs text-gray-500">
+                    {description.length}/200文字
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void grantCoins()}
+                    disabled={granting}
+                    className="w-full rounded-xl bg-black p-4 font-bold text-white disabled:opacity-50"
+                  >
+                    {granting
+                      ? "付与処理中…"
+                      : "内容を確認してコインを付与"}
                   </button>
-                  <p className="mt-3 text-xs text-gray-500">付与操作は履歴に記録されます。実行前の確認画面が表示されます。</p>
+                  <p className="mt-3 text-xs text-gray-500">
+                    付与操作は履歴に記録されます。実行前の確認画面が表示されます。
+                  </p>
                 </>
               )}
             </section>
@@ -631,58 +727,156 @@ export default function AdminCoinsPage() {
         ) : (
           <>
             <section className="mb-5 rounded-2xl bg-white p-4 shadow-sm">
-              <label htmlFor="inquiry-status-filter" className="mb-2 block text-sm font-bold">対応状況で絞り込む</label>
-              <select id="inquiry-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full rounded-xl border p-3">
+              <label
+                htmlFor="inquiry-status-filter"
+                className="mb-2 block text-sm font-bold"
+              >
+                対応状況で絞り込む
+              </label>
+              <select
+                id="inquiry-status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="w-full rounded-xl border p-3"
+              >
                 <option value="all">すべて</option>
                 <option value="open">未対応</option>
                 <option value="in_progress">対応中</option>
                 <option value="resolved">対応済み</option>
               </select>
-              <p className="mt-3 text-sm text-gray-500">表示件数：{inquiries.length}件（最大100件）</p>
+              <p className="mt-3 text-sm text-gray-500">
+                表示件数：{inquiries.length}件（最大100件）
+              </p>
             </section>
 
             {inquiryLoading ? (
-              <div className="rounded-2xl bg-white p-6 text-center text-gray-500">問い合わせを読み込んでいます…</div>
+              <div className="rounded-2xl bg-white p-6 text-center text-gray-500">
+                問い合わせを読み込んでいます…
+              </div>
             ) : inquiries.length === 0 ? (
-              <div className="rounded-2xl bg-white p-6 text-center text-gray-500">問い合わせはありません。</div>
+              <div className="rounded-2xl bg-white p-6 text-center text-gray-500">
+                問い合わせはありません。
+              </div>
             ) : (
               <div className="space-y-4">
                 {inquiries.map((inquiry) => {
                   const user = getInquiryUser(inquiry);
-                  const draftStatus = statusDrafts[inquiry.id] ?? inquiry.status;
-                  const draftReply = replyDrafts[inquiry.id] ?? inquiry.admin_reply ?? "";
+                  const draftStatus =
+                    statusDrafts[inquiry.id] ?? inquiry.status;
+                  const draftReply =
+                    replyDrafts[inquiry.id] ?? inquiry.admin_reply ?? "";
                   const isSaving = savingId === inquiry.id;
 
                   return (
-                    <article key={inquiry.id} className="rounded-2xl bg-white p-5 shadow-sm">
+                    <article
+                      key={inquiry.id}
+                      className="rounded-2xl bg-white p-5 shadow-sm"
+                    >
                       <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">{CATEGORY_LABELS[inquiry.category] ?? inquiry.category}</span>
-                        <span className={`rounded-full px-3 py-1 text-xs ${inquiry.status === "resolved" ? "bg-green-100 text-green-800" : inquiry.status === "in_progress" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}`}>
+                        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
+                          {CATEGORY_LABELS[inquiry.category] ??
+                            inquiry.category}
+                        </span>
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs ${
+                            inquiry.status === "resolved"
+                              ? "bg-green-100 text-green-800"
+                              : inquiry.status === "in_progress"
+                                ? "bg-blue-100 text-blue-800"
+                                : "bg-orange-100 text-orange-800"
+                          }`}
+                        >
                           現在：{STATUS_LABELS[inquiry.status]}
                         </span>
                       </div>
-                      <h2 className="mb-2 break-words text-lg font-bold">{inquiry.subject}</h2>
-                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">{inquiry.message}</p>
+                      <h2 className="mb-2 break-words text-lg font-bold">
+                        {inquiry.subject}
+                      </h2>
+                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">
+                        {inquiry.message}
+                      </p>
                       <div className="border-t pt-3 text-xs leading-5 text-gray-500">
                         <p>送信者：{user?.display_name || "名前未設定"}</p>
-                        <p>ユーザー種別：{user?.user_type === "performer" ? "演奏者" : user?.user_type === "facility" ? "施設" : "未設定"}</p>
-                        <p>受付日時：{new Date(inquiry.created_at).toLocaleString("ja-JP")}</p>
+                        <p>
+                          ユーザー種別：
+                          {user?.user_type === "performer"
+                            ? "演奏者"
+                            : user?.user_type === "facility"
+                              ? "施設"
+                              : "未設定"}
+                        </p>
+                        <p>
+                          受付日時：
+                          {new Date(inquiry.created_at).toLocaleString("ja-JP")}
+                        </p>
                       </div>
                       <div className="mt-5 border-t pt-4">
-                        <label htmlFor={`inquiry-status-${inquiry.id}`} className="mb-2 block text-sm font-bold">対応状況</label>
-                        <select id={`inquiry-status-${inquiry.id}`} value={draftStatus} onChange={(event) => setStatusDrafts((previous) => ({ ...previous, [inquiry.id]: event.target.value as Inquiry["status"] }))} className="w-full rounded-xl border p-3" disabled={isSaving}>
+                        <label
+                          htmlFor={`inquiry-status-${inquiry.id}`}
+                          className="mb-2 block text-sm font-bold"
+                        >
+                          対応状況
+                        </label>
+                        <select
+                          id={`inquiry-status-${inquiry.id}`}
+                          value={draftStatus}
+                          onChange={(event) =>
+                            setStatusDrafts((previous) => ({
+                              ...previous,
+                              [inquiry.id]: event.target
+                                .value as Inquiry["status"],
+                            }))
+                          }
+                          className="w-full rounded-xl border p-3"
+                          disabled={isSaving}
+                        >
                           <option value="open">未対応</option>
                           <option value="in_progress">対応中</option>
                           <option value="resolved">対応済み</option>
                         </select>
-                        <label htmlFor={`inquiry-reply-${inquiry.id}`} className="mb-2 mt-4 block text-sm font-bold">管理者からの返信</label>
-                        <textarea id={`inquiry-reply-${inquiry.id}`} value={draftReply} onChange={(event) => setReplyDrafts((previous) => ({ ...previous, [inquiry.id]: event.target.value }))} maxLength={5000} rows={5} placeholder="問い合わせへの返信を入力してください" className="w-full rounded-xl border p-3 text-sm leading-6" disabled={isSaving} />
-                        <p className="mt-1 text-right text-xs text-gray-500">{draftReply.length}/5000文字</p>
+                        <label
+                          htmlFor={`inquiry-reply-${inquiry.id}`}
+                          className="mb-2 mt-4 block text-sm font-bold"
+                        >
+                          管理者からの返信
+                        </label>
+                        <textarea
+                          id={`inquiry-reply-${inquiry.id}`}
+                          value={draftReply}
+                          onChange={(event) =>
+                            setReplyDrafts((previous) => ({
+                              ...previous,
+                              [inquiry.id]: event.target.value,
+                            }))
+                          }
+                          maxLength={5000}
+                          rows={5}
+                          placeholder="問い合わせへの返信を入力してください"
+                          className="w-full rounded-xl border p-3 text-sm leading-6"
+                          disabled={isSaving}
+                        />
+                        <p className="mt-1 text-right text-xs text-gray-500">
+                          {draftReply.length}/5000文字
+                        </p>
                         {inquiry.admin_reply && (
-                          <p className="mt-2 text-xs text-gray-500">前回の返信日時：{inquiry.replied_at ? new Date(inquiry.replied_at).toLocaleString("ja-JP") : "記録なし"}</p>
+                          <p className="mt-2 text-xs text-gray-500">
+                            前回の返信日時：
+                            {inquiry.replied_at
+                              ? new Date(inquiry.replied_at).toLocaleString(
+                                  "ja-JP"
+                                )
+                              : "記録なし"}
+                          </p>
                         )}
-                        <button type="button" onClick={() => void saveInquiry(inquiry)} disabled={Boolean(savingId) || !idToken} className="mt-3 w-full rounded-xl bg-blue-600 p-3 font-bold text-white disabled:opacity-50">
-                          {isSaving ? "保存中…" : "返信・対応状況を保存"}
+                        <button
+                          type="button"
+                          onClick={() => void saveInquiry(inquiry)}
+                          disabled={Boolean(savingId) || !idToken}
+                          className="mt-3 w-full rounded-xl bg-blue-600 p-3 font-bold text-white disabled:opacity-50"
+                        >
+                          {isSaving
+                            ? "保存中…"
+                            : "返信・対応状況を保存"}
                         </button>
                       </div>
                     </article>
@@ -691,7 +885,14 @@ export default function AdminCoinsPage() {
               </div>
             )}
 
-            <button type="button" onClick={() => { if (idToken) void loadInquiries(idToken, statusFilter); }} disabled={inquiryLoading || !idToken || Boolean(savingId)} className="mt-6 w-full rounded-xl border bg-white p-3 font-bold disabled:opacity-50">
+            <button
+              type="button"
+              onClick={() => {
+                if (idToken) void loadInquiries(idToken, statusFilter);
+              }}
+              disabled={inquiryLoading || !idToken || Boolean(savingId)}
+              className="mt-6 w-full rounded-xl border bg-white p-3 font-bold disabled:opacity-50"
+            >
               再読み込み
             </button>
           </>

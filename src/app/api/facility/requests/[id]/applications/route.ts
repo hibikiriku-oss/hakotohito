@@ -17,31 +17,31 @@ export async function GET(
     const { id: requestId } = await context.params;
 
     const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-if (!idToken) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認情報がありません。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const verified = await verifyLineIdToken(idToken);
+    const verified = await verifyLineIdToken(idToken);
 
-if (!verified) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認に失敗しました。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const lineUserId = verified.userId;
+    const lineUserId = verified.userId;
 
     // LINEユーザーを取得
     const { data: user, error: userError } = await supabase
@@ -115,7 +115,9 @@ const lineUserId = verified.userId;
             status_level,
             users (
               display_name,
-              picture_url
+              picture_url,
+              avatar_type,
+              avatar_emoji
             )
           )
         `)
@@ -164,6 +166,12 @@ const lineUserId = verified.userId;
         genres: string[];
         area: string | null;
         areas: string[];
+        users: {
+          display_name: string | null;
+          picture_url: string | null;
+          avatar_type: string | null;
+          avatar_emoji: string | null;
+        } | null;
       }[]
     >();
 
@@ -220,6 +228,12 @@ const lineUserId = verified.userId;
           genres: string[];
           area: string | null;
           areas: string[];
+          users: {
+            display_name: string | null;
+            picture_url: string | null;
+            avatar_type: string | null;
+            avatar_emoji: string | null;
+          } | null;
         }
       >();
 
@@ -227,7 +241,20 @@ const lineUserId = verified.userId;
         const { data: performers, error: performersError } =
           await supabase
             .from("performers")
-            .select("id, name, instruments, genres, area, areas")
+            .select(`
+              id,
+              name,
+              instruments,
+              genres,
+              area,
+              areas,
+              users (
+                display_name,
+                picture_url,
+                avatar_type,
+                avatar_emoji
+              )
+            `)
             .in("id", performerIds);
 
         if (performersError) {
@@ -243,6 +270,8 @@ const lineUserId = verified.userId;
         }
 
         for (const performer of performers ?? []) {
+          const performerUser = performer.users?.[0] ?? null;
+
           performersById.set(performer.id, {
             id: performer.id,
             name: performer.name,
@@ -255,6 +284,14 @@ const lineUserId = verified.userId;
                 : performer.area
                   ? [performer.area]
                   : [],
+            users: performerUser
+              ? {
+                  display_name: performerUser.display_name,
+                  picture_url: performerUser.picture_url,
+                  avatar_type: performerUser.avatar_type,
+                  avatar_emoji: performerUser.avatar_emoji,
+                }
+              : null,
           });
         }
       }
