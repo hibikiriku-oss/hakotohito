@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -26,10 +27,9 @@ export default function FacilityProfileEditPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState("");
 
-  // ========================================
-  // LINE認証・プロフィール取得
-  // ========================================
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -105,9 +105,6 @@ export default function FacilityProfileEditPage() {
     loadProfile();
   }, [router]);
 
-  // ========================================
-  // プロフィール更新
-  // ========================================
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
@@ -169,9 +166,67 @@ export default function FacilityProfileEditPage() {
     }
   };
 
-  // ========================================
-  // 読み込み中
-  // ========================================
+  const handleWithdraw = async () => {
+    if (saving || withdrawing) return;
+
+    const confirmed = window.confirm(
+      "本当に退会しますか？\n\n" +
+      "・施設プロフィールは利用できなくなります。\n" +
+      "・進行中の演奏マッチングはキャンセルされます。\n" +
+      "・完了済みの履歴やコイン取引記録は保持されます。\n" +
+      "・退会後は同じLINEアカウントで再登録できます。\n\n" +
+      "この操作を続けますか？"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setWithdrawing(true);
+      setWithdrawError("");
+
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
+      const response = await fetch("/api/account/withdraw", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+          data.message ||
+          "退会処理に失敗しました。時間をおいて再度お試しください。"
+        );
+      }
+
+      alert(
+        "退会手続きが完了しました。\nご利用ありがとうございました。"
+      );
+
+      window.location.replace("/");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "退会処理に失敗しました";
+
+      setWithdrawError(message);
+      alert(message);
+      setWithdrawing(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -185,9 +240,6 @@ export default function FacilityProfileEditPage() {
     );
   }
 
-  // ========================================
-  // 編集画面
-  // ========================================
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 pt-6 pb-10">
@@ -195,6 +247,7 @@ export default function FacilityProfileEditPage() {
           <button
             type="button"
             onClick={() => router.push("/facility/home")}
+            disabled={withdrawing}
             className="text-sm text-gray-500 font-bold mb-5"
           >
             ← 施設ホームに戻る
@@ -223,13 +276,11 @@ export default function FacilityProfileEditPage() {
           className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden"
         >
           <div className="p-5 space-y-6">
-            {/* 基本情報 */}
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
                   🏢
                 </div>
-
                 <div>
                   <p className="font-bold text-gray-900">
                     基本情報
@@ -241,24 +292,22 @@ export default function FacilityProfileEditPage() {
               </div>
 
               <div className="space-y-4">
-                {/* 施設名 */}
                 <div>
                   <label className="block text-sm font-bold text-gray-800 mb-2">
                     施設名
                     <span className="text-red-500 ml-1">*</span>
                   </label>
-
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
+                    disabled={saving || withdrawing}
                     placeholder="例：○○老人ホーム"
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 disabled:opacity-50"
                   />
                 </div>
 
-                {/* プロフィールアイコン */}
                 <div>
                   <label className="block text-sm font-bold text-gray-800 mb-3">
                     プロフィールアイコン
@@ -268,6 +317,7 @@ export default function FacilityProfileEditPage() {
                     <button
                       type="button"
                       onClick={() => setAvatarType("line")}
+                      disabled={saving || withdrawing}
                       className={`rounded-xl border p-3 text-sm font-bold ${
                         avatarType === "line"
                           ? "border-black bg-gray-100"
@@ -280,6 +330,7 @@ export default function FacilityProfileEditPage() {
                     <button
                       type="button"
                       onClick={() => setAvatarType("emoji")}
+                      disabled={saving || withdrawing}
                       className={`rounded-xl border p-3 text-sm font-bold ${
                         avatarType === "emoji"
                           ? "border-black bg-gray-100"
@@ -302,6 +353,7 @@ export default function FacilityProfileEditPage() {
                             key={emoji}
                             type="button"
                             onClick={() => setAvatarEmoji(emoji)}
+                            disabled={saving || withdrawing}
                             aria-label={`アイコン ${emoji}`}
                             aria-pressed={avatarEmoji === emoji}
                             className={`aspect-square rounded-xl border text-2xl ${
@@ -322,7 +374,6 @@ export default function FacilityProfileEditPage() {
                   )}
                 </div>
 
-                {/* 施設種類 */}
                 <div>
                   <label className="block text-sm font-bold text-gray-800 mb-2">
                     施設種類
@@ -335,7 +386,8 @@ export default function FacilityProfileEditPage() {
                       setFacilityType(e.target.value)
                     }
                     required
-                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                    disabled={saving || withdrawing}
+                    className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 disabled:opacity-50"
                   >
                     <option value="">選択してください</option>
                     <option value="高齢者施設">高齢者施設</option>
@@ -357,13 +409,11 @@ export default function FacilityProfileEditPage() {
 
             <div className="border-t border-gray-100" />
 
-            {/* 所在地 */}
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
                   📍
                 </div>
-
                 <div>
                   <p className="font-bold text-gray-900">
                     所在地
@@ -379,27 +429,25 @@ export default function FacilityProfileEditPage() {
                   住所
                   <span className="text-red-500 ml-1">*</span>
                 </label>
-
                 <input
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                   required
+                  disabled={saving || withdrawing}
                   placeholder="例：愛知県名古屋市○○区○○"
-                  className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
+                  className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 disabled:opacity-50"
                 />
               </div>
             </section>
 
             <div className="border-t border-gray-100" />
 
-            {/* 施設紹介 */}
             <section>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center text-sm">
                   💬
                 </div>
-
                 <div>
                   <p className="font-bold text-gray-900">
                     施設紹介
@@ -413,9 +461,10 @@ export default function FacilityProfileEditPage() {
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                disabled={saving || withdrawing}
                 placeholder="施設の特徴や、演奏を依頼したい理由など"
                 rows={5}
-                className="w-full resize-none border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 leading-6"
+                className="w-full resize-none border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100 leading-6 disabled:opacity-50"
               />
 
               <p className="text-xs text-gray-400 mt-2 leading-5">
@@ -424,17 +473,14 @@ export default function FacilityProfileEditPage() {
             </section>
           </div>
 
-          {/* 保存エリア */}
           <div className="bg-gray-50 border-t border-gray-100 p-5">
             <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4">
               <div className="flex items-start gap-3">
                 <span className="text-lg">💡</span>
-
                 <div>
                   <p className="text-sm font-bold text-gray-700 mb-1">
                     更新について
                   </p>
-
                   <p className="text-xs text-gray-500 leading-5">
                     保存すると施設プロフィールに変更内容が反映されます。
                   </p>
@@ -444,7 +490,7 @@ export default function FacilityProfileEditPage() {
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || withdrawing}
               className="w-full bg-black text-white rounded-2xl py-4 font-bold shadow-sm transition active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? (
@@ -460,13 +506,47 @@ export default function FacilityProfileEditPage() {
             <button
               type="button"
               onClick={() => router.push("/facility/home")}
-              disabled={saving}
-              className="w-full mt-3 bg-white border border-gray-200 text-gray-700 rounded-2xl py-3.5 font-bold"
+              disabled={saving || withdrawing}
+              className="w-full mt-3 bg-white border border-gray-200 text-gray-700 rounded-2xl py-3.5 font-bold disabled:opacity-50"
             >
               キャンセル
             </button>
           </div>
         </form>
+
+        <section className="mt-10 bg-white border border-red-200 rounded-2xl p-5">
+          <h2 className="font-bold text-red-700">
+            退会手続き
+          </h2>
+
+          <p className="text-sm text-gray-600 leading-6 mt-3">
+            退会すると、このアカウントでのサービス利用ができなくなります。
+            進行中の演奏マッチングはキャンセルされます。
+            完了済みの履歴やコイン取引記録は保持されます。
+          </p>
+
+          <p className="text-xs text-gray-500 leading-5 mt-2">
+            異議申し立て中の案件や成立済みのレッスンがある場合は、
+            状況確認のため退会できないことがあります。
+          </p>
+
+          {withdrawError && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-sm text-red-700">
+                {withdrawError}
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleWithdraw}
+            disabled={saving || withdrawing}
+            className="w-full mt-5 border border-red-300 text-red-700 bg-white rounded-xl p-4 font-bold disabled:opacity-50"
+          >
+            {withdrawing ? "退会処理中..." : "退会する"}
+          </button>
+        </section>
       </div>
     </main>
   );

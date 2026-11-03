@@ -10,9 +10,17 @@ type LineProfile = {
   pictureUrl?: string;
 };
 
+type UserType = "performer" | "facility";
+
+type RegisteredUser = {
+  id: string;
+  user_type: UserType;
+};
+
 export default function Home() {
   const [profile, setProfile] = useState<LineProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [registering, setRegistering] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -49,8 +57,51 @@ export default function Home() {
           displayName: lineProfile.displayName,
           pictureUrl: lineProfile.pictureUrl,
         });
+
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できませんでした。再ログインしてください。"
+          );
+        }
+
+        // 登録済みの有効アカウントを確認
+        const response = await fetch("/api/users", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+          cache: "no-store",
+        });
+
+        if (cancelled) return;
+
+        if (response.ok) {
+          const data = await response.json();
+          const user = data.user as RegisteredUser;
+
+          if (user.user_type === "performer") {
+            window.location.replace("/performer");
+            return;
+          }
+
+          if (user.user_type === "facility") {
+            window.location.replace("/facility");
+            return;
+          }
+
+          throw new Error("登録済みユーザーの種別が不正です。");
+        }
+
+        if (response.status !== 404) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(
+            data.error || "ユーザー情報の確認に失敗しました。"
+          );
+        }
       } catch (err) {
-        console.error("LIFF ERROR:", err);
+        console.error("LIFF / ユーザー確認エラー:", err);
 
         if (!cancelled) {
           setError(
@@ -71,13 +122,15 @@ export default function Home() {
     };
   }, []);
 
-  const selectUserType = async (
-    userType: "performer" | "facility"
-  ) => {
+  const selectUserType = async (userType: UserType) => {
     if (!profile) {
       alert("LINEプロフィールを取得できていません。");
       return;
     }
+
+    if (registering) return;
+
+    setRegistering(true);
 
     try {
       if (!liff.isLoggedIn()) {
@@ -87,7 +140,6 @@ export default function Home() {
         return;
       }
 
-      // 登録直前にIDトークンを取得する
       const idToken = liff.getIDToken();
 
       if (!idToken) {
@@ -123,14 +175,25 @@ export default function Home() {
         return;
       }
 
-      if (userType === "performer") {
-        window.location.href = "/performer";
-      } else {
-        window.location.href = "/facility";
+      // APIが返した実際の登録種別を基準に移動
+      const registeredUser = data.user as RegisteredUser;
+
+      if (registeredUser?.user_type === "performer") {
+        window.location.replace("/performer");
+        return;
       }
+
+      if (registeredUser?.user_type === "facility") {
+        window.location.replace("/facility");
+        return;
+      }
+
+      alert("登録情報を確認できませんでした。");
     } catch (err) {
       console.error("ユーザー登録エラー:", err);
       alert("通信エラーが発生しました。");
+    } finally {
+      setRegistering(false);
     }
   };
 
@@ -196,18 +259,26 @@ export default function Home() {
         <div className="space-y-3">
           <button
             onClick={() => selectUserType("performer")}
-            className="w-full bg-black text-white rounded-xl p-4"
+            disabled={registering}
+            className="w-full bg-black text-white rounded-xl p-4 disabled:opacity-50"
           >
             🎸 演奏したい
           </button>
 
           <button
             onClick={() => selectUserType("facility")}
-            className="w-full bg-white border rounded-xl p-4"
+            disabled={registering}
+            className="w-full bg-white border rounded-xl p-4 disabled:opacity-50"
           >
             🏢 演奏を依頼したい
           </button>
         </div>
+
+        {registering && (
+          <p className="text-center text-sm text-gray-500 mt-4">
+            登録しています…
+          </p>
+        )}
       </div>
     </main>
   );

@@ -19,6 +19,7 @@ type UserProfile = {
   picture_url: string | null;
   avatar_type: "line" | "emoji";
   avatar_emoji: string | null;
+  user_type: "performer" | "facility";
 };
 
 const menuConfig: Record<
@@ -177,6 +178,8 @@ export default function PerformerHomePage() {
   const [coinBalance, setCoinBalance] = useState<number | null>(null);
   const [coinLoading, setCoinLoading] = useState(true);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,32 +214,60 @@ export default function PerformerHomePage() {
           Authorization: `Bearer ${idToken}`,
         };
 
-        const [profileResponse, coinResponse] = await Promise.all([
-          fetch("/api/users", {
-            headers,
-            cache: "no-store",
-          }),
-          fetch("/api/coins/balance", {
-            headers,
-            cache: "no-store",
-          }),
-        ]);
+        // まず有効なユーザーアカウントを確認
+        const profileResponse = await fetch("/api/users", {
+          headers,
+          cache: "no-store",
+        });
 
-        if (profileResponse.ok) {
-          const profileData = await profileResponse.json();
+        if (
+          profileResponse.status === 401 ||
+          profileResponse.status === 404
+        ) {
+          window.location.replace("/");
+          return;
+        }
 
-          if (!cancelled && profileData.user) {
-            setProfile(profileData.user);
-          }
-        } else {
-          const profileData = await profileResponse.json().catch(() => ({}));
-          console.error(
-            "プロフィール取得エラー:",
-            profileData.error || profileResponse.status
+        const profileData = await profileResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!profileResponse.ok || !profileData.user) {
+          throw new Error(
+            profileData.error || "ユーザー情報を確認できません"
           );
         }
 
-        const coinData = await coinResponse.json();
+        if (profileData.user.user_type !== "performer") {
+          if (profileData.user.user_type === "facility") {
+            window.location.replace("/facility");
+            return;
+          }
+
+          throw new Error("アカウント種別を確認できません");
+        }
+
+        if (!cancelled) {
+          setProfile(profileData.user);
+        }
+
+        // 有効な演奏者アカウントを確認した後に残高を取得
+        const coinResponse = await fetch("/api/coins/balance", {
+          headers,
+          cache: "no-store",
+        });
+
+        if (
+          coinResponse.status === 401 ||
+          coinResponse.status === 404
+        ) {
+          window.location.replace("/");
+          return;
+        }
+
+        const coinData = await coinResponse
+          .json()
+          .catch(() => ({}));
 
         if (!coinResponse.ok) {
           throw new Error(
@@ -249,9 +280,18 @@ export default function PerformerHomePage() {
         }
       } catch (error) {
         console.error("ユーザー情報取得エラー:", error);
+
+        if (!cancelled) {
+          setAuthError(
+            error instanceof Error
+              ? error.message
+              : "アカウント情報を確認できませんでした"
+          );
+        }
       } finally {
         if (!cancelled) {
           setCoinLoading(false);
+          setAuthLoading(false);
         }
       }
     }
@@ -279,6 +319,38 @@ export default function PerformerHomePage() {
     profile?.avatar_type !== "emoji"
       ? profile?.picture_url
       : null;
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <p className="text-sm text-gray-500">
+          アカウントを確認しています...
+        </p>
+      </main>
+    );
+  }
+
+  if (authError || !profile) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-lg font-bold text-gray-900">
+            アカウントを確認できません
+          </p>
+          <p className="mt-3 text-sm leading-6 text-gray-600">
+            {authError || "有効な演奏者アカウントが見つかりません。"}
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.replace("/")}
+            className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white active:bg-blue-700"
+          >
+            トップページへ戻る
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -329,7 +401,7 @@ export default function PerformerHomePage() {
                 </h1>
               </div>
 
-              {profile?.display_name && (
+              {profile.display_name && (
                 <p className="mt-2 text-sm text-gray-600">
                   {profile.display_name} さん
                 </p>

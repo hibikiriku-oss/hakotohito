@@ -31,7 +31,6 @@ const prefectures = [
   "鹿児島県", "沖縄県",
 ];
 
-// 初回登録画面と統一
 const instrumentOptions = [
   "ピアノ",
   "ギター",
@@ -45,7 +44,6 @@ const instrumentOptions = [
   "和楽器",
 ];
 
-// 初回登録画面と統一
 const genreOptions = [
   "クラシック",
   "ロック・ポップス",
@@ -127,7 +125,6 @@ function parseArea(value: string): AreaInput {
     };
   }
 
-  // 都道府県が含まれていない旧データも編集可能にする
   return {
     prefecture: "愛知県",
     municipality: value.trim(),
@@ -169,7 +166,9 @@ export default function PerformerProfileEditPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
   const [error, setError] = useState("");
+  const [withdrawError, setWithdrawError] = useState("");
 
   const toggleChoice = (
     value: string,
@@ -247,7 +246,6 @@ export default function PerformerProfileEditPage() {
         : ""
     );
 
-    // 評価は件数と平均点だけ取得。個別コメントは詳細画面で表示する。
     try {
       const reviewResponse = await fetch(
         `/api/performers/${performer.id}/reviews`,
@@ -395,6 +393,61 @@ export default function PerformerProfileEditPage() {
     }
   };
 
+  const handleWithdraw = async () => {
+    if (saving || withdrawing) return;
+
+    const confirmed = window.confirm(
+      "本当に退会しますか？\n\n" +
+      "・演奏者プロフィールは利用できなくなります。\n" +
+      "・進行中の演奏マッチングはキャンセルされます。\n" +
+      "・完了済みの履歴やコイン取引記録は保持されます。\n" +
+      "・退会後は同じLINEアカウントで再登録できます。\n\n" +
+      "この操作を続けますか？"
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setWithdrawing(true);
+      setWithdrawError("");
+
+      const idToken = requireLineIdToken(liff.getIDToken());
+
+      const response = await fetch("/api/account/withdraw", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+        cache: "no-store",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+          data.message ||
+          "退会処理に失敗しました。時間をおいて再度お試しください。"
+        );
+      }
+
+      alert(
+        "退会手続きが完了しました。\nご利用ありがとうございました。"
+      );
+
+      window.location.replace("/");
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "退会処理に失敗しました";
+
+      setWithdrawError(message);
+      alert(message);
+      setWithdrawing(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50 p-8 text-center">
@@ -421,6 +474,7 @@ export default function PerformerProfileEditPage() {
           type="button"
           onClick={() => router.push("/performer/home")}
           className="text-sm text-gray-500"
+          disabled={withdrawing}
         >
           ← ホームへ戻る
         </button>
@@ -434,7 +488,6 @@ export default function PerformerProfileEditPage() {
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* 名前 */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <label className="font-bold text-sm block mb-2">
               名前 <span className="text-red-500">＊必須</span>
@@ -445,10 +498,10 @@ export default function PerformerProfileEditPage() {
               placeholder="例：山田太郎"
               className={inputClass}
               required
+              disabled={saving || withdrawing}
             />
           </section>
 
-          {/* 活動エリア */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <h2 className="font-bold mb-2">
               活動エリア <span className="text-red-500">＊必須</span>
@@ -476,6 +529,7 @@ export default function PerformerProfileEditPage() {
                           )
                         }
                         className="text-xs text-red-600"
+                        disabled={saving || withdrawing}
                       >
                         削除
                       </button>
@@ -488,6 +542,7 @@ export default function PerformerProfileEditPage() {
                       updateArea(index, "prefecture", e.target.value)
                     }
                     className={inputClass}
+                    disabled={saving || withdrawing}
                   >
                     {prefectures.map((prefecture) => (
                       <option key={prefecture} value={prefecture}>
@@ -503,6 +558,7 @@ export default function PerformerProfileEditPage() {
                     }
                     placeholder="例：名古屋市千種区、豊田市"
                     className={`${inputClass} mt-3`}
+                    disabled={saving || withdrawing}
                   />
 
                   {area.municipality.trim() && (
@@ -523,12 +579,12 @@ export default function PerformerProfileEditPage() {
                 ])
               }
               className="w-full mt-3 rounded-xl border border-dashed border-gray-400 p-3 text-sm font-bold"
+              disabled={saving || withdrawing}
             >
               ＋ 活動エリアを追加
             </button>
           </section>
 
-          {/* 楽器 */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <h2 className="font-bold mb-3">
               楽器 <span className="text-red-500">＊必須</span>
@@ -549,6 +605,7 @@ export default function PerformerProfileEditPage() {
                     onChange={() =>
                       toggleChoice(item, instruments, setInstruments)
                     }
+                    disabled={saving || withdrawing}
                   />
                   <span>{item}</span>
                 </label>
@@ -563,13 +620,13 @@ export default function PerformerProfileEditPage() {
               onChange={(e) => setOtherInstrument(e.target.value)}
               placeholder="例：二胡、バンドネオン"
               className={inputClass}
+              disabled={saving || withdrawing}
             />
             <p className="text-xs text-gray-400 mt-2">
               複数ある場合は「,」または「、」で区切ってください。
             </p>
           </section>
 
-          {/* ジャンル */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <h2 className="font-bold mb-3">
               音楽ジャンル <span className="text-red-500">＊必須</span>
@@ -588,6 +645,7 @@ export default function PerformerProfileEditPage() {
                     type="checkbox"
                     checked={genres.includes(item)}
                     onChange={() => toggleChoice(item, genres, setGenres)}
+                    disabled={saving || withdrawing}
                   />
                   <span>{item}</span>
                 </label>
@@ -602,13 +660,13 @@ export default function PerformerProfileEditPage() {
               onChange={(e) => setOtherGenre(e.target.value)}
               placeholder="例：ボサノバ、タンゴ"
               className={inputClass}
+              disabled={saving || withdrawing}
             />
             <p className="text-xs text-gray-400 mt-2">
               複数ある場合は「,」または「、」で区切ってください。
             </p>
           </section>
 
-          {/* 演奏レベル */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <h2 className="font-bold mb-2">
               演奏レベル <span className="text-red-500">＊必須</span>
@@ -625,7 +683,7 @@ export default function PerformerProfileEditPage() {
                     key={option.value}
                     type="button"
                     onClick={() => setStatusLevel(option.value)}
-                    disabled={saving}
+                    disabled={saving || withdrawing}
                     className={`w-full text-left rounded-2xl border p-4 ${
                       selected
                         ? "border-black ring-2 ring-black/10"
@@ -665,7 +723,6 @@ export default function PerformerProfileEditPage() {
             </div>
           </section>
 
-          {/* 自己紹介 */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <label className="font-bold block mb-2">自己紹介</label>
             <textarea
@@ -674,15 +731,16 @@ export default function PerformerProfileEditPage() {
               placeholder="演奏経験や活動内容など"
               rows={6}
               className={`${inputClass} resize-none`}
+              disabled={saving || withdrawing}
             />
           </section>
 
-          {/* 評価：画面下部に件数と平均だけ表示 */}
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
             <button
               type="button"
               onClick={() => router.push("/performer/profile/reviews")}
               className="w-full text-left"
+              disabled={withdrawing}
             >
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -718,7 +776,7 @@ export default function PerformerProfileEditPage() {
 
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || withdrawing}
             className="w-full bg-black text-white rounded-2xl p-4 font-bold disabled:opacity-50"
           >
             {saving ? "更新しています..." : "プロフィールを更新する"}
@@ -727,12 +785,46 @@ export default function PerformerProfileEditPage() {
           <button
             type="button"
             onClick={() => router.push("/performer/home")}
-            disabled={saving}
+            disabled={saving || withdrawing}
             className="w-full border border-gray-200 text-gray-600 rounded-2xl p-4 font-bold bg-white disabled:opacity-50"
           >
             キャンセル
           </button>
         </form>
+
+        <section className="mt-10 bg-white border border-red-200 rounded-2xl p-5">
+          <h2 className="font-bold text-red-700">
+            退会手続き
+          </h2>
+
+          <p className="text-sm text-gray-600 leading-6 mt-3">
+            退会すると、このアカウントでのサービス利用ができなくなります。
+            進行中の演奏マッチングはキャンセルされます。
+            完了済みの履歴やコイン取引記録は保持されます。
+          </p>
+
+          <p className="text-xs text-gray-500 leading-5 mt-2">
+            異議申し立て中の案件や成立済みのレッスンがある場合は、
+            状況確認のため退会できないことがあります。
+          </p>
+
+          {withdrawError && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-sm text-red-700">
+                {withdrawError}
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleWithdraw}
+            disabled={saving || withdrawing}
+            className="w-full mt-5 border border-red-300 text-red-700 bg-white rounded-xl p-4 font-bold disabled:opacity-50"
+          >
+            {withdrawing ? "退会処理中..." : "退会する"}
+          </button>
+        </section>
       </div>
     </main>
   );
