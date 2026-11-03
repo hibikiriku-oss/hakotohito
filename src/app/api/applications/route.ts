@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendLinePushMessage } from "@/lib/line";
@@ -8,7 +9,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const UUID_PATTERN = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+// 全レスポンスにキャッシュ禁止ヘッダーを設定
+function jsonResponse(
+  body: unknown,
+  init: ResponseInit = {}
+): NextResponse {
+  const headers = new Headers(init.headers);
+
+  headers.set("Cache-Control", "no-store, max-age=0");
+  headers.set("Pragma", "no-cache");
+  headers.set("Vary", "Authorization");
+
+  return NextResponse.json(body, {
+    ...init,
+    headers,
+  });
+}
 
 // 日本時間の今日を YYYY-MM-DD 形式で取得
 function getJapanToday(): string {
@@ -26,31 +45,125 @@ function getJapanToday(): string {
   return `${year}-${month}-${day}`;
 }
 
+// LINE IDトークンを取得
+function getBearerToken(request: NextRequest): string | null {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+
+  return token || null;
+}
+
+// DB関数のエラーを利用者向けの安全なメッセージに変換
+function getSafeApplicationError(errorMessage: string): {
+  message: string;
+  status: number;
+} {
+  if (errorMessage.includes("すでに応募")) {
+    return {
+      message: "この案件にはすでに応募しています。",
+      status: 409,
+    };
+  }
+
+  if (errorMessage.includes("すでに採用")) {
+    return {
+      message: "この案件ではすでに採用されています。",
+      status: 409,
+    };
+  }
+
+  if (errorMessage.includes("再応募できない")) {
+    return {
+      message: "この案件には再応募できません。",
+      status: 409,
+    };
+  }
+
+  if (errorMessage.includes("応募期限")) {
+    return {
+      message: "応募期限を過ぎているため、この案件には応募できません。",
+      status: 400,
+    };
+  }
+
+  if (
+    errorMessage.includes("対象レベル") ||
+    errorMessage.includes("募集対象")
+  ) {
+    return {
+      message: "この案件の募集対象とプロフィールの演奏者レベルが一致しません。",
+      status: 403,
+    };
+  }
+
+  if (errorMessage.includes("権限")) {
+    return {
+      message: "この操作を行う権限がありません。",
+      status: 403,
+    };
+  }
+
+  if (errorMessage.includes("見つかりません")) {
+    return {
+      message: "対象の情報が見つかりません。",
+      status: 404,
+    };
+  }
+
+  if (
+    errorMessage.includes("コイン") ||
+    errorMessage.includes("残高")
+  ) {
+    return {
+      message: "コイン残高が不足しているか、利用できない状態です。",
+      status: 400,
+    };
+  }
+
+  if (
+    errorMessage.includes("現在応募できません") ||
+    errorMessage.includes("募集を終了")
+  ) {
+    return {
+      message: "この案件は現在応募できません。",
+      status: 400,
+    };
+  }
+
+  return {
+    message: "応募処理を完了できませんでした。内容を確認して再度お試しください。",
+    status: 400,
+  };
+}
+
+// =====================================================
+// GET：応募状態取得
+// =====================================================
+
 export async function GET(request: NextRequest) {
   try {
     const requestId = request.nextUrl.searchParams.get("requestId");
 
     if (!requestId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "案件IDがありません" },
         { status: 400 }
       );
     }
 
-if (!UUID_PATTERN.test(requestId)) {
-  return NextResponse.json(
-    { error: "案件IDの形式が正しくありません" },
-    { status: 400 }
-  );
-}
+    if (!UUID_PATTERN.test(requestId)) {
+      return jsonResponse(
+        { error: "案件IDの形式が正しくありません" },
+        { status: 400 }
+      );
+    }
 
     // LINE本人確認
-    const authorization = request.headers.get("authorization");
-    const match = authorization?.match(/^Bearer\s+(.+)$/i);
-    const idToken = match?.[1]?.trim();
+    const idToken = getBearerToken(request);
 
     if (!idToken) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "LINEの本人確認情報がありません" },
         { status: 401 }
       );
@@ -59,7 +172,7 @@ if (!UUID_PATTERN.test(requestId)) {
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "LINEの本人確認に失敗しました" },
         { status: 401 }
       );
@@ -73,21 +186,22 @@ if (!UUID_PATTERN.test(requestId)) {
       .single();
 
     if (userError || !user) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
     // 演奏者情報取得
-    const { data: performer, error: performerError } = await supabase
-      .from("performers")
-      .select("id")
-      .eq("user_id", user.id)
-      .single();
+    const { data: performer, error: performerError } =
+      await supabase
+        .from("performers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
 
     if (performerError || !performer) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -106,13 +220,13 @@ if (!UUID_PATTERN.test(requestId)) {
     if (applicationError) {
       console.error("応募状態取得エラー:", applicationError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "応募状態の取得に失敗しました" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       application: application
         ? {
@@ -124,52 +238,82 @@ if (!UUID_PATTERN.test(requestId)) {
   } catch (error) {
     console.error("応募状態取得APIエラー:", error);
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
   }
 }
 
+// =====================================================
+// POST：応募登録・コイン消費
+// =====================================================
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { requestId, message } = body;
+    // JSON解析と入力形式確認
+    let body: unknown;
 
-    const applicationMessage =
-      typeof message === "string" ? message : "";
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse(
+        { error: "リクエストの形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body)
+    ) {
+      return jsonResponse(
+        { error: "入力内容が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const { requestId, message } = body as {
+      requestId?: unknown;
+      message?: unknown;
+    };
 
     if (!requestId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "案件IDがありません" },
         { status: 400 }
       );
     }
 
-if (
-  typeof requestId !== "string" ||
-  !UUID_PATTERN.test(requestId) ||
-  (message !== undefined &&
-    message !== null &&
-    typeof message !== "string") ||
-  (typeof message === "string" && message.length > 2000)
-) {
-  return NextResponse.json(
-    { error: "入力内容を確認してください（メッセージは2000文字以内です）" },
-    { status: 400 }
-  );
-}
+    if (
+      typeof requestId !== "string" ||
+      !UUID_PATTERN.test(requestId) ||
+      (message !== undefined &&
+        message !== null &&
+        typeof message !== "string") ||
+      (typeof message === "string" && message.length > 2000)
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "入力内容を確認してください（メッセージは2000文字以内です）",
+        },
+        { status: 400 }
+      );
+    }
 
-    // ==============================
+    const applicationMessage =
+      typeof message === "string" ? message : "";
+
+    // ================================================
     // LINE本人確認
-    // ==============================
+    // ================================================
 
-    const authorization = request.headers.get("authorization");
-    const match = authorization?.match(/^Bearer\s+(.+)$/i);
-    const idToken = match?.[1]?.trim();
+    const idToken = getBearerToken(request);
 
     if (!idToken) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error: "LINEの本人確認情報がありません。再ログインしてください。",
         },
@@ -180,7 +324,7 @@ if (
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error: "LINEの本人確認に失敗しました。再ログインしてください。",
         },
@@ -188,9 +332,9 @@ if (
       );
     }
 
-    // ==============================
+    // ================================================
     // LINEユーザー取得
-    // ==============================
+    // ================================================
 
     const {
       data: user,
@@ -204,15 +348,15 @@ if (
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 演奏者情報取得
-    // ==============================
+    // ================================================
 
     const {
       data: performer,
@@ -226,15 +370,15 @@ if (
     if (performerError || !performer) {
       console.error("演奏者取得エラー:", performerError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 案件取得
-    // ==============================
+    // ================================================
 
     const {
       data: performanceRequest,
@@ -242,7 +386,7 @@ if (
     } = await supabase
       .from("performance_requests")
       .select(
-        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels, application_deadline, reward"
+        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels, application_deadline"
       )
       .eq("id", requestId)
       .single();
@@ -250,15 +394,15 @@ if (
     if (requestError || !performanceRequest) {
       console.error("案件取得エラー:", requestError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "案件が見つかりません" },
         { status: 404 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 応募期限確認
-    // ==============================
+    // ================================================
 
     // 締切日当日は応募可能。
     // 日本時間で締切日の翌日になった時点で応募不可。
@@ -272,7 +416,7 @@ if (
       !applicationDeadline ||
       today > applicationDeadline
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "応募期限を過ぎているため、この案件には応募できません",
@@ -281,20 +425,20 @@ if (
       );
     }
 
-    // ==============================
+    // ================================================
     // 募集中の案件か確認
-    // ==============================
+    // ================================================
 
     if (performanceRequest.status !== "open") {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "この案件は現在応募できません" },
         { status: 400 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 募集対象レベルの確認
-    // ==============================
+    // ================================================
 
     // target_levels が NULL または空配列なら制限なし。
     const targetLevels = performanceRequest.target_levels;
@@ -317,7 +461,7 @@ if (
         .map((level: string) => levelNames[level] ?? level)
         .join("・");
 
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             `この案件の募集対象は「${targetLevelNames}」です。` +
@@ -327,9 +471,9 @@ if (
       );
     }
 
-    // ==============================
+    // ================================================
     // 応募登録・コイン消費をDBで一括実行
-    // ==============================
+    // ================================================
 
     // 1回の応募処理につき一意の試行IDを発行
     const attemptId = crypto.randomUUID();
@@ -351,7 +495,7 @@ if (
         applicationResultError
       );
 
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "応募処理に失敗しました。時間をおいて再度お試しください。",
@@ -365,43 +509,37 @@ if (
       : applicationResultData;
 
     if (!applicationResult?.success) {
-      const errorMessage =
-        applicationResult?.error_message ||
-        "応募処理に失敗しました";
+      const internalErrorMessage =
+        typeof applicationResult?.error_message === "string"
+          ? applicationResult.error_message
+          : "";
 
-      console.error("応募一括処理失敗:", errorMessage);
+      // 詳細なDBエラーはサーバーログだけに記録する
+      console.error("応募一括処理が失敗しました");
 
-      let status = 400;
+      const safeError =
+        getSafeApplicationError(internalErrorMessage);
 
-      if (
-        errorMessage.includes("すでに応募") ||
-        errorMessage.includes("すでに採用") ||
-        errorMessage.includes("再応募できない")
-      ) {
-        status = 409;
-      } else if (errorMessage.includes("権限")) {
-        status = 403;
-      } else if (errorMessage.includes("見つかりません")) {
-        status = 404;
-      }
-
-      return NextResponse.json(
-        { error: errorMessage },
-        { status }
+      return jsonResponse(
+        { error: safeError.message },
+        { status: safeError.status }
       );
     }
 
-    // ==============================
+    // ================================================
     // 登録された応募情報を取得
-    // ==============================
+    // ================================================
 
     const {
       data: savedApplication,
       error: savedApplicationError,
     } = await supabase
       .from("applications")
-      .select("*")
+      .select(
+        "id, request_id, performer_id, message, status, source, band_id, created_at"
+      )
       .eq("id", applicationResult.application_id)
+      .eq("performer_id", performer.id)
       .single();
 
     if (savedApplicationError || !savedApplication) {
@@ -423,9 +561,9 @@ if (
       band_id: null,
     };
 
-    // ==============================
+    // ================================================
     // 施設へのLINE通知
-    // ==============================
+    // ================================================
 
     let notificationSent = false;
 
@@ -570,7 +708,7 @@ if (
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       application,
       coinBalance: applicationResult.balance_after,
@@ -579,7 +717,7 @@ if (
   } catch (error) {
     console.error("応募APIエラー:", error);
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

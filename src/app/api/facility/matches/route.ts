@@ -128,7 +128,8 @@ export async function GET(request: NextRequest) {
       .eq("performance_requests.facility_id", facility.id)
       .order("matched_at", {
         ascending: false,
-      });
+      })
+      .limit(200);
 
     if (matchesError) {
       console.error(

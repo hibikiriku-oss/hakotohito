@@ -3,11 +3,28 @@ import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,6 +32,12 @@ export async function GET(request: NextRequest) {
     const auth = await requireAdmin(request);
 
     if (!auth.authorized) {
+      auth.response.headers.set(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate"
+      );
+      auth.response.headers.set("Pragma", "no-cache");
+      auth.response.headers.set("Expires", "0");
       return auth.response;
     }
 
@@ -22,9 +45,9 @@ export async function GET(request: NextRequest) {
     const keyword = (searchParams.get("q") ?? "").trim();
 
     if (keyword.length > 100) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "検索キーワードは100文字以内で入力してください" },
-        { status: 400 }
+        400
       );
     }
 
@@ -44,15 +67,17 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      console.error("管理者ユーザー検索エラー:", error.message);
+      console.error("管理者ユーザー検索エラー:", {
+        code: error.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザー検索に失敗しました" },
-        { status: 500 }
+        500
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       users: (data ?? []).map((user) => ({
         id: user.id,
         displayName: user.display_name ?? "",
@@ -62,11 +87,13 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error("管理者ユーザー検索APIエラー:", error);
+    console.error("管理者ユーザー検索APIエラー:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
-      { status: 500 }
+      500
     );
   }
 }

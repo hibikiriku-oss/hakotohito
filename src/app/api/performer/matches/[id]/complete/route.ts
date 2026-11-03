@@ -92,7 +92,6 @@ export async function POST(
       );
     }
 
-
     const { data: performer, error: performerError } = await supabase
       .from("performers")
       .select("id, name")
@@ -106,13 +105,14 @@ export async function POST(
       );
     }
 
+    // マッチングを取得する。
+    // バンドの場合は採用時のリーダーに限定せず、現在のリーダーを後で確認する。
     const { data: rawMatch, error: matchError } = await supabase
       .from("matches")
       .select(
         "id, request_id, performer_id, band_id, status, performance_status, completed_at, performer_completion_reported_at, facility_completion_reported_at, completion_disputed_at"
       )
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
       .single();
 
     const match = rawMatch as unknown as CompletionMatch | null;
@@ -124,8 +124,16 @@ export async function POST(
       );
     }
 
+    // 個人マッチングの場合は、採用された演奏者本人だけが報告できる。
+    if (!match.band_id && match.performer_id !== performer.id) {
+      return NextResponse.json(
+        { error: "マッチングが見つかりません" },
+        { status: 404 }
+      );
+    }
+
     // バンドマッチングの場合、現在のアクティブなリーダーだけが
-    // 演奏完了を報告できるようにする
+    // 演奏完了を報告できるようにする。
     if (match.band_id) {
       const { data: membership, error: membershipError } = await supabase
         .from("band_members")
@@ -215,13 +223,13 @@ export async function POST(
           { status: 400 }
         );
       }
+
       const { data: reportRows, error: reportError } = await supabase
         .from("matches")
         .update({
           performer_completion_reported_at: new Date().toISOString(),
         })
         .eq("id", matchId)
-        .eq("performer_id", performer.id)
         .eq("status", "active")
         .eq("performance_status", "scheduled")
         .is("performer_completion_reported_at", null)
@@ -249,7 +257,6 @@ export async function POST(
               "id, request_id, performer_id, status, performance_status, completed_at, performer_completion_reported_at, facility_completion_reported_at, completion_disputed_at, completion_disputed_by, completion_dispute_reason, completion_method"
             )
             .eq("id", matchId)
-            .eq("performer_id", performer.id)
             .maybeSingle();
 
         if (currentError || !currentMatch) {
@@ -308,7 +315,6 @@ export async function POST(
           "id, request_id, performer_id, status, performance_status, completed_at, performer_completion_reported_at, facility_completion_reported_at, completion_disputed_at, completion_disputed_by, completion_dispute_reason, completion_method"
         )
         .eq("id", matchId)
-        .eq("performer_id", performer.id)
         .single();
 
     const latestMatch =
@@ -548,7 +554,6 @@ export async function POST(
           .from("matches")
           .select("*")
           .eq("id", matchId)
-          .eq("performer_id", performer.id)
           .single();
 
       if (completedMatchError || !completedMatch) {

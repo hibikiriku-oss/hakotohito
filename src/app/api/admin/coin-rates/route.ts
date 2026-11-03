@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,13 +28,46 @@ const PERCENT_RATE_FIELDS = [
   "paid_lesson_fee_percent",
 ] as const;
 
+const ALL_RATE_FIELDS = [
+  ...FIXED_RATE_FIELDS,
+  ...PERCENT_RATE_FIELDS,
+];
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
 function jsonError(message: string, status: number) {
-  return NextResponse.json(
-    { error: message },
-    {
-      status,
-      headers: { "Cache-Control": "no-store" },
-    }
+  return jsonResponse({ error: message }, status);
+}
+
+function applyNoStore(response: NextResponse) {
+  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
+    response.headers.set(key, value);
+  }
+
+  return response;
+}
+
+function isObjectBody(
+  body: unknown
+): body is Record<string, unknown> {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body)
   );
 }
 
@@ -46,7 +80,7 @@ export async function GET(request: NextRequest) {
     const auth = await authorize(request);
 
     if (!auth.authorized) {
-      return auth.response;
+      return applyNoStore(auth.response);
     }
 
     const { data, error } = await supabase
@@ -68,16 +102,19 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (error || !data) {
-      console.error("消費コイン設定取得エラー:", error);
+      console.error("消費コイン設定取得エラー:", {
+        code: error?.code ?? "NO_DATA",
+      });
+
       return jsonError("消費コイン設定を取得できませんでした。", 500);
     }
 
-    return NextResponse.json(
-      { rates: data },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    return jsonResponse({ rates: data });
   } catch (error) {
-    console.error("消費コイン設定APIエラー:", error);
+    console.error("消費コイン設定APIエラー:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+
     return jsonError("サーバーエラーが発生しました。", 500);
   }
 }
@@ -87,7 +124,7 @@ export async function PUT(request: NextRequest) {
     const auth = await authorize(request);
 
     if (!auth.authorized) {
-      return auth.response;
+      return applyNoStore(auth.response);
     }
 
     let body: unknown;
@@ -98,11 +135,22 @@ export async function PUT(request: NextRequest) {
       return jsonError("送信データの形式が正しくありません。", 400);
     }
 
-    if (!body || typeof body !== "object" || Array.isArray(body)) {
+    if (!isObjectBody(body)) {
       return jsonError("送信データの形式が正しくありません。", 400);
     }
 
-    const input = body as Record<string, unknown>;
+    const input = body;
+    const inputKeys = Object.keys(input);
+
+    if (
+      inputKeys.length !== ALL_RATE_FIELDS.length ||
+      inputKeys.some((key) => !ALL_RATE_FIELDS.includes(
+        key as (typeof ALL_RATE_FIELDS)[number]
+      ))
+    ) {
+      return jsonError("送信データに不正な項目が含まれています。", 400);
+    }
+
     const values: Record<string, number> = {};
 
     for (const field of FIXED_RATE_FIELDS) {
@@ -166,20 +214,23 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error || !data) {
-      console.error("消費コイン設定保存エラー:", error);
+      console.error("消費コイン設定保存エラー:", {
+        code: error?.code ?? "NO_DATA",
+      });
+
       return jsonError("消費コイン設定を保存できませんでした。", 500);
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        rates: data,
-        message: "消費コイン設定を保存しました。",
-      },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    return jsonResponse({
+      success: true,
+      rates: data,
+      message: "消費コイン設定を保存しました。",
+    });
   } catch (error) {
-    console.error("消費コイン設定保存APIエラー:", error);
+    console.error("消費コイン設定保存APIエラー:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+
     return jsonError("サーバーエラーが発生しました。", 500);
   }
 }

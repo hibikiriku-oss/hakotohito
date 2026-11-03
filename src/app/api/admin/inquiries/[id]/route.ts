@@ -3,10 +3,17 @@ import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  }
 );
 
 const ALLOWED_STATUSES = [
@@ -19,6 +26,40 @@ type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
+function applyNoStore(response: NextResponse) {
+  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
+    response.headers.set(key, value);
+  }
+
+  return response;
+}
+
+function isObjectBody(
+  body: unknown
+): body is Record<string, unknown> {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    !Array.isArray(body)
+  );
+}
+
 export async function PATCH(
   request: NextRequest,
   context: RouteContext
@@ -27,24 +68,39 @@ export async function PATCH(
     const auth = await requireAdmin(request);
 
     if (!auth.authorized) {
-      return auth.response;
+      return applyNoStore(auth.response);
     }
 
     const { id } = await context.params;
 
-    // UUID形式を検証
     if (
       !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         id
       )
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "問い合わせIDが不正です。" },
-        { status: 400 }
+        400
       );
     }
 
-    const body = await request.json();
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse(
+        { error: "送信データを読み取れませんでした。" },
+        400
+      );
+    }
+
+    if (!isObjectBody(body)) {
+      return jsonResponse(
+        { error: "送信データの形式が正しくありません。" },
+        400
+      );
+    }
 
     const hasStatus = Object.prototype.hasOwnProperty.call(
       body,
@@ -56,9 +112,9 @@ export async function PATCH(
     );
 
     if (!hasStatus && !hasReply) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "更新する内容がありません。" },
-        { status: 400 }
+        400
       );
     }
 
@@ -79,13 +135,13 @@ export async function PATCH(
           body.status as (typeof ALLOWED_STATUSES)[number]
         )
       ) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "対応状況が不正です。" },
-          { status: 400 }
+          400
         );
       }
 
-      updates.status = body.status;
+      updates.status = body.status as (typeof ALLOWED_STATUSES)[number];
     }
 
     if (hasReply) {
@@ -93,9 +149,9 @@ export async function PATCH(
         body.adminReply !== null &&
         typeof body.adminReply !== "string"
       ) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "返信内容が不正です。" },
-          { status: 400 }
+          400
         );
       }
 
@@ -105,14 +161,13 @@ export async function PATCH(
           : "";
 
       if (reply.length > 5000) {
-        return NextResponse.json(
+        return jsonResponse(
           { error: "返信は5000文字以内で入力してください。" },
-          { status: 400 }
+          400
         );
       }
 
       if (reply.length > 0) {
-        // 認証済み管理者のDBユーザーIDを取得
         const { data: adminUser, error: adminError } =
           await supabase
             .from("users")
@@ -121,21 +176,20 @@ export async function PATCH(
             .maybeSingle();
 
         if (adminError) {
-          console.error(
-            "管理者ユーザー取得エラー:",
-            adminError.message
-          );
+          console.error("管理者ユーザー取得エラー:", {
+            code: adminError.code,
+          });
 
-          return NextResponse.json(
+          return jsonResponse(
             { error: "管理者情報を取得できませんでした。" },
-            { status: 500 }
+            500
           );
         }
 
         if (!adminUser) {
-          return NextResponse.json(
+          return jsonResponse(
             { error: "管理者のユーザー登録が見つかりません。" },
-            { status: 403 }
+            403
           );
         }
 
@@ -159,31 +213,35 @@ export async function PATCH(
       .maybeSingle();
 
     if (error) {
-      console.error("問い合わせ更新エラー:", error.message);
+      console.error("問い合わせ更新エラー:", {
+        code: error.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "問い合わせを更新できませんでした。" },
-        { status: 500 }
+        500
       );
     }
 
     if (!data) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "問い合わせが見つかりません。" },
-        { status: 404 }
+        404
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       inquiry: data,
     });
   } catch (error) {
-    console.error("管理者問い合わせ更新APIエラー:", error);
+    console.error("管理者問い合わせ更新APIエラー:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました。" },
-      { status: 500 }
+      500
     );
   }
 }

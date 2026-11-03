@@ -15,6 +15,28 @@ const supabase = createClient(
   }
 );
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>
+) {
+  return NextResponse.json(body, {
+    headers: NO_STORE_HEADERS,
+  });
+}
+
+function emptyAnnouncement() {
+  return {
+    message: "",
+    isActive: false,
+    updatedAt: null,
+  };
+}
+
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -24,33 +46,29 @@ export async function GET() {
       .single();
 
     if (error || !data) {
-      console.error("Public announcement GET error:", error);
+      console.error("Public announcement GET error:", {
+        code: error?.code ?? "NO_DATA",
+      });
 
-      return NextResponse.json(
-        { message: "", isActive: false, updatedAt: null },
-        { headers: { "Cache-Control": "no-store" } }
-      );
+      return jsonResponse(emptyAnnouncement());
     }
 
+    const rawMessage =
+      typeof data.message === "string" ? data.message.trim() : "";
+
     const message =
-      data.is_active && data.message.trim()
-        ? data.message.trim()
-        : "";
+      data.is_active && rawMessage ? rawMessage : "";
 
-    return NextResponse.json(
-      {
-        message,
-        isActive: message.length > 0,
-        updatedAt: data.updated_at,
-      },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    return jsonResponse({
+      message,
+      isActive: message.length > 0,
+      updatedAt: data.updated_at,
+    });
   } catch (error) {
-    console.error("Public announcement GET exception:", error);
+    console.error("Public announcement GET exception:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
-    return NextResponse.json(
-      { message: "", isActive: false, updatedAt: null },
-      { headers: { "Cache-Control": "no-store" } }
-    );
+    return jsonResponse(emptyAnnouncement());
   }
 }

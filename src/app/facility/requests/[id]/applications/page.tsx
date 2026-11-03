@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,36 +7,42 @@ import liff from "@line/liff";
 
 type User = {
   display_name: string | null;
-  picture_url: string | null;
+  picture_url?: string | null;
   avatar_type?: string | null;
   avatar_emoji?: string | null;
 };
 
+type Relation<T> = T | T[] | null;
+
 type Performer = {
   id: string;
   name: string | null;
-  area: string | null;
+  area?: string | null;
+  areas?: string[];
   instruments: string[];
   genres: string[];
   bio: string | null;
-  users: User | null;
+  users?: User | null;
+};
+
+type ApiPerformer = Omit<Performer, "users"> & {
+  users?: Relation<User>;
 };
 
 type BandMember = {
-  id?: string;
-  performer_id?: string;
-  name?: string | null;
-  display_name?: string | null;
-  role?: string;
-  users?: User | null;
-  performers?: Performer | null;
+  id: string;
+  name: string | null;
+  role?: string | null;
+  instruments?: string[];
+  genres?: string[];
+  users?: Relation<User>;
 };
 
 type BandInfo = {
   id: string;
-  name: string | null;
+  name: string;
   description: string | null;
-  status?: string;
+  status: string;
   members: BandMember[];
 };
 
@@ -43,12 +50,20 @@ type Application = {
   id: string;
   message: string | null;
   status: string;
+  source?: string;
   created_at: string;
   performers: Performer | null;
-  source?: string | null;
   band_id?: string | null;
   applicationType?: "band" | "individual";
-  band?: BandInfo | null;
+  band: BandInfo | null;
+};
+
+type ApiApplication = Omit<
+  Application,
+  "performers" | "band"
+> & {
+  performers: Relation<ApiPerformer>;
+  band: BandInfo | null;
 };
 
 type PerformanceRequest = {
@@ -69,6 +84,65 @@ type ReviewData = {
   review_count: number;
   reviews: Review[];
 };
+
+type ApplicationsResponse = {
+  request?: PerformanceRequest;
+  performanceRequest?: PerformanceRequest;
+  applications?: ApiApplication[];
+  hasMore?: boolean;
+  acceptedParticipantCount?: number;
+  error?: string;
+};
+
+function getOne<T>(
+  value: Relation<T> | undefined
+): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
+}
+
+function normalizePerformer(
+  value: Relation<ApiPerformer>
+): Performer | null {
+  const performer = getOne(value);
+
+  if (!performer) {
+    return null;
+  }
+
+  return {
+    ...performer,
+    users: getOne(performer.users),
+    instruments: performer.instruments ?? [],
+    genres: performer.genres ?? [],
+    areas: performer.areas ?? [],
+  };
+}
+
+function normalizeApplications(
+  rows: ApiApplication[]
+): Application[] {
+  return rows.map((application) => ({
+    ...application,
+    performers: normalizePerformer(
+      application.performers
+    ),
+    band: application.band
+      ? {
+          ...application.band,
+          members: (application.band.members ?? []).map(
+            (member) => ({
+              ...member,
+              users: getOne(member.users),
+            })
+          ),
+        }
+      : null,
+  }));
+}
 
 function PerformerAvatar({
   user,
@@ -125,6 +199,12 @@ export default function FacilityRequestApplicationsPage() {
   const [applications, setApplications] =
     useState<Application[]>([]);
 
+  const [hasMoreApplications, setHasMoreApplications] =
+    useState(false);
+
+  const [acceptedParticipantCount, setAcceptedParticipantCount] =
+    useState(0);
+
   const [loading, setLoading] = useState(true);
 
   const [acceptingApplicationId, setAcceptingApplicationId] =
@@ -160,10 +240,12 @@ export default function FacilityRequestApplicationsPage() {
           headers: {
             Authorization: `Bearer ${idToken}`,
           },
+          cache: "no-store",
         }
       );
 
-      const result = await response.json();
+      const result =
+        (await response.json()) as ApplicationsResponse;
 
       if (!response.ok) {
         throw new Error(
@@ -172,12 +254,26 @@ export default function FacilityRequestApplicationsPage() {
       }
 
       setPerformanceRequest(
-        result.request ?? result.performanceRequest
+        result.request ?? result.performanceRequest ?? null
       );
 
-      setApplications(result.applications || []);
+      setApplications(
+        normalizeApplications(result.applications ?? [])
+      );
+
+      setHasMoreApplications(result.hasMore === true);
+
+      setAcceptedParticipantCount(
+        Number.isInteger(result.acceptedParticipantCount)
+          ? Math.max(
+              0,
+              result.acceptedParticipantCount ?? 0
+            )
+          : 0
+      );
     } catch (err) {
       console.error(err);
+
       setError(
         err instanceof Error
           ? err.message
@@ -189,6 +285,8 @@ export default function FacilityRequestApplicationsPage() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const init = async () => {
       try {
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
@@ -201,6 +299,10 @@ export default function FacilityRequestApplicationsPage() {
 
         await liff.init({ liffId });
 
+        if (cancelled) {
+          return;
+        }
+
         if (!liff.isLoggedIn()) {
           liff.login();
           return;
@@ -208,36 +310,46 @@ export default function FacilityRequestApplicationsPage() {
 
         await loadApplications();
       } catch (err) {
+        if (cancelled) {
+          return;
+        }
+
         console.error(err);
+
         setError(
           err instanceof Error
             ? err.message
             : "LINEログインの初期化に失敗しました"
         );
+
         setLoading(false);
       }
     };
 
     init();
+
+    return () => {
+      cancelled = true;
+    };
   }, [requestId]);
 
   const loadReviews = async (
-  performerId: string,
-  idToken: string
-) => {
+    performerId: string,
+    idToken: string
+  ) => {
     try {
       setReviewLoading(true);
       setReviewData(null);
 
-const response = await fetch(
-  `/api/performers/${performerId}/reviews`,
-  {
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-    },
-    cache: "no-store",
-  }
-);
+      const response = await fetch(
+        `/api/performers/${performerId}/reviews`,
+        {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+          cache: "no-store",
+        }
+      );
 
       const result = await response.json();
 
@@ -254,6 +366,7 @@ const response = await fetch(
       });
     } catch (err) {
       console.error(err);
+
       setReviewData({
         average_rating: 0,
         review_count: 0,
@@ -264,28 +377,40 @@ const response = await fetch(
     }
   };
 
-const handleSelectPerformer = (performer: Performer) => {
-  setSelectedPerformer(performer);
+  const handleSelectPerformer = (
+    performer: Performer
+  ) => {
+    setSelectedPerformer(performer);
 
-  const idToken = liff.getIDToken();
+    const idToken = liff.getIDToken();
 
-  if (!idToken) {
-    setError(
-      "LINEの本人確認情報を取得できません。再ログインしてください。"
-    );
-    return;
-  }
+    if (!idToken) {
+      setError(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
+      );
+      return;
+    }
 
-  loadReviews(performer.id, idToken);
-};
+    loadReviews(performer.id, idToken);
+  };
 
-  const handleAccept = async (application: Application) => {
+  const handleAccept = async (
+    application: Application
+  ) => {
+    if (acceptingApplicationId !== null) {
+      return;
+    }
+
+    if (application.status !== "pending") {
+      return;
+    }
+
     const isBandApplication =
       application.applicationType === "band" ||
       application.source === "band_apply" ||
       Boolean(application.band_id);
 
-    const band = application.band ?? null;
+    const band = application.band;
 
     if (isBandApplication && !band) {
       setError(
@@ -295,6 +420,9 @@ const handleSelectPerformer = (performer: Performer) => {
     }
 
     if (!isBandApplication && !application.performers) {
+      setError(
+        "演奏者情報を取得できません。画面を再読み込みしてください。"
+      );
       return;
     }
 
@@ -306,15 +434,12 @@ const handleSelectPerformer = (performer: Performer) => {
 
     const memberNames =
       band?.members
-        ?.map(
+        .map(
           (member) =>
-            member.name ||
-            member.performers?.name ||
-            member.users?.display_name ||
-            member.performers?.users?.display_name ||
-            member.display_name
+member.name ||
+getOne(member.users)?.display_name ||
+"名前未登録"
         )
-        .filter((name): name is string => Boolean(name))
         .join("、") || "メンバー情報なし";
 
     const confirmed = window.confirm(
@@ -323,7 +448,9 @@ const handleSelectPerformer = (performer: Performer) => {
         : `${applicantName} さんをこの案件の演奏者として採用しますか？`
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setAcceptingApplicationId(application.id);
@@ -357,20 +484,23 @@ const handleSelectPerformer = (performer: Performer) => {
       }
 
       if (isBandApplication) {
-        alert(
+        window.alert(
           result.notificationSent === true
             ? `バンド「${applicantName}」を採用しました。\nバンドメンバーへのLINE通知も送信しました。`
             : `バンド「${applicantName}」を採用しました。\nLINE通知の送信状況を確認してください。`
         );
       } else {
-        alert(
-          "採用しました。\n演奏者にLINE通知を送信しました。"
+        window.alert(
+          result.notificationSent === true
+            ? "採用しました。\n演奏者にLINE通知を送信しました。"
+            : "採用しました。\nLINE通知の送信状況を確認してください。"
         );
       }
 
       await loadApplications();
     } catch (err) {
       console.error(err);
+
       setError(
         err instanceof Error
           ? err.message
@@ -381,7 +511,9 @@ const handleSelectPerformer = (performer: Performer) => {
     }
   };
 
-  const formatReviewDate = (dateString: string) => {
+  const formatReviewDate = (
+    dateString: string
+  ) => {
     const date = new Date(dateString);
 
     if (Number.isNaN(date.getTime())) {
@@ -452,8 +584,15 @@ const handleSelectPerformer = (performer: Performer) => {
             </p>
 
             <button
-              onClick={() => router.back()}
+              onClick={loadApplications}
               className="w-full mt-6 bg-black text-white rounded-2xl p-4 font-bold"
+            >
+              再読み込み
+            </button>
+
+            <button
+              onClick={() => router.back()}
+              className="w-full mt-3 bg-white border border-gray-200 text-gray-600 rounded-2xl p-4 font-bold"
             >
               戻る
             </button>
@@ -465,10 +604,6 @@ const handleSelectPerformer = (performer: Performer) => {
 
   const pendingCount = applications.filter(
     (application) => application.status === "pending"
-  ).length;
-
-  const acceptedCount = applications.filter(
-    (application) => application.status === "accepted"
   ).length;
 
   return (
@@ -501,26 +636,40 @@ const handleSelectPerformer = (performer: Performer) => {
 
         <div className="grid grid-cols-2 gap-3 mt-5">
           <div className="bg-white border border-gray-200 rounded-2xl p-4">
-            <p className="text-xs text-gray-500">応募者</p>
+            <p className="text-xs text-gray-500">
+              応募件数
+            </p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {applications.length}
-              <span className="text-sm font-medium ml-1">人</span>
+              <span className="text-sm font-medium ml-1">
+                件
+              </span>
             </p>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-2xl p-4">
-            <p className="text-xs text-gray-500">応募中</p>
+            <p className="text-xs text-gray-500">
+              応募中
+            </p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {pendingCount}
-              <span className="text-sm font-medium ml-1">人</span>
+              <span className="text-sm font-medium ml-1">
+                件
+              </span>
             </p>
           </div>
         </div>
 
-        {acceptedCount > 0 && (
+        {hasMoreApplications && (
+          <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+            応募者が200件を超えているため、最新200件を表示しています。
+          </p>
+        )}
+
+        {acceptedParticipantCount > 0 && (
           <div className="mt-3 bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
             <p className="text-sm text-green-700">
-              ✓ {acceptedCount}人の演奏者を採用済みです。
+              ✓ {acceptedParticipantCount}人の演奏者を採用済みです。
             </p>
           </div>
         )}
@@ -554,6 +703,9 @@ const handleSelectPerformer = (performer: Performer) => {
                 application.status === "rejected";
 
               const performer = application.performers;
+
+              const isAccepting =
+                acceptingApplicationId === application.id;
 
               if (isBandApplication) {
                 const band = application.band;
@@ -612,47 +764,32 @@ const handleSelectPerformer = (performer: Performer) => {
 
                         {members.length > 0 ? (
                           <div className="mt-3 space-y-2">
-                            {members.map((member, index) => {
-                              const memberUser =
-                                member.performers?.users ??
-                                member.users ??
-                                null;
+                            {members.map((member) => (
+                              <div
+                                key={member.id}
+                                className="flex items-center gap-3 rounded-lg bg-white px-3 py-2"
+                              >
+                                <PerformerAvatar
+                                  user={getOne(member.users)}
+                                  size="w-10 h-10"
+                                  textSize="text-xl"
+                                />
 
-                              const memberName =
-                                member.name ||
-                                member.performers?.name ||
-                                memberUser?.display_name ||
-                                member.display_name ||
-                                "名前未登録";
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-gray-700 truncate">
+                                    {member.name ||
+                                      getOne(member.users)?.display_name ||
+                                      "名前未登録"}
+                                  </p>
 
-                              return (
-                                <div
-                                  key={
-                                    member.id ||
-                                    member.performer_id ||
-                                    `${application.id}-${index}`
-                                  }
-                                  className="flex items-center gap-3 rounded-lg bg-white px-3 py-2"
-                                >
-                                  <PerformerAvatar
-                                    user={memberUser}
-                                    size="w-10 h-10"
-                                    textSize="text-xl"
-                                  />
-
-                                  <div className="min-w-0 flex-1">
-                                    <p className="text-sm font-medium text-gray-700 truncate">
-                                      {memberName}
+                                  {member.role && (
+                                    <p className="text-xs text-gray-400">
+                                      {member.role}
                                     </p>
-                                    {member.role && (
-                                      <p className="text-xs text-gray-400">
-                                        {member.role}
-                                      </p>
-                                    )}
-                                  </div>
+                                  )}
                                 </div>
-                              );
-                            })}
+                              </div>
+                            ))}
                           </div>
                         ) : (
                           <p className="mt-2 text-sm text-gray-500">
@@ -676,13 +813,15 @@ const handleSelectPerformer = (performer: Performer) => {
                     {isPending && (
                       <div className="border-t border-gray-100 bg-gray-50/70 p-4">
                         <button
-                          onClick={() => handleAccept(application)}
+                          onClick={() =>
+                            handleAccept(application)
+                          }
                           disabled={
-                            acceptingApplicationId === application.id
+                            acceptingApplicationId !== null
                           }
                           className="w-full bg-purple-700 text-white rounded-xl p-3.5 font-bold disabled:opacity-50 active:scale-[0.99] transition"
                         >
-                          {acceptingApplicationId === application.id
+                          {isAccepting
                             ? "採用処理中..."
                             : "🎸 このバンドを採用する"}
                         </button>
@@ -708,7 +847,9 @@ const handleSelectPerformer = (performer: Performer) => {
                 >
                   <div className="p-5">
                     <div className="flex items-start gap-3">
-                      <PerformerAvatar user={performer.users} />
+                      <PerformerAvatar
+                        user={performer.users}
+                      />
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
@@ -735,9 +876,14 @@ const handleSelectPerformer = (performer: Performer) => {
                           )}
                         </div>
 
-                        {performer.area && (
+                        {(performer.areas?.length
+                          ? performer.areas.join("、")
+                          : performer.area) && (
                           <p className="text-sm text-gray-500 mt-1">
-                            📍 {performer.area}
+                            📍{" "}
+                            {performer.areas?.length
+                              ? performer.areas.join("、")
+                              : performer.area}
                           </p>
                         )}
                       </div>
@@ -749,14 +895,16 @@ const handleSelectPerformer = (performer: Performer) => {
                           楽器
                         </p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
-                          {performer.instruments.map((instrument) => (
-                            <span
-                              key={instrument}
-                              className="text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1"
-                            >
-                              🎸 {instrument}
-                            </span>
-                          ))}
+                          {performer.instruments.map(
+                            (instrument) => (
+                              <span
+                                key={instrument}
+                                className="text-xs bg-gray-100 text-gray-700 rounded-full px-2.5 py-1"
+                              >
+                                🎸 {instrument}
+                              </span>
+                            )
+                          )}
                         </div>
                       </div>
                     )}
@@ -814,13 +962,15 @@ const handleSelectPerformer = (performer: Performer) => {
 
                     {isPending && (
                       <button
-                        onClick={() => handleAccept(application)}
+                        onClick={() =>
+                          handleAccept(application)
+                        }
                         disabled={
-                          acceptingApplicationId === application.id
+                          acceptingApplicationId !== null
                         }
                         className="w-full mt-2 bg-black text-white rounded-xl p-3.5 font-bold disabled:opacity-50 active:scale-[0.99] transition"
                       >
-                        {acceptingApplicationId === application.id
+                        {isAccepting
                           ? "採用処理中..."
                           : "🎵 この演奏者に依頼する"}
                       </button>
@@ -834,7 +984,9 @@ const handleSelectPerformer = (performer: Performer) => {
 
         <button
           onClick={() =>
-            router.push(`/facility/requests/${requestId}`)
+            router.push(
+              `/facility/requests/${requestId}`
+            )
           }
           className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-medium text-gray-600"
         >
@@ -888,9 +1040,14 @@ const handleSelectPerformer = (performer: Performer) => {
                     "名前未登録"}
                 </h3>
 
-                {selectedPerformer.area && (
+                {(selectedPerformer.areas?.length
+                  ? selectedPerformer.areas.join("、")
+                  : selectedPerformer.area) && (
                   <p className="mt-2 text-sm text-gray-500">
-                    📍 {selectedPerformer.area}
+                    📍{" "}
+                    {selectedPerformer.areas?.length
+                      ? selectedPerformer.areas.join("、")
+                      : selectedPerformer.area}
                   </p>
                 )}
               </div>
@@ -901,18 +1058,20 @@ const handleSelectPerformer = (performer: Performer) => {
                     ⭐ 評価
                   </h3>
 
-                  {reviewData && reviewData.review_count > 0 && (
-                    <span className="text-xs text-gray-500">
-                      {reviewData.review_count}件
-                    </span>
-                  )}
+                  {reviewData &&
+                    reviewData.review_count > 0 && (
+                      <span className="text-xs text-gray-500">
+                        {reviewData.review_count}件
+                      </span>
+                    )}
                 </div>
 
                 {reviewLoading ? (
                   <p className="mt-4 text-sm text-gray-500">
                     評価を読み込み中...
                   </p>
-                ) : reviewData && reviewData.review_count > 0 ? (
+                ) : reviewData &&
+                  reviewData.review_count > 0 ? (
                   <div className="mt-4 flex items-center gap-3">
                     <span className="text-3xl font-bold text-gray-900">
                       {reviewData.average_rating.toFixed(1)}
@@ -921,7 +1080,7 @@ const handleSelectPerformer = (performer: Performer) => {
                     <div>
                       <p className="text-yellow-500 text-xl tracking-wide">
                         {renderStars(
-                          Math.round(reviewData.average_rating)
+                          reviewData.average_rating
                         )}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
@@ -944,14 +1103,16 @@ const handleSelectPerformer = (performer: Performer) => {
                     🎸 楽器
                   </h3>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {selectedPerformer.instruments.map((instrument) => (
-                      <span
-                        key={instrument}
-                        className="text-sm bg-gray-100 text-gray-700 rounded-full px-3 py-1.5"
-                      >
-                        {instrument}
-                      </span>
-                    ))}
+                    {selectedPerformer.instruments.map(
+                      (instrument) => (
+                        <span
+                          key={instrument}
+                          className="text-sm bg-gray-100 text-gray-700 rounded-full px-3 py-1.5"
+                        >
+                          {instrument}
+                        </span>
+                      )
+                    )}
                   </div>
                 </div>
               )}
@@ -985,41 +1146,44 @@ const handleSelectPerformer = (performer: Performer) => {
                 </div>
               )}
 
-              {reviewData && reviewData.reviews.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-bold text-gray-900">
-                    💬 評価コメント
-                  </h3>
+              {reviewData &&
+                reviewData.reviews.length > 0 && (
+                  <div className="mt-6">
+                    <h3 className="text-lg font-bold text-gray-900">
+                      💬 評価コメント
+                    </h3>
 
-                  <div className="space-y-3 mt-3">
-                    {reviewData.reviews.map((review) => (
-                      <div
-                        key={review.id}
-                        className="bg-gray-50 border border-gray-100 rounded-xl p-4"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-yellow-500 font-bold tracking-wide">
-                            {renderStars(review.rating)}
+                    <div className="space-y-3 mt-3">
+                      {reviewData.reviews.map((review) => (
+                        <div
+                          key={review.id}
+                          className="bg-gray-50 border border-gray-100 rounded-xl p-4"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="text-yellow-500 font-bold tracking-wide">
+                              {renderStars(review.rating)}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {formatReviewDate(
+                                review.created_at
+                              )}
+                            </p>
+                          </div>
+
+                          <p className="text-xs text-gray-500 mt-2">
+                            {review.reviewer_name}
                           </p>
-                          <p className="text-xs text-gray-400">
-                            {formatReviewDate(review.created_at)}
-                          </p>
+
+                          {review.comment && (
+                            <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">
+                              {review.comment}
+                            </p>
+                          )}
                         </div>
-
-                        <p className="text-xs text-gray-500 mt-2">
-                          {review.reviewer_name}
-                        </p>
-
-                        {review.comment && (
-                          <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap leading-relaxed">
-                            {review.comment}
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               <button
                 onClick={() => {

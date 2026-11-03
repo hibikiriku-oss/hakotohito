@@ -1,13 +1,29 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +31,10 @@ export async function POST(request: NextRequest) {
     const auth = await requireAdmin(request);
 
     if (!auth.authorized) {
+      Object.entries(NO_STORE_HEADERS).forEach(([key, value]) => {
+        auth.response.headers.set(key, value);
+      });
+
       return auth.response;
     }
 
@@ -24,9 +44,9 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "リクエストのJSON形式が正しくありません" },
-        { status: 400 }
+        400
       );
     }
 
@@ -36,9 +56,9 @@ export async function POST(request: NextRequest) {
       body === null ||
       Array.isArray(body)
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "リクエスト内容が正しくありません" },
-        { status: 400 }
+        400
       );
     }
 
@@ -57,7 +77,7 @@ export async function POST(request: NextRequest) {
         : "";
 
     if (
-      !userId ||
+      !UUID_REGEX.test(userId) ||
       !Number.isSafeInteger(amount) ||
       (amount as number) <= 0 ||
       (amount as number) > 1000000 ||
@@ -66,11 +86,30 @@ export async function POST(request: NextRequest) {
       !idempotencyKey ||
       idempotencyKey.length > 200
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "付与先・付与コイン数・理由の入力を確認してください" },
-        { status: 400 }
+        400
       );
     }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("Admin coin API: Supabase configuration is missing.");
+
+      return jsonResponse(
+        { error: "コイン付与処理に失敗しました" },
+        500
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     // 認証済み管理者のDB上のユーザーIDを取得
     const { data: adminUser, error: adminError } = await supabase
@@ -80,41 +119,45 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (adminError) {
-      console.error("管理者ユーザー取得エラー:", adminError.message);
+      console.error("Admin coin API: Admin lookup failed.", {
+        code: adminError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "管理者情報を取得できませんでした" },
-        { status: 500 }
+        500
       );
     }
 
     if (!adminUser) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "管理者のユーザー登録が見つかりません" },
-        { status: 403 }
+        403
       );
     }
 
     // 付与先が存在することを確認
     const { data: targetUser, error: targetError } = await supabase
       .from("users")
-      .select("id, display_name, user_type, coin_balance")
+      .select("id, display_name, user_type")
       .eq("id", userId)
       .maybeSingle();
 
     if (targetError) {
-      console.error("付与先ユーザー取得エラー:", targetError.message);
+      console.error("Admin coin API: Target lookup failed.", {
+        code: targetError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "付与先ユーザーを取得できませんでした" },
-        { status: 500 }
+        500
       );
     }
 
     if (!targetUser) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "指定されたユーザーが見つかりません" },
-        { status: 404 }
+        404
       );
     }
 
@@ -131,28 +174,30 @@ export async function POST(request: NextRequest) {
     );
 
     if (grantError) {
-      console.error("コイン付与DBエラー:", grantError.message);
+      console.error("Admin coin API: Grant operation failed.", {
+        code: grantError.code,
+      });
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "コイン付与処理に失敗しました" },
-        { status: 500 }
+        500
       );
     }
 
     const grantResult = Array.isArray(result) ? result[0] : null;
 
     if (!grantResult?.success) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             grantResult?.error_message ??
             "コイン付与処理に失敗しました",
         },
-        { status: 400 }
+        400
       );
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       user: {
         id: targetUser.id,
@@ -164,14 +209,13 @@ export async function POST(request: NextRequest) {
       description,
     });
   } catch (error) {
-    console.error(
-      "管理者コイン付与APIエラー:",
-      error instanceof Error ? error.name : "UNKNOWN"
-    );
+    console.error("Admin coin API exception:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
-      { status: 500 }
+      500
     );
   }
 }

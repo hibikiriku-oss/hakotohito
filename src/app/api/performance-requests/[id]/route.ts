@@ -47,9 +47,7 @@ export async function GET(
 
     if (!idToken) {
       return NextResponse.json(
-        {
-          error: "ログインが必要です。LINEでログインしてください。",
-        },
+        { error: "ログインが必要です。LINEでログインしてください。" },
         {
           status: 401,
           headers: { "Cache-Control": "no-store" },
@@ -61,11 +59,21 @@ export async function GET(
 
     if (!verified) {
       return NextResponse.json(
-        {
-          error: "LINEの本人確認に失敗しました。再ログインしてください。",
-        },
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
         {
           status: 401,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    const facility = await getFacilityByLineUserId(verified.userId);
+
+    if (!facility) {
+      return NextResponse.json(
+        { error: "施設ユーザーとして認証できません" },
+        {
+          status: 403,
           headers: { "Cache-Control": "no-store" },
         }
       );
@@ -79,7 +87,7 @@ export async function GET(
         *,
         facilities (
           id,
-          user_id
+          user_id,
           name,
           facility_type,
           address,
@@ -87,11 +95,24 @@ export async function GET(
         )
       `)
       .eq("id", id)
-      .single();
+      .eq("facility_id", facility.id)
+      .maybeSingle();
 
-    if (error || !data) {
+    if (error) {
+      console.error("案件詳細取得エラー:", error);
+
       return NextResponse.json(
-        { error: "案件が見つかりません" },
+        { error: "案件情報の取得に失敗しました" },
+        {
+          status: 500,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        { error: "案件が見つからないか、この案件を表示する権限がありません" },
         {
           status: 404,
           headers: { "Cache-Control": "no-store" },
@@ -117,7 +138,6 @@ export async function GET(
     );
   }
 }
-
 export async function PATCH(
   request: NextRequest,
   context: Context

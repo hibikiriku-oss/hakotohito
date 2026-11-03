@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,14 +17,31 @@ const supabase = createClient(
 );
 
 const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store",
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
 };
 
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
 function jsonError(message: string, status: number) {
-  return NextResponse.json(
-    { error: message },
-    { status, headers: NO_STORE_HEADERS }
-  );
+  return jsonResponse({ error: message }, status);
+}
+
+function applyNoStore(response: NextResponse) {
+  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
+    response.headers.set(key, value);
+  }
+
+  return response;
 }
 
 export async function GET(request: NextRequest) {
@@ -31,7 +49,7 @@ export async function GET(request: NextRequest) {
     const auth = await requireAdmin(request);
 
     if (!auth.authorized) {
-      return auth.response;
+      return applyNoStore(auth.response);
     }
 
     const { data, error } = await supabase
@@ -41,16 +59,19 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (error || !data) {
-      console.error("Announcement GET error:", error);
+      console.error("Announcement GET error:", {
+        code: error?.code ?? "NO_DATA",
+      });
+
       return jsonError("お知らせを取得できませんでした。", 500);
     }
 
-    return NextResponse.json(
-      { announcement: data },
-      { headers: NO_STORE_HEADERS }
-    );
+    return jsonResponse({ announcement: data });
   } catch (error) {
-    console.error("Announcement GET exception:", error);
+    console.error("Announcement GET exception:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+
     return jsonError("サーバーエラーが発生しました。", 500);
   }
 }
@@ -60,7 +81,7 @@ export async function PUT(request: NextRequest) {
     const auth = await requireAdmin(request);
 
     if (!auth.authorized) {
-      return auth.response;
+      return applyNoStore(auth.response);
     }
 
     let body: unknown;
@@ -107,22 +128,25 @@ export async function PUT(request: NextRequest) {
       .single();
 
     if (error || !data) {
-      console.error("Announcement PUT error:", error);
+      console.error("Announcement PUT error:", {
+        code: error?.code ?? "NO_DATA",
+      });
+
       return jsonError("お知らせを保存できませんでした。", 500);
     }
 
-    return NextResponse.json(
-      {
-        success: true,
-        announcement: data,
-        message: isActive
-          ? "お知らせを保存して公開しました。"
-          : "お知らせを保存し、非公開にしました。",
-      },
-      { headers: NO_STORE_HEADERS }
-    );
+    return jsonResponse({
+      success: true,
+      announcement: data,
+      message: isActive
+        ? "お知らせを保存して公開しました。"
+        : "お知らせを保存し、非公開にしました。",
+    });
   } catch (error) {
-    console.error("Announcement PUT exception:", error);
+    console.error("Announcement PUT exception:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+
     return jsonError("サーバーエラーが発生しました。", 500);
   }
 }

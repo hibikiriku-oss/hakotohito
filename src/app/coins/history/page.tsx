@@ -22,6 +22,11 @@ const transactionLabels: Record<string, string> = {
   video_reward: "動画報酬",
   purchase_credit: "コイン購入",
   donation_credit: "コイン付与",
+
+  performer_reward_fee: "演奏報酬の完了手数料",
+  facility_reward_fee: "直接依頼報酬の完了手数料",
+  rental_match_fee: "レンタル料の完了手数料",
+  event_participation_fee: "イベント参加費の完了手数料",
 };
 
 export default function CoinHistoryPage() {
