@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
@@ -16,17 +17,17 @@ async function getFacilityByLineUserId(lineUserId: string) {
     .from("users")
     .select("id, user_type")
     .eq("line_user_id", lineUserId)
-    .single();
+    .maybeSingle();
 
-if (userError || !user || user.user_type !== "facility") {
-  return null;
-}
+  if (userError || !user || user.user_type !== "facility") {
+    return null;
+  }
 
   const { data: facility, error: facilityError } = await supabase
     .from("facilities")
     .select("id")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (facilityError || !facility) {
     return null;
@@ -35,6 +36,7 @@ if (userError || !user || user.user_type !== "facility") {
   return facility;
 }
 
+// 案件詳細取得
 export async function GET(
   request: NextRequest,
   context: Context
@@ -67,13 +69,17 @@ export async function GET(
       );
     }
 
-    const facility = await getFacilityByLineUserId(verified.userId);
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id, user_type")
+      .eq("line_user_id", verified.userId)
+      .maybeSingle();
 
-    if (!facility) {
+    if (userError || !user) {
       return NextResponse.json(
-        { error: "施設ユーザーとして認証できません" },
+        { error: "ユーザー情報が見つかりません" },
         {
-          status: 403,
+          status: 404,
           headers: { "Cache-Control": "no-store" },
         }
       );
@@ -81,22 +87,56 @@ export async function GET(
 
     const { id } = await context.params;
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("performance_requests")
       .select(`
         *,
         facilities (
           id,
-          user_id,
           name,
           facility_type,
           address,
           description
         )
       `)
-      .eq("id", id)
-      .eq("facility_id", facility.id)
-      .maybeSingle();
+      .eq("id", id);
+
+    if (user.user_type === "performer") {
+      const today = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(new Date());
+
+      query = query
+        .eq("status", "open")
+        .gte("application_deadline", today);
+    } else if (user.user_type === "facility") {
+      const facility = await getFacilityByLineUserId(verified.userId);
+
+      if (!facility) {
+        return NextResponse.json(
+          { error: "施設プロフィールが見つかりません" },
+          {
+            status: 403,
+            headers: { "Cache-Control": "no-store" },
+          }
+        );
+      }
+
+      query = query.eq("facility_id", facility.id);
+    } else {
+      return NextResponse.json(
+        { error: "このユーザーには閲覧権限がありません" },
+        {
+          status: 403,
+          headers: { "Cache-Control": "no-store" },
+        }
+      );
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       console.error("案件詳細取得エラー:", error);
@@ -112,7 +152,10 @@ export async function GET(
 
     if (!data) {
       return NextResponse.json(
-        { error: "案件が見つからないか、この案件を表示する権限がありません" },
+        {
+          error:
+            "案件が見つからないか、この案件を表示する権限がありません",
+        },
         {
           status: 404,
           headers: { "Cache-Control": "no-store" },
@@ -138,6 +181,8 @@ export async function GET(
     );
   }
 }
+
+// 案件編集
 export async function PATCH(
   request: NextRequest,
   context: Context
@@ -470,6 +515,7 @@ export async function PATCH(
   }
 }
 
+// 案件削除
 export async function DELETE(
   request: NextRequest,
   context: Context
