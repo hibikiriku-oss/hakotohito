@@ -1,8 +1,11 @@
+
 "use client";
 
 import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
+
+type StatusLevel = "beginner" | "amateur" | "pro";
 
 const instrumentOptions = [
   "ピアノ", "ギター", "ベース", "ドラム", "ヴォーカル",
@@ -14,6 +17,45 @@ const genreOptions = [
   "ラテン・ボサノバ", "ヒップホップ・ラップ", "R&B",
   "アカペラ", "DJ・エレクトロ", "ワールドミュージック",
   "演歌・歌謡曲",
+];
+
+const statusLevelOptions: {
+  value: StatusLevel;
+  label: string;
+  shortLabel: string;
+  description: string;
+  colorClass: string;
+  borderClass: string;
+  textClass: string;
+}[] = [
+  {
+    value: "beginner",
+    label: "初心者",
+    shortLabel: "BEGINNER",
+    description: "人前での演奏経験がほぼ0",
+    colorClass: "bg-green-50",
+    borderClass: "border-green-200",
+    textClass: "text-green-700",
+  },
+  {
+    value: "amateur",
+    label: "アマチュア",
+    shortLabel: "AMATEUR",
+    description:
+      "人前での演奏は度々こなしているが、有料チケットを購入してもらえるほどの腕前ではない",
+    colorClass: "bg-blue-50",
+    borderClass: "border-blue-200",
+    textClass: "text-blue-700",
+  },
+  {
+    value: "pro",
+    label: "プロ",
+    shortLabel: "PRO",
+    description: "演奏料やレッスン代金を生活の糧にしている",
+    colorClass: "bg-violet-200",
+    borderClass: "border-violet-400",
+    textClass: "text-violet-900",
+  },
 ];
 
 const avatarEmojis = [
@@ -40,6 +82,8 @@ export default function PerformerPage() {
 
   const [genres, setGenres] = useState<string[]>([]);
   const [otherGenre, setOtherGenre] = useState("");
+
+  const [statusLevel, setStatusLevel] = useState<StatusLevel | "">("");
 
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(false);
@@ -143,27 +187,15 @@ export default function PerformerPage() {
       areas: finalAreas.length === 0,
       instruments: finalInstruments.length === 0,
       genres: finalGenres.length === 0,
+      statusLevel: !statusLevel,
     };
-
-    console.log("演奏者登録の入力チェック:", {
-      name,
-      areas,
-      areaInput,
-      finalAreas,
-      instruments,
-      otherInstrument,
-      finalInstruments,
-      genres,
-      otherGenre,
-      finalGenres,
-      missingFields,
-    });
 
     if (
       missingFields.name ||
       missingFields.areas ||
       missingFields.instruments ||
-      missingFields.genres
+      missingFields.genres ||
+      missingFields.statusLevel
     ) {
       alert(
         `入力不足の項目：${
@@ -172,6 +204,7 @@ export default function PerformerPage() {
             missingFields.areas && "活動エリア",
             missingFields.instruments && "楽器",
             missingFields.genres && "音楽ジャンル",
+            missingFields.statusLevel && "演奏レベル",
           ]
             .filter(Boolean)
             .join("・")
@@ -182,6 +215,10 @@ export default function PerformerPage() {
 
     if (!lineUserId) {
       alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
+      return;
+    }
+
+    if (!statusLevel) {
       return;
     }
 
@@ -200,6 +237,7 @@ export default function PerformerPage() {
           area: finalAreas[0],
           instruments: [...new Set(finalInstruments)],
           genres: [...new Set(finalGenres)],
+          status_level: statusLevel,
           bio,
           avatarType,
           avatarEmoji: avatarType === "emoji" ? avatarEmoji : null,
@@ -466,6 +504,69 @@ export default function PerformerPage() {
                 placeholder="例：ボサノバ、タンゴ"
                 className={inputClass}
               />
+              <p className="text-xs text-gray-400 mt-2">
+                複数ある場合は「,」または「、」で区切れます。
+              </p>
+            </section>
+
+            <div className="border-t border-gray-100" />
+
+            <section>
+              <h2 className="font-bold text-gray-900 mb-2">
+                🎖️ 演奏レベル <span className="text-red-500">*</span>
+              </h2>
+              <p className="text-xs text-gray-500 leading-5 mb-4">
+                ご自身の判断で近いものを選択してください。このレベルは自己申告であり、運営による認定ではありません。
+              </p>
+
+              <div className="space-y-3">
+                {statusLevelOptions.map((option) => {
+                  const selected = statusLevel === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStatusLevel(option.value)}
+                      disabled={loading}
+                      aria-pressed={selected}
+                      className={`w-full text-left rounded-2xl border p-4 ${
+                        selected
+                          ? "border-black ring-2 ring-black/10"
+                          : "border-gray-200"
+                      } bg-white disabled:opacity-50`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div
+                          className={`shrink-0 w-[86px] h-[64px] flex flex-col items-center justify-center border-2 shadow-sm ${option.colorClass} ${option.borderClass} ${option.textClass}`}
+                          style={{
+                            clipPath:
+                              "polygon(8% 0%, 92% 0%, 100% 12%, 100% 82%, 82% 82%, 50% 100%, 18% 82%, 0% 82%, 0% 12%)",
+                          }}
+                        >
+                          <span className="text-[10px] font-black">
+                            {option.shortLabel}
+                          </span>
+                          <span className="text-sm font-black mt-1">
+                            {option.label}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold">{option.label}</p>
+                          <p className="text-xs text-gray-500 leading-5 mt-1">
+                            {option.description}
+                          </p>
+                          {selected && (
+                            <span className="inline-block mt-2 text-[10px] bg-black text-white px-2 py-1 rounded-full">
+                              選択中
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </section>
 
             <div className="border-t border-gray-100" />
@@ -485,7 +586,7 @@ export default function PerformerPage() {
           <div className="bg-gray-50 border-t border-gray-100 p-5">
             <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4">
               <p className="text-xs text-gray-500 leading-5">
-                活動エリア・楽器・音楽ジャンルは、施設が演奏者を探す際の条件として利用できるようにします。
+                活動エリア・楽器・音楽ジャンル・演奏レベルは、施設が演奏者を探す際の条件として利用できるようにします。
               </p>
             </div>
             <button

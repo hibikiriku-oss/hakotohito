@@ -235,18 +235,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validStatusLevels = ["beginner", "amateur", "pro"];
+const validStatusLevels = ["beginner", "amateur", "pro"];
 
-    if (
-      status_level &&
-      !validStatusLevels.includes(status_level)
-    ) {
-      return NextResponse.json(
-        { error: "演奏者レベルの値が正しくありません" },
-        { status: 400 }
-      );
-    }
-
+if (
+  typeof status_level !== "string" ||
+  !validStatusLevels.includes(status_level)
+) {
+  return NextResponse.json(
+    { error: "演奏レベルを選択してください" },
+    { status: 400 }
+  );
+}
     // アイコン設定の検証
     const normalizedAvatarType =
       avatarType === "emoji" ? "emoji" : "line";

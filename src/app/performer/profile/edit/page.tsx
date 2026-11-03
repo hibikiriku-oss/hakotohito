@@ -1,3 +1,4 @@
+
 "use client";
 
 import { requireLineIdToken } from "@/lib/require-line-id-token";
@@ -30,18 +31,32 @@ const prefectures = [
   "鹿児島県", "沖縄県",
 ];
 
+// 初回登録画面と統一
 const instrumentOptions = [
-  "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ",
-  "チェロ", "コントラバス", "フルート", "クラリネット",
-  "サックス", "トランペット", "トロンボーン", "リコーダー",
-  "ハーモニカ", "オカリナ", "箏", "尺八", "和太鼓",
-  "打楽器", "声楽・歌",
+  "ピアノ",
+  "ギター",
+  "ベース",
+  "ドラム",
+  "ヴォーカル",
+  "サックス",
+  "トランペット",
+  "パーカッション",
+  "DJ",
+  "和楽器",
 ];
 
+// 初回登録画面と統一
 const genreOptions = [
-  "クラシック", "ポップス", "ジャズ", "演歌・歌謡曲",
-  "童謡・唱歌", "アニメ・ゲーム音楽", "映画音楽",
-  "民謡", "邦楽", "ロック", "フォーク", "ゴスペル",
+  "クラシック",
+  "ロック・ポップス",
+  "ジャズ・フュージョン",
+  "ラテン・ボサノバ",
+  "ヒップホップ・ラップ",
+  "R&B",
+  "アカペラ",
+  "DJ・エレクトロ",
+  "ワールドミュージック",
+  "演歌・歌謡曲",
 ];
 
 const statusLevelOptions: {
@@ -182,7 +197,9 @@ export default function PerformerProfileEditPage() {
 
   const loadProfile = async (userId: string) => {
     const response = await fetch("/api/performers/profile", {
-      headers: { Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,},
+      headers: {
+        Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+      },
     });
 
     const data = await response.json();
@@ -232,15 +249,16 @@ export default function PerformerProfileEditPage() {
 
     // 評価は件数と平均点だけ取得。個別コメントは詳細画面で表示する。
     try {
-const reviewResponse = await fetch(
-  `/api/performers/${performer.id}/reviews`,
-  {
-    headers: {
-      Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-    },
-    cache: "no-store",
-  }
-);
+      const reviewResponse = await fetch(
+        `/api/performers/${performer.id}/reviews`,
+        {
+          headers: {
+            Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
+          },
+          cache: "no-store",
+        }
+      );
+
       if (reviewResponse.ok) {
         const reviewData = await reviewResponse.json();
         setReviewSummary({

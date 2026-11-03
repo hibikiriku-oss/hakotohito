@@ -224,6 +224,7 @@ export default function FacilityHomePage() {
           </p>
 
           <div className="grid grid-cols-2 gap-3">
+            {/* 自分の依頼 */}
             <button
               onClick={() =>
                 router.push("/facility/requests")
@@ -243,6 +244,7 @@ export default function FacilityHomePage() {
               </p>
             </button>
 
+            {/* マッチング */}
             <button
               onClick={() =>
                 router.push("/facility/matches")
@@ -262,6 +264,7 @@ export default function FacilityHomePage() {
               </p>
             </button>
 
+            {/* お気に入り */}
             <button
               onClick={() =>
                 router.push("/facility/favorites")
@@ -281,22 +284,54 @@ export default function FacilityHomePage() {
               </p>
             </button>
 
-            {/* お問い合わせ */}
+            {/* 施設プロフィール編集 */}
             <button
-              onClick={() => router.push("/inquiry")}
+              onClick={() =>
+                router.push("/facility/profile/edit")
+              }
               className="bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-sm active:scale-[0.99] transition"
             >
-              <div className="text-2xl">💬</div>
+              <div className="text-2xl">
+                🏢
+              </div>
 
               <div className="font-bold text-gray-900 mt-3">
-                お問い合わせ
+                施設プロフィール編集
               </div>
 
               <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                ご質問・不具合の報告
+                施設情報やアイコンを変更
               </p>
             </button>
           </div>
+        </section>
+
+        {/* お問い合わせ：一番下 */}
+        <section className="mt-4">
+          <button
+            onClick={() => router.push("/inquiry")}
+            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-sm active:scale-[0.99] transition"
+          >
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">
+                💬
+              </div>
+
+              <div>
+                <div className="font-bold text-gray-900">
+                  お問い合わせ
+                </div>
+
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  ご質問・不具合の報告
+                </p>
+              </div>
+
+              <span className="ml-auto text-gray-400">
+                →
+              </span>
+            </div>
+          </button>
         </section>
 
         {/* フッター */}

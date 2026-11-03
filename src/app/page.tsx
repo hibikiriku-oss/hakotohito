@@ -16,16 +16,14 @@ export default function Home() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     async function initLiff() {
       try {
-        console.log("① LIFF初期化開始");
-
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
-          throw new Error(
-            "NEXT_PUBLIC_LIFF_ID が設定されていません。"
-          );
+          throw new Error("NEXT_PUBLIC_LIFF_ID が設定されていません。");
         }
 
         await liff.init({
@@ -33,57 +31,63 @@ export default function Home() {
           withLoginOnExternalBrowser: true,
         });
 
-        console.log("② LIFF初期化完了");
+        if (cancelled) return;
 
         if (!liff.isLoggedIn()) {
-          liff.login();
+          liff.login({
+            redirectUri: window.location.href,
+          });
           return;
         }
 
         const lineProfile = await liff.getProfile();
+
+        if (cancelled) return;
 
         setProfile({
           userId: lineProfile.userId,
           displayName: lineProfile.displayName,
           pictureUrl: lineProfile.pictureUrl,
         });
-
-        console.log("③ LINEプロフィール取得成功");
       } catch (err) {
         console.error("LIFF ERROR:", err);
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : String(err)
-        );
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : String(err)
+          );
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     initLiff();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectUserType = async (
     userType: "performer" | "facility"
   ) => {
     if (!profile) {
-      alert("LINEプロフィールを取得できていません");
+      alert("LINEプロフィールを取得できていません。");
       return;
     }
 
     try {
-      // 登録処理の直前にIDトークンを取得する
-      
       if (!liff.isLoggedIn()) {
-        liff.login();
+        liff.login({
+          redirectUri: window.location.href,
+        });
         return;
       }
 
-      console.log("LIFFログイン状態:", liff.isLoggedIn());
-      console.log("IDトークン取得可否:", Boolean(liff.getIDToken()));
-
+      // 登録直前にIDトークンを取得する
       const idToken = liff.getIDToken();
 
       if (!idToken) {
@@ -93,13 +97,12 @@ export default function Home() {
         return;
       }
 
-      console.log("④ ユーザー種別登録開始:", userType);
-
       const response = await fetch("/api/users", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        cache: "no-store",
         body: JSON.stringify({
           idToken,
           displayName: profile.displayName,
@@ -111,7 +114,12 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        alert(data.error || "登録に失敗しました");
+        console.error("ユーザー登録APIエラー:", {
+          status: response.status,
+          error: data.error,
+        });
+
+        alert(data.error || "登録に失敗しました。");
         return;
       }
 
@@ -122,7 +130,7 @@ export default function Home() {
       }
     } catch (err) {
       console.error("ユーザー登録エラー:", err);
-      alert("通信エラーが発生しました");
+      alert("通信エラーが発生しました。");
     }
   };
 
@@ -144,11 +152,8 @@ export default function Home() {
           <h1 className="text-xl font-bold text-red-600">
             エラーが発生しました
           </h1>
-
           <div className="mt-4 p-4 bg-red-50 rounded-xl">
-            <pre className="text-sm whitespace-pre-wrap">
-              {error}
-            </pre>
+            <pre className="text-sm whitespace-pre-wrap">{error}</pre>
           </div>
         </div>
       </main>
