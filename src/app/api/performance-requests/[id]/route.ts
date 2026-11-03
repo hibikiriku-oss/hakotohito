@@ -18,9 +18,9 @@ async function getFacilityByLineUserId(lineUserId: string) {
     .eq("line_user_id", lineUserId)
     .single();
 
-  if (userError || !user || user.user_type !== "facility") {
-    return null;
-  }
+if (userError || !user || user.user_type !== "facility") {
+  return null;
+}
 
   const { data: facility, error: facilityError } = await supabase
     .from("facilities")
