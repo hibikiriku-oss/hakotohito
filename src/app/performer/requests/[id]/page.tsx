@@ -1,3 +1,4 @@
+
 "use client";
 
 import { requireLineIdToken } from "@/lib/require-line-id-token";
@@ -46,6 +47,12 @@ type LeaderBand = {
   joinedAt?: string;
 };
 
+type BandApplicationStatusResponse = {
+  application: {
+    status: string;
+  } | null;
+};
+
 // 日本時間の今日を YYYY-MM-DD 形式で取得
 function getJapanToday(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -76,6 +83,7 @@ function formatJapaneseDate(dateString: string): string {
 export default function PerformerRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
+
   const personalApplyOperationIdRef = useRef<string | null>(null);
   const bandApplyOperationIdRef = useRef<string | null>(null);
 
@@ -116,6 +124,16 @@ export default function PerformerRequestDetailPage() {
   const [bandLoadError, setBandLoadError] =
     useState("");
 
+  // バンド応募状態
+  const [bandApplicationStatus, setBandApplicationStatus] =
+    useState<string | null>(null);
+
+  const [bandApplicationStatusLoading, setBandApplicationStatusLoading] =
+    useState(false);
+
+  const [bandApplicationStatusError, setBandApplicationStatusError] =
+    useState(false);
+
   const [showFacilityProfile, setShowFacilityProfile] =
     useState(false);
 
@@ -134,6 +152,7 @@ export default function PerformerRequestDetailPage() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
+  // 応募手数料取得
   useEffect(() => {
     let cancelled = false;
 
@@ -172,6 +191,8 @@ export default function PerformerRequestDetailPage() {
     };
   }, []);
 
+
+  // 初期データ取得
   useEffect(() => {
     let cancelled = false;
 
@@ -201,86 +222,129 @@ export default function PerformerRequestDetailPage() {
 
         setLineUserId(profile.userId);
 
-        // バンド一覧の取得。取得に失敗しても個人応募は継続できる。
-        setBandsLoading(true);
-        setBandLoadError("");
+        const idToken = liff.getIDToken();
 
-        try {
-          const idToken = liff.getIDToken();
-
-          if (!idToken) {
-            throw new Error(
-              "LINEの認証情報を取得できません。再ログインしてください。"
-            );
-          }
-
-          const bandsResponse = await fetch("/api/bands", {
-            headers: {
-              Authorization: `Bearer ${idToken}`,
-            },
-            cache: "no-store",
-          });
-
-          const bandsData = await bandsResponse.json();
-
-          if (!bandsResponse.ok) {
-            throw new Error(
-              bandsData.error || "バンド一覧を取得できませんでした"
-            );
-          }
-
-          const bands: LeaderBand[] = Array.isArray(bandsData.bands)
-            ? bandsData.bands
-            : [];
-
-          // 現在のアクティブなリーダーバンドだけを応募先に表示
-          const eligibleBands = bands.filter(
-            (band) =>
-              band.role === "leader" &&
-              band.status === "active"
+        if (!idToken) {
+          throw new Error(
+            "LINEの認証情報を取得できません。再ログインしてください。"
           );
-
-          if (!cancelled) {
-            setLeaderBands(eligibleBands);
-            setSelectedBandId((current) => {
-              if (
-                current &&
-                eligibleBands.some((band) => band.id === current)
-              ) {
-                return current;
-              }
-
-              return eligibleBands[0]?.id ?? "";
-            });
-          }
-        } catch (bandError) {
-          console.error("バンド一覧取得エラー:", bandError);
-
-          if (!cancelled) {
-            setLeaderBands([]);
-            setSelectedBandId("");
-            setBandLoadError(
-              bandError instanceof Error
-                ? bandError.message
-                : "バンド一覧を取得できませんでした"
-            );
-          }
-        } finally {
-          if (!cancelled) {
-            setBandsLoading(false);
-          }
         }
 
-        // 案件情報の取得
-const response = await fetch(
-  `/api/performance-requests/${requestId}`,
-  {
-    headers: {
-      Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-    },
-    cache: "no-store",
-  }
-);
+        const authHeaders = {
+          Authorization: `Bearer ${requireLineIdToken(idToken)}`,
+        };
+
+        // バンド一覧は案件情報と並行して取得する
+        const bandsTask = (async () => {
+          if (!cancelled) {
+            setBandsLoading(true);
+            setBandLoadError("");
+          }
+
+          try {
+            const response = await fetch("/api/bands", {
+              headers: authHeaders,
+              cache: "no-store",
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                data.error || "バンド一覧を取得できませんでした"
+              );
+            }
+
+            const bands: LeaderBand[] = Array.isArray(data.bands)
+              ? data.bands
+              : [];
+
+            const eligibleBands = bands.filter(
+              (band) =>
+                band.role === "leader" &&
+                band.status === "active"
+            );
+
+            if (!cancelled) {
+              setLeaderBands(eligibleBands);
+              setSelectedBandId((current) => {
+                if (
+                  current &&
+                  eligibleBands.some((band) => band.id === current)
+                ) {
+                  return current;
+                }
+
+                return eligibleBands[0]?.id ?? "";
+              });
+            }
+          } catch (bandError) {
+            console.error("バンド一覧取得エラー:", bandError);
+
+            if (!cancelled) {
+              setLeaderBands([]);
+              setSelectedBandId("");
+              setBandLoadError(
+                bandError instanceof Error
+                  ? bandError.message
+                  : "バンド一覧を取得できませんでした"
+              );
+            }
+          } finally {
+            if (!cancelled) {
+              setBandsLoading(false);
+            }
+          }
+        })();
+
+        // 案件情報と個人応募状態は並行して取得する
+        const applicationTask = (async () => {
+          try {
+            const response = await fetch(
+              `/api/applications?requestId=${encodeURIComponent(requestId)}`,
+              {
+                headers: authHeaders,
+                cache: "no-store",
+              }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                data.error || "応募状態を取得できませんでした"
+              );
+            }
+
+            if (!cancelled) {
+              setPersonalApplicationStatus(
+                data.application?.status ?? null
+              );
+              setApplicationStatusError(false);
+            }
+          } catch (applicationError) {
+            console.error(
+              "個人応募状態取得エラー:",
+              applicationError
+            );
+
+            if (!cancelled) {
+              setApplicationStatusError(true);
+            }
+          } finally {
+            if (!cancelled) {
+              setApplicationStatusLoading(false);
+            }
+          }
+        })();
+
+        const response = await fetch(
+          `/api/performance-requests/${requestId}`,
+          {
+            headers: authHeaders,
+            cache: "no-store",
+          }
+        );
 
         const data = await response.json();
 
@@ -294,124 +358,89 @@ const response = await fetch(
 
         setRequest(data.request);
 
-        // 個人応募状態の取得
-        try {
-          const idToken = liff.getIDToken();
+        // 案件情報が取得できた時点で初期表示を開始する
+        setLoading(false);
 
-          if (!idToken) {
-            throw new Error("LINE認証情報を取得できません");
-          }
+        const facility = data.request.facilities as Facility | null;
 
-          const applicationResponse = await fetch(
-            `/api/applications?requestId=${encodeURIComponent(requestId)}`,
-            {
-              headers: {
-                Authorization: `Bearer ${requireLineIdToken(idToken)}`,
-              },
-              cache: "no-store",
-            }
-          );
+        // 施設レビューとお気に入りは表示後に並行取得する
+        if (facility?.id) {
+          setFacilityReviewsLoading(true);
 
-          const applicationData = await applicationResponse.json();
-
-          if (!applicationResponse.ok) {
-            throw new Error(
-              applicationData.error || "応募状態を取得できませんでした"
-            );
-          }
-
-          if (!cancelled) {
-            setPersonalApplicationStatus(
-              applicationData.application?.status ?? null
-            );
-            setApplicationStatusError(false);
-          }
-        } catch (applicationError) {
-          console.error(
-            "個人応募状態取得エラー:",
-            applicationError
-          );
-
-          if (!cancelled) {
-            setApplicationStatusError(true);
-          }
-        } finally {
-          if (!cancelled) {
-            setApplicationStatusLoading(false);
-          }
-        }
-
-        // 施設レビューの取得
-        if (data.request.facilities?.id) {
-          if (!cancelled) {
-            setFacilityReviewsLoading(true);
-          }
-
-          try {
-            const facilityResponse = await fetch(
-              `/api/facilities/${data.request.facilities.id}`,
-              {
-                headers: {
-                  Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-                },
-                cache: "no-store",
-              }
-            );
-
-            const facilityData = await facilityResponse.json();
-
-            if (!cancelled && facilityResponse.ok) {
-              setFacilityRating(facilityData.rating ?? null);
-              setFacilityReviewCount(
-                facilityData.review_count ?? 0
+          const facilityTask = (async () => {
+            try {
+              const facilityResponse = await fetch(
+                `/api/facilities/${facility.id}`,
+                {
+                  headers: authHeaders,
+                  cache: "no-store",
+                }
               );
-              setFacilityReviews(facilityData.reviews ?? []);
-            }
-          } catch (facilityError) {
-            console.error(
-              "施設レビュー取得エラー:",
-              facilityError
-            );
-          } finally {
-            if (!cancelled) {
-              setFacilityReviewsLoading(false);
-            }
-          }
 
-          // お気に入り状態の取得
-          try {
-            const favoritesResponse = await fetch(
-              "/api/favorites",
-              {
-                headers: {
-                  Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
-                },
-                cache: "no-store",
-              }
-            );
+              const facilityData = await facilityResponse.json();
 
-            const favoritesData =
-              await favoritesResponse.json();
-
-            if (!cancelled && favoritesResponse.ok) {
-              const favoriteExists =
-                favoritesData.favorites?.some(
-                  (favorite: {
-                    target_user_id: string;
-                  }) =>
-                    favorite.target_user_id ===
-                    data.request.facilities.user_id
+              if (!cancelled && facilityResponse.ok) {
+                setFacilityRating(facilityData.rating ?? null);
+                setFacilityReviewCount(
+                  facilityData.review_count ?? 0
                 );
-
-              setIsFavorite(favoriteExists ?? false);
+                setFacilityReviews(facilityData.reviews ?? []);
+              }
+            } catch (facilityError) {
+              console.error(
+                "施設レビュー取得エラー:",
+                facilityError
+              );
+            } finally {
+              if (!cancelled) {
+                setFacilityReviewsLoading(false);
+              }
             }
-          } catch (favoriteError) {
-            console.error(
-              "お気に入り状態取得エラー:",
-              favoriteError
-            );
-          }
+          })();
+
+          const favoriteTask = (async () => {
+            try {
+              const favoritesResponse = await fetch(
+                "/api/favorites",
+                {
+                  headers: authHeaders,
+                  cache: "no-store",
+                }
+              );
+
+              const favoritesData =
+                await favoritesResponse.json();
+
+              if (!cancelled && favoritesResponse.ok) {
+                const favoriteExists =
+                  favoritesData.favorites?.some(
+                    (favorite: {
+                      target_user_id: string;
+                    }) =>
+                      favorite.target_user_id === facility.user_id
+                  );
+
+                setIsFavorite(favoriteExists ?? false);
+              }
+            } catch (favoriteError) {
+              console.error(
+                "お気に入り状態取得エラー:",
+                favoriteError
+              );
+            }
+          })();
+
+          void Promise.allSettled([
+            facilityTask,
+            favoriteTask,
+          ]);
         }
+
+        // 補助データの取得完了を画面表示の条件にしない
+        void Promise.allSettled([
+          bandsTask,
+          applicationTask,
+        ]);
       } catch (error) {
         console.error(error);
 
@@ -436,12 +465,96 @@ const response = await fetch(
     };
   }, [requestId]);
 
+
+  // 選択中のバンドの応募状態を取得
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBandApplicationStatus() {
+      if (
+        !selectedBandId ||
+        bandsLoading ||
+        bandLoadError ||
+        !leaderBands.some((band) => band.id === selectedBandId)
+      ) {
+        setBandApplicationStatus(null);
+        setBandApplicationStatusLoading(false);
+        setBandApplicationStatusError(false);
+        return;
+      }
+
+      setBandApplicationStatus(null);
+      setBandApplicationStatusLoading(true);
+      setBandApplicationStatusError(false);
+
+      try {
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error("LINE認証情報を取得できません");
+        }
+
+        const response = await fetch(
+          `/api/bands/${encodeURIComponent(selectedBandId)}/applications?requestId=${encodeURIComponent(requestId)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${requireLineIdToken(idToken)}`,
+            },
+            cache: "no-store",
+          }
+        );
+
+        const data =
+          (await response.json()) as BandApplicationStatusResponse & {
+            error?: string;
+          };
+
+        if (!response.ok) {
+          throw new Error(
+            data.error || "バンド応募状態を取得できませんでした"
+          );
+        }
+
+        if (!cancelled) {
+          setBandApplicationStatus(
+            data.application?.status ?? null
+          );
+          setBandApplicationStatusError(false);
+        }
+      } catch (error) {
+        console.error("バンド応募状態取得エラー:", error);
+
+        if (!cancelled) {
+          setBandApplicationStatus(null);
+          setBandApplicationStatusError(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setBandApplicationStatusLoading(false);
+        }
+      }
+    }
+
+    void loadBandApplicationStatus();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    requestId,
+    selectedBandId,
+    leaderBands,
+    bandsLoading,
+    bandLoadError,
+  ]);
+
   // 期限日当日は応募可能。翌日から期限切れ。
   const isExpired = request
     ? getJapanToday() >
       String(request.application_deadline || "").slice(0, 10)
     : false;
 
+  // お気に入り切り替え
   const handleFavoriteToggle = async () => {
     if (!lineUserId) {
       alert("LINEユーザー情報を取得できていません");
@@ -553,8 +666,10 @@ const response = await fetch(
 
     try {
       setApplying(true);
+
       const operationId =
         personalApplyOperationIdRef.current ?? crypto.randomUUID();
+
       personalApplyOperationIdRef.current = operationId;
 
       const response = await fetch("/api/applications", {
@@ -573,7 +688,10 @@ const response = await fetch(
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status < 500) personalApplyOperationIdRef.current = null;
+        if (response.status < 500) {
+          personalApplyOperationIdRef.current = null;
+        }
+
         alert(data.error || "応募に失敗しました");
         return;
       }
@@ -599,6 +717,22 @@ const response = await fetch(
     }
 
     if (!request) {
+      return;
+    }
+
+    if (
+      bandApplicationStatusLoading ||
+      bandApplicationStatusError
+    ) {
+      alert("バンド応募状態を確認できていません。画面を開き直してください。");
+      return;
+    }
+
+    if (
+      bandApplicationStatus === "pending" ||
+      bandApplicationStatus === "accepted"
+    ) {
+      alert("このバンドはすでに応募済み、または採用済みです。");
       return;
     }
 
@@ -650,8 +784,10 @@ const response = await fetch(
 
     try {
       setApplying(true);
+
       const operationId =
         bandApplyOperationIdRef.current ?? crypto.randomUUID();
+
       bandApplyOperationIdRef.current = operationId;
 
       const idToken = liff.getIDToken();
@@ -682,12 +818,17 @@ const response = await fetch(
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status < 500) bandApplyOperationIdRef.current = null;
+        if (response.status < 500) {
+          bandApplyOperationIdRef.current = null;
+        }
+
         alert(data.error || "バンド応募に失敗しました");
         return;
       }
 
       bandApplyOperationIdRef.current = null;
+      setBandApplicationStatus("pending");
+
       const spentCoins =
         typeof data.coinsSpent === "number"
           ? data.coinsSpent
@@ -1011,7 +1152,7 @@ const response = await fetch(
               </div>
             </div>
 
-            {/* 個人応募状態の表示 */}
+            {/* 個人応募状態 */}
             {applicationMode === "individual" && (
               <>
                 {applicationStatusLoading && (
@@ -1059,7 +1200,7 @@ const response = await fetch(
               </>
             )}
 
-            {/* バンド選択 */}
+            {/* バンド選択・応募状態 */}
             {applicationMode === "band" && (
               <div className="mt-4 rounded-xl border border-purple-100 bg-purple-50 p-4">
                 <label
@@ -1109,6 +1250,70 @@ const response = await fetch(
                   </select>
                 )}
 
+                {/* バンド応募状態 */}
+                {selectedBandId && !bandsLoading && !bandLoadError && (
+                  <>
+                    {bandApplicationStatusLoading && (
+                      <div className="mt-3 rounded-lg border border-purple-200 bg-white p-3">
+                        <p className="text-sm text-purple-800">
+                          バンドの応募状態を確認しています...
+                        </p>
+                      </div>
+                    )}
+
+                    {!bandApplicationStatusLoading &&
+                      bandApplicationStatusError && (
+                        <div className="mt-3 rounded-lg border border-red-200 bg-white p-3">
+                          <p className="text-sm font-bold text-red-700">
+                            応募状態を確認できません
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-red-600">
+                            安全のため、このバンドからの応募を停止しています。画面を開き直してください。
+                          </p>
+                        </div>
+                      )}
+
+                    {!bandApplicationStatusLoading &&
+                      !bandApplicationStatusError &&
+                      bandApplicationStatus === "pending" && (
+                        <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                          <p className="text-sm font-bold text-blue-800">
+                            応募済み（審査中）
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-blue-700">
+                            このバンドはすでに応募しています。施設からの審査結果をお待ちください。
+                          </p>
+                        </div>
+                      )}
+
+                    {!bandApplicationStatusLoading &&
+                      !bandApplicationStatusError &&
+                      bandApplicationStatus === "accepted" && (
+                        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3">
+                          <p className="text-sm font-bold text-green-800">
+                            採用済み
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-green-700">
+                            このバンドはこの案件に採用されています。
+                          </p>
+                        </div>
+                      )}
+
+                    {!bandApplicationStatusLoading &&
+                      !bandApplicationStatusError &&
+                      bandApplicationStatus === "rejected" && (
+                        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-sm font-bold text-amber-800">
+                            前回の応募は不採用でした
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-amber-700">
+                            再応募できます。
+                          </p>
+                        </div>
+                      )}
+                  </>
+                )}
+
                 <div className="mt-3 rounded-lg bg-white p-3">
                   <p className="text-sm font-bold text-purple-900">
                     💰 応募手数料：{applicationFeeCoins}コイン
@@ -1152,10 +1357,16 @@ const response = await fetch(
                     personalApplicationStatus === "accepted"
                   )) ||
                 (applicationMode === "band" &&
-                  (bandsLoading ||
+                  (
+                    bandsLoading ||
                     Boolean(bandLoadError) ||
                     !selectedBandId ||
-                    leaderBands.length === 0))
+                    leaderBands.length === 0 ||
+                    bandApplicationStatusLoading ||
+                    bandApplicationStatusError ||
+                    bandApplicationStatus === "pending" ||
+                    bandApplicationStatus === "accepted"
+                  ))
               }
               className={`mt-4 w-full rounded-2xl px-5 py-4 text-base font-bold text-white shadow-sm active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-300 ${
                 applicationMode === "band"
@@ -1166,7 +1377,21 @@ const response = await fetch(
               {applying
                 ? "応募中..."
                 : applicationMode === "band"
-                  ? "🎸 選択したバンドで応募する"
+                  ? bandsLoading
+                    ? "バンド一覧を確認中..."
+                    : bandLoadError
+                      ? "バンド一覧を取得できません"
+                      : !selectedBandId
+                        ? "バンドを選択してください"
+                        : bandApplicationStatusLoading
+                          ? "応募状態を確認中..."
+                          : bandApplicationStatusError
+                            ? "応募状態を確認できません"
+                            : bandApplicationStatus === "pending"
+                              ? "応募済み（審査中）"
+                              : bandApplicationStatus === "accepted"
+                                ? "採用済み"
+                                : "🎸 選択したバンドで応募する"
                   : applicationStatusLoading
                     ? "応募状態を確認中..."
                     : applicationStatusError
@@ -1212,7 +1437,6 @@ const response = await fetch(
       {showFacilityProfile && request.facilities && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center sm:p-6">
           <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-xl">
-            {/* モーダルヘッダー */}
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <div>
                 <p className="text-xs font-semibold text-gray-400">
@@ -1234,7 +1458,6 @@ const response = await fetch(
             </div>
 
             <div className="max-h-[78vh] overflow-y-auto px-5 py-5">
-              {/* 施設基本情報 */}
               <div className="rounded-2xl bg-gray-50 p-4">
                 <p className="text-xs font-semibold text-gray-400">
                   施設名

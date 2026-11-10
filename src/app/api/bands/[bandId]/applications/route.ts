@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
@@ -118,6 +119,130 @@ type BandApplicationResult = {
   is_replay?: boolean;
 };
 
+// バンド応募状態取得
+export async function GET(
+  request: NextRequest,
+  context: RouteContext
+) {
+  try {
+    if (!supabase) {
+      return NextResponse.json(
+        { error: "サーバーの設定に問題があります" },
+        { status: 500 }
+      );
+    }
+
+    const { bandId } = await context.params;
+
+    const uuidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    if (!uuidPattern.test(bandId)) {
+      return NextResponse.json(
+        { error: "バンドIDが正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const requestId = request.nextUrl.searchParams.get("requestId");
+
+    if (!requestId || !uuidPattern.test(requestId)) {
+      return NextResponse.json(
+        { error: "案件IDが正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const auth = await getAuthenticatedPerformer(request);
+
+    if ("error" in auth) {
+      return auth.error;
+    }
+
+    const { data: membership, error: membershipError } =
+      await supabase
+        .from("band_members")
+        .select("role, status")
+        .eq("band_id", bandId)
+        .eq("performer_id", auth.performer.id)
+        .eq("role", "leader")
+        .eq("status", "active")
+        .maybeSingle();
+
+    if (membershipError) {
+      console.error("バンドリーダー権限確認エラー:", membershipError);
+
+      return NextResponse.json(
+        { error: "バンドの権限を確認できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "このバンドの応募状態を確認する権限がありません" },
+        { status: 403 }
+      );
+    }
+
+    const { data: band, error: bandError } = await supabase
+      .from("bands")
+      .select("id, status")
+      .eq("id", bandId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (bandError) {
+      console.error("バンド状態取得エラー:", bandError);
+
+      return NextResponse.json(
+        { error: "バンド情報を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    if (!band) {
+      return NextResponse.json(
+        { error: "このバンドは現在応募に使用できません" },
+        { status: 403 }
+      );
+    }
+
+    const { data: application, error: applicationError } =
+      await supabase
+        .from("applications")
+        .select("id, status")
+        .eq("request_id", requestId)
+        .eq("band_id", bandId)
+        .maybeSingle();
+
+    if (applicationError) {
+      console.error("バンド応募状態取得エラー:", applicationError);
+
+      return NextResponse.json(
+        { error: "バンド応募状態を取得できませんでした" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      application: application
+        ? {
+            id: application.id,
+            status: application.status,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("バンド応募状態APIエラー:", error);
+
+    return NextResponse.json(
+      { error: "サーバーエラーが発生しました" },
+      { status: 500 }
+    );
+  }
+}
+
 async function sendApplicationNotification(
   requestId: string,
   bandId: string,
@@ -138,10 +263,7 @@ async function sendApplicationNotification(
         .maybeSingle();
 
     if (requestError || !performanceRequest) {
-      console.error(
-        "バンド応募の通知用案件取得エラー:",
-        requestError
-      );
+      console.error("バンド応募の通知用案件取得エラー:", requestError);
       return false;
     }
 
@@ -469,7 +591,6 @@ export async function POST(
       );
     }
 
-    // 応募登録とコイン消費を専用DB関数で一括処理
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       "submit_band_application_idempotent",
       {
@@ -503,7 +624,8 @@ export async function POST(
         result?.error_message || "バンド応募の処理に失敗しました";
 
       const status =
-        errorMessage === "IDEMPOTENCY_CONFLICT" || /すでに.*応募|すでに.*採用|重複/.test(errorMessage)
+        errorMessage === "IDEMPOTENCY_CONFLICT" ||
+        /すでに.*応募|すでに.*採用|重複/.test(errorMessage)
           ? 409
           : /リーダー/.test(errorMessage)
             ? 403
@@ -521,8 +643,6 @@ export async function POST(
       );
     }
 
-    // 初回応募・却下後の再応募で実際にコインを消費した場合だけ通知
-    // 既存応募の再実行では coins_spent が 0 のため通知しない
     let notificationSent = false;
 
     if (result.coins_spent > 0 && result.is_replay !== true) {

@@ -190,8 +190,14 @@ function PerformerAvatar({
 
 export default function FacilityRequestApplicationsPage() {
   const params = useParams();
-  const router = useRouter();
   const requestId = params.id as string;
+  const navigation = useRouter();
+
+  const router = {
+    back: () =>
+      navigation.push(`/facility/requests/${requestId}`),
+    push: (path: string) => navigation.push(path),
+  };
 
   const [performanceRequest, setPerformanceRequest] =
     useState<PerformanceRequest | null>(null);

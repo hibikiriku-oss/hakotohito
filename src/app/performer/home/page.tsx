@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -110,14 +111,8 @@ const menuConfig: Record<
   other: {
     icon: "⚙️",
     title: "その他の機能",
-    description: "プロフィールやお気に入り、お問い合わせはこちら。",
+    description: "プロフィールの編集やお問い合わせはこちら。",
     items: [
-      {
-        icon: "⭐",
-        title: "お気に入り",
-        description: "気になる施設を見る",
-        path: "/performer/favorites",
-      },
       {
         icon: "👤",
         title: "演奏者情報を編集",
@@ -475,10 +470,38 @@ export default function PerformerHomePage() {
 
             <button
               type="button"
-              onClick={() => openMenu("other")}
-              className="mt-5 w-full rounded-xl px-4 py-3 text-sm font-semibold text-gray-500 active:bg-gray-100"
+              onClick={() => router.push("/performer/favorites")}
+              className="mt-5 w-full rounded-2xl border border-yellow-200 bg-yellow-50 px-5 py-4 text-left shadow-sm transition active:bg-yellow-100"
             >
-              ⚙️ その他の機能（お気に入り・プロフィール・お問い合わせ） →
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-2xl">
+                  ⭐
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-gray-900">
+                    お気に入り
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    気になる施設を見る
+                  </p>
+                </div>
+
+                <span
+                  className="text-xl text-gray-400"
+                  aria-hidden="true"
+                >
+                  →
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openMenu("other")}
+              className="mt-3 w-full rounded-xl px-4 py-3 text-sm font-semibold text-gray-500 active:bg-gray-100"
+            >
+              ⚙️ その他の機能（プロフィール・お問い合わせ） →
             </button>
           </>
         ) : (
