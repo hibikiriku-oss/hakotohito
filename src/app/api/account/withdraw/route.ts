@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
-import { sendLinePushMessage } from "@/lib/line";
+import { sendLinePushMessage, type LineMessage } from "@/lib/line";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +31,7 @@ type PendingDirectInviteNotification = {
 
 async function sendWithdrawalNotification(
   lineUserId: string,
-  message: Record<string, unknown>
+  message: LineMessage
 ): Promise<boolean> {
   if (!lineUserId || lineUserId.startsWith("withdrawn:")) {
     return false;
