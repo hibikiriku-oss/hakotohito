@@ -115,6 +115,7 @@ type BandApplicationResult = {
   balance_after: number | null;
   coins_spent: number;
   error_message: string | null;
+  is_replay?: boolean;
 };
 
 async function sendApplicationNotification(
@@ -430,11 +431,14 @@ export async function POST(
     const input = body as {
       requestId?: unknown;
       message?: unknown;
+      operationId?: unknown;
     };
 
     if (
       typeof input.requestId !== "string" ||
-      !uuidPattern.test(input.requestId)
+      !uuidPattern.test(input.requestId) ||
+      typeof input.operationId !== "string" ||
+      !uuidPattern.test(input.operationId)
     ) {
       return NextResponse.json(
         { error: "案件IDが正しくありません" },
@@ -467,8 +471,9 @@ export async function POST(
 
     // 応募登録とコイン消費を専用DB関数で一括処理
     const { data: rpcData, error: rpcError } = await supabase.rpc(
-      "apply_to_performance_request_as_band",
+      "submit_band_application_idempotent",
       {
+        p_operation_id: input.operationId,
         p_user_id: auth.user.id,
         p_performer_id: auth.performer.id,
         p_band_id: bandId,
@@ -498,7 +503,7 @@ export async function POST(
         result?.error_message || "バンド応募の処理に失敗しました";
 
       const status =
-        /すでに.*応募|すでに.*採用|重複/.test(errorMessage)
+        errorMessage === "IDEMPOTENCY_CONFLICT" || /すでに.*応募|すでに.*採用|重複/.test(errorMessage)
           ? 409
           : /リーダー/.test(errorMessage)
             ? 403
@@ -520,7 +525,7 @@ export async function POST(
     // 既存応募の再実行では coins_spent が 0 のため通知しない
     let notificationSent = false;
 
-    if (result.coins_spent > 0) {
+    if (result.coins_spent > 0 && result.is_replay !== true) {
       notificationSent = await sendApplicationNotification(
         input.requestId,
         bandId,

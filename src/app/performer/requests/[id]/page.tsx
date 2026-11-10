@@ -1,7 +1,7 @@
 "use client";
 
 import { requireLineIdToken } from "@/lib/require-line-id-token";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
@@ -76,6 +76,8 @@ function formatJapaneseDate(dateString: string): string {
 export default function PerformerRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const personalApplyOperationIdRef = useRef<string | null>(null);
+  const bandApplyOperationIdRef = useRef<string | null>(null);
 
   const requestId = params.id as string;
 
@@ -551,6 +553,9 @@ const response = await fetch(
 
     try {
       setApplying(true);
+      const operationId =
+        personalApplyOperationIdRef.current ?? crypto.randomUUID();
+      personalApplyOperationIdRef.current = operationId;
 
       const response = await fetch("/api/applications", {
         method: "POST",
@@ -561,16 +566,19 @@ const response = await fetch(
         body: JSON.stringify({
           requestId,
           message,
+          operationId,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status < 500) personalApplyOperationIdRef.current = null;
         alert(data.error || "応募に失敗しました");
         return;
       }
 
+      personalApplyOperationIdRef.current = null;
       setPersonalApplicationStatus("pending");
 
       alert("個人名義で応募しました！");
@@ -642,6 +650,9 @@ const response = await fetch(
 
     try {
       setApplying(true);
+      const operationId =
+        bandApplyOperationIdRef.current ?? crypto.randomUUID();
+      bandApplyOperationIdRef.current = operationId;
 
       const idToken = liff.getIDToken();
 
@@ -663,6 +674,7 @@ const response = await fetch(
           body: JSON.stringify({
             requestId,
             message,
+            operationId,
           }),
         }
       );
@@ -670,10 +682,12 @@ const response = await fetch(
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status < 500) bandApplyOperationIdRef.current = null;
         alert(data.error || "バンド応募に失敗しました");
         return;
       }
 
+      bandApplyOperationIdRef.current = null;
       const spentCoins =
         typeof data.coinsSpent === "number"
           ? data.coinsSpent

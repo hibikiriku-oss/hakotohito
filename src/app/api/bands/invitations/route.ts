@@ -50,7 +50,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   const { data: user, error: userError } = await supabase
     .from("users")
-    .select("id")
+    .select("id, account_status, user_type")
     .eq("line_user_id", verified.userId)
     .maybeSingle();
 
@@ -70,6 +70,24 @@ async function getAuthenticatedPerformer(request: NextRequest) {
       error: NextResponse.json(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
+      ),
+    };
+  }
+
+  if (user.account_status !== "active") {
+    return {
+      error: NextResponse.json(
+        { error: "このアカウントは現在利用できません" },
+        { status: 403 }
+      ),
+    };
+  }
+
+  if (user.user_type !== "performer") {
+    return {
+      error: NextResponse.json(
+        { error: "演奏者アカウントでログインしてください" },
+        { status: 403 }
       ),
     };
   }

@@ -59,6 +59,10 @@ function getSafeApplicationError(errorMessage: string): {
   message: string;
   status: number;
 } {
+  if (errorMessage === "IDEMPOTENCY_CONFLICT") {
+    return { message: "同じ応募操作IDに異なる内容が指定されました。画面を再読み込みして再度お試しください。", status: 409 };
+  }
+
   if (errorMessage.includes("すでに応募")) {
     return {
       message: "この案件にはすでに応募しています。",
@@ -274,9 +278,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { requestId, message } = body as {
+    const { requestId, message, operationId } = body as {
       requestId?: unknown;
       message?: unknown;
+      operationId?: unknown;
     };
 
     if (!requestId) {
@@ -289,6 +294,8 @@ export async function POST(request: NextRequest) {
     if (
       typeof requestId !== "string" ||
       !UUID_PATTERN.test(requestId) ||
+      typeof operationId !== "string" ||
+      !UUID_PATTERN.test(operationId) ||
       (message !== undefined &&
         message !== null &&
         typeof message !== "string") ||
@@ -475,18 +482,16 @@ export async function POST(request: NextRequest) {
     // 応募登録・コイン消費をDBで一括実行
     // ================================================
 
-    // 1回の応募処理につき一意の試行IDを発行
-    const attemptId = crypto.randomUUID();
-
+    // operationIdは画面が生成し、通信再送時も同じ値を使う。
     const {
       data: applicationResultData,
       error: applicationResultError,
-    } = await supabase.rpc("apply_to_performance_request", {
+    } = await supabase.rpc("submit_personal_application_idempotent", {
+      p_operation_id: operationId,
       p_user_id: user.id,
       p_request_id: requestId,
       p_performer_id: performer.id,
       p_message: applicationMessage,
-      p_attempt_id: attemptId,
     });
 
     if (applicationResultError) {
@@ -568,6 +573,9 @@ export async function POST(request: NextRequest) {
     let notificationSent = false;
 
     try {
+      if (applicationResult.is_replay === true) {
+        notificationSent = false;
+      } else {
       const {
         data: facility,
         error: facilityError,
@@ -700,6 +708,7 @@ export async function POST(request: NextRequest) {
             );
           }
         }
+      }
       }
     } catch (notificationError) {
       console.error(
