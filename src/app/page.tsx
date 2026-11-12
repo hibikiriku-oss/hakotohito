@@ -17,6 +17,9 @@ type RegisteredUser = {
   user_type: UserType;
 };
 
+// スプラッシュ画面の最低表示時間
+const MIN_SPLASH_DURATION_MS = 1600;
+
 export default function Home() {
   const [profile, setProfile] = useState<LineProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,13 +30,19 @@ export default function Home() {
     let cancelled = false;
 
     async function initLiff() {
+      const startedAt = Date.now();
+      let redirectingToLine = false;
+
       try {
         const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
         if (!liffId) {
-          throw new Error("NEXT_PUBLIC_LIFF_ID が設定されていません。");
+          throw new Error(
+            "NEXT_PUBLIC_LIFF_ID が設定されていません。"
+          );
         }
 
+        // LINE LIFF 初期化
         await liff.init({
           liffId,
           withLoginOnExternalBrowser: true,
@@ -41,13 +50,18 @@ export default function Home() {
 
         if (cancelled) return;
 
+        // 未ログインの場合はLINEログインへ移動
         if (!liff.isLoggedIn()) {
+          redirectingToLine = true;
+
           liff.login({
             redirectUri: window.location.href,
           });
+
           return;
         }
 
+        // LINEプロフィール取得
         const lineProfile = await liff.getProfile();
 
         if (cancelled) return;
@@ -58,6 +72,7 @@ export default function Home() {
           pictureUrl: lineProfile.pictureUrl,
         });
 
+        // サーバー側で本人確認するためのIDトークン
         const idToken = liff.getIDToken();
 
         if (!idToken) {
@@ -66,7 +81,7 @@ export default function Home() {
           );
         }
 
-        // 登録済みの有効アカウントを確認
+        // 登録済みアカウントの確認
         const response = await fetch("/api/users", {
           method: "GET",
           headers: {
@@ -91,26 +106,52 @@ export default function Home() {
             return;
           }
 
-          throw new Error("登録済みユーザーの種別が不正です。");
+          throw new Error(
+            "登録済みユーザーの種別が不正です。"
+          );
         }
 
+        // 404 は未登録ユーザーとして扱う
         if (response.status !== 404) {
           const data = await response.json().catch(() => ({}));
+
           throw new Error(
-            data.error || "ユーザー情報の確認に失敗しました。"
+            data.error ||
+              "ユーザー情報の確認に失敗しました。"
           );
         }
       } catch (err) {
-        console.error("LIFF / ユーザー確認エラー:", err);
+        console.error(
+          "LIFF / ユーザー確認エラー:",
+          err
+        );
 
         if (!cancelled) {
           setError(
-            err instanceof Error ? err.message : String(err)
+            err instanceof Error
+              ? err.message
+              : String(err)
           );
         }
       } finally {
-        if (!cancelled) {
-          setLoading(false);
+        // LINEログインへの移動中はスプラッシュを維持
+        if (!cancelled && !redirectingToLine) {
+          const elapsed = Date.now() - startedAt;
+
+          const remaining = Math.max(
+            0,
+            MIN_SPLASH_DURATION_MS - elapsed
+          );
+
+          if (remaining > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, remaining)
+            );
+          }
+
+          if (!cancelled) {
+            setLoading(false);
+          }
         }
       }
     }
@@ -122,9 +163,12 @@ export default function Home() {
     };
   }, []);
 
+  // ユーザー登録
   const selectUserType = async (userType: UserType) => {
     if (!profile) {
-      alert("LINEプロフィールを取得できていません。");
+      alert(
+        "LINEプロフィールを取得できていません。"
+      );
       return;
     }
 
@@ -171,19 +215,25 @@ export default function Home() {
           error: data.error,
         });
 
-        alert(data.error || "登録に失敗しました。");
+        alert(
+          data.error || "登録に失敗しました。"
+        );
         return;
       }
 
-      // APIが返した実際の登録種別を基準に移動
-      const registeredUser = data.user as RegisteredUser;
+      const registeredUser =
+        data.user as RegisteredUser;
 
-      if (registeredUser?.user_type === "performer") {
+      if (
+        registeredUser?.user_type === "performer"
+      ) {
         window.location.replace("/performer");
         return;
       }
 
-      if (registeredUser?.user_type === "facility") {
+      if (
+        registeredUser?.user_type === "facility"
+      ) {
         window.location.replace("/facility");
         return;
       }
@@ -197,85 +247,108 @@ export default function Home() {
     }
   };
 
+  // スプラッシュ画面
   if (loading) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-6">
-        <h1 className="text-xl font-bold">読み込み中…</h1>
-        <p className="mt-4 text-sm text-gray-500">
-          LINEとの接続を確認しています
-        </p>
+      <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#fff8ed] px-6 py-12">
+        <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#25a7a1]/10 blur-3xl" />
+
+        <div className="absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-[#f2a65a]/15 blur-3xl" />
+
+        <div className="relative z-10 flex w-full max-w-sm flex-col items-center text-center">
+          <img
+            src="/mmatch-splash-logo.png"
+            alt="MMatch Music × Matching"
+            className="mb-8 w-full max-w-[340px] object-contain"
+          />
+
+          <p className="text-xl font-bold leading-relaxed tracking-wide text-[#17324d]">
+            音楽でつながる、
+            <br />
+            新しい出会い
+          </p>
+
+          <div className="mt-8 h-1.5 w-24 overflow-hidden rounded-full bg-[#25a7a1]/20">
+            <div className="h-full w-1/2 animate-pulse rounded-full bg-[#25a7a1]" />
+          </div>
+
+          <p className="mt-5 text-sm text-[#17324d]/65">
+            LINEとの接続を確認しています
+          </p>
+        </div>
       </main>
     );
   }
 
+  // エラー画面
   if (error) {
     return (
-      <main className="min-h-screen p-6">
-        <div className="max-w-md mx-auto">
+      <main className="min-h-screen bg-[#fff8ed] p-6">
+        <div className="mx-auto max-w-md">
           <h1 className="text-xl font-bold text-red-600">
-            エラーが発生しました
+            接続エラーが発生しました
           </h1>
-          <div className="mt-4 p-4 bg-red-50 rounded-xl">
-            <pre className="text-sm whitespace-pre-wrap">{error}</pre>
+
+          <div className="mt-4 rounded-xl bg-red-50 p-4">
+            <pre className="whitespace-pre-wrap text-sm text-red-800">
+              {error}
+            </pre>
           </div>
         </div>
       </main>
     );
   }
 
+  // プロフィール未取得
   if (!profile) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
+      <main className="flex min-h-screen items-center justify-center bg-[#fff8ed] p-6">
         LINEログインが必要です。
       </main>
     );
   }
 
+  // 未登録ユーザーの登録画面
   return (
     <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-2">
+      <div className="mx-auto max-w-md">
+        <h1 className="mb-2 text-2xl font-bold">
           🎵 演奏マッチング
         </h1>
 
-        <p className="text-gray-600 mb-8">
+        <p className="mb-8 text-gray-600">
           楽器を演奏したい人と、
           演奏を聞きたい施設をつなぎます。
         </p>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm mb-6">
-          <p className="text-sm text-gray-500">
-            LINEアカウント
-          </p>
-          <p className="text-lg font-bold">
-            {profile.displayName}
-          </p>
-        </div>
-
-        <h2 className="font-bold mb-3">
+        <h2 className="mb-3 font-bold">
           あなたはどちらですか？
         </h2>
 
         <div className="space-y-3">
           <button
-            onClick={() => selectUserType("performer")}
+            onClick={() =>
+              selectUserType("performer")
+            }
             disabled={registering}
-            className="w-full bg-black text-white rounded-xl p-4 disabled:opacity-50"
+            className="w-full rounded-xl bg-black p-4 text-white disabled:opacity-50"
           >
             🎸 演奏したい
           </button>
 
           <button
-            onClick={() => selectUserType("facility")}
+            onClick={() =>
+              selectUserType("facility")
+            }
             disabled={registering}
-            className="w-full bg-white border rounded-xl p-4 disabled:opacity-50"
+            className="w-full rounded-xl border bg-white p-4 disabled:opacity-50"
           >
             🏢 演奏を依頼したい
           </button>
         </div>
 
         {registering && (
-          <p className="text-center text-sm text-gray-500 mt-4">
+          <p className="mt-4 text-center text-sm text-gray-500">
             登録しています…
           </p>
         )}
