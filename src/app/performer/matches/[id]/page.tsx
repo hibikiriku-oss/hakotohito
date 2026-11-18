@@ -33,6 +33,7 @@ type Match = {
   id: string;
   isBandMatch: boolean;
   band: {
+    id: string;
     name: string | null;
     description: string | null;
     status: string;

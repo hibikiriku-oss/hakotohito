@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
@@ -102,6 +103,23 @@ function matchesCategory(
     values.some((value) => !standardValues.includes(value));
 
   return matchesNormal || matchesOther;
+}
+
+/**
+ * Supabaseの関連データからusersだけを除外する。
+ * 関連データが単一オブジェクト・配列のどちらでも構造を維持する。
+ */
+function removeJoinedUsers<T extends { users: unknown }>(
+  relation: T | T[] | null | undefined
+): Omit<T, "users"> | Omit<T, "users">[] | null | undefined {
+  const removeUsers = ({ users: _users, ...rest }: T): Omit<T, "users"> =>
+    rest;
+
+  if (Array.isArray(relation)) {
+    return relation.map(removeUsers);
+  }
+
+  return relation ? removeUsers(relation) : relation;
 }
 
 async function getCurrentPerformerId(lineUserId: string) {
@@ -327,12 +345,7 @@ export async function GET(request: NextRequest) {
       })
       .map((item) => ({
         ...item,
-        facilities: item.facilities && typeof item.facilities === "object"
-          ? (() => {
-              const { users: _ownerJoin, ...facility } = item.facilities as Record<string, unknown>;
-              return facility;
-            })()
-          : item.facilities,
+        facilities: removeJoinedUsers(item.facilities),
         map_type: "performance",
         is_applied: applicationStatusByRequestId.has(item.id),
         application_status:
@@ -445,12 +458,7 @@ export async function GET(request: NextRequest) {
       })
       .map((item) => ({
         ...item,
-        performers: item.performers && typeof item.performers === "object"
-          ? (() => {
-              const { users: _ownerJoin, ...performer } = item.performers as Record<string, unknown>;
-              return performer;
-            })()
-          : item.performers,
+        performers: removeJoinedUsers(item.performers),
         map_type: "lesson",
         is_applied: lessonApplicationStatusByOfferId.has(item.id),
         application_status:

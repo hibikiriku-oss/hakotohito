@@ -13,6 +13,7 @@ type PerformanceRequest = {
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address?: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;

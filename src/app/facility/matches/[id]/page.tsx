@@ -1,3 +1,4 @@
+
 "use client";
 
 import { requireLineIdToken } from "@/lib/require-line-id-token";
@@ -98,12 +99,10 @@ function getPerformer(performer: Match["performers"] | undefined) {
 function getUser(
   users:
     | {
-        id: string;
         display_name: string | null;
         picture_url: string | null;
       }
     | Array<{
-        id: string;
         display_name: string | null;
         picture_url: string | null;
       }>
