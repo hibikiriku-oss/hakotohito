@@ -721,11 +721,11 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       success: true,
       notificationSent,
-      invitation: result
+      invitation: data
         ? {
-            id: result.invitation_id,
-            bandId: result.band_id,
-            status: result.status,
+            id: data.invitation_id,
+            bandId: data.band_id,
+            status: data.status,
           }
         : {
             id: input.invitationId,

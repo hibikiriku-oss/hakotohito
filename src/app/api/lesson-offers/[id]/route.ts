@@ -87,35 +87,33 @@ export async function GET(
 
     let currentPerformerId: string | null = null;
 
-const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-if (!idToken) {
-  return NextResponse.json(
-    {
-      error: "ログインが必要です。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "ログインが必要です。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-if (idToken) {
-  const verified = await verifyLineIdToken(idToken);
+    const verified = await verifyLineIdToken(idToken);
 
-  if (!verified) {
-    return NextResponse.json(
-      {
-        error: "LINEの本人確認に失敗しました。再ログインしてください。",
-      },
-      { status: 401 }
-    );
-  }
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-  const performer = await getCurrentPerformer(verified.userId);
-  currentPerformerId = performer?.id ?? null;
-}
+    const performer = await getCurrentPerformer(verified.userId);
+    currentPerformerId = performer?.id ?? null;
 
     const { data: offer, error } = await supabase
       .from("lesson_offers")
@@ -172,22 +170,30 @@ if (idToken) {
       );
     }
 
+    const normalizedPerformers = offer.performers
+      ? offer.performers.map((performer) => {
+          const user = Array.isArray(performer.users)
+            ? performer.users[0]
+            : performer.users;
+
+          return {
+            ...performer,
+            users: user
+              ? {
+                  display_name: user.display_name,
+                  picture_url: user.picture_url,
+                }
+              : null,
+          };
+        })
+      : null;
+
     return NextResponse.json(
       {
         success: true,
         offer: {
           ...offer,
-          performers: offer.performers
-            ? {
-                ...offer.performers,
-                users: offer.performers.users
-                  ? {
-                      display_name: offer.performers.users.display_name,
-                      picture_url: offer.performers.users.picture_url,
-                    }
-                  : null,
-              }
-            : null,
+          performers: normalizedPerformers,
           is_mine: Boolean(
             currentPerformerId &&
               offer.performer_id === currentPerformerId
@@ -211,7 +217,6 @@ export async function PUT(
   request: NextRequest,
   context: RouteContext
 ) {
-
   try {
     const { id } = await context.params;
 
@@ -223,31 +228,31 @@ export async function PUT(
     }
 
     const authorization = request.headers.get("authorization");
-const idToken = authorization?.startsWith("Bearer ")
-  ? authorization.slice("Bearer ".length)
-  : "";
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-if (!idToken) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認情報がありません。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!idToken) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const verified = await verifyLineIdToken(idToken);
+    const verified = await verifyLineIdToken(idToken);
 
-if (!verified) {
-  return NextResponse.json(
-    {
-      error: "LINEの本人確認に失敗しました。再ログインしてください。",
-    },
-    { status: 401 }
-  );
-}
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
 
-const performer = await getCurrentPerformer(verified.userId);
+    const performer = await getCurrentPerformer(verified.userId);
 
     if (!performer) {
       return NextResponse.json(
@@ -413,7 +418,10 @@ const performer = await getCurrentPerformer(verified.userId);
       console.error("レッスン募集更新RPCエラー:", error);
 
       return NextResponse.json(
-        { error: "募集内容の保存に失敗しました。時間をおいて再度お試しください。" },
+        {
+          error:
+            "募集内容の保存に失敗しました。時間をおいて再度お試しください。",
+        },
         { status: 500 }
       );
     }
