@@ -48,11 +48,9 @@ export default function FacilityPage() {
 
         const profile = await liff.getProfile();
 
-        console.log("LINEプロフィール:", profile);
-
         setLineUserId(profile.userId);
       } catch (error) {
-        console.error("LIFF ERROR:", error);
+        console.error("LIFF初期化エラー");
         alert("LINE情報の取得に失敗しました");
       }
     }
@@ -85,8 +83,6 @@ export default function FacilityPage() {
     try {
       setLoading(true);
 
-      console.log("施設プロフィール登録開始");
-
       const response = await fetch("/api/facilities", {
         method: "POST",
         headers: {
@@ -103,11 +99,7 @@ export default function FacilityPage() {
         }),
       });
 
-      console.log("APIステータス:", response.status);
-
       const data = await response.json();
-
-      console.log("API結果:", data);
 
       if (!response.ok) {
         alert(data.error || "登録に失敗しました");
@@ -118,7 +110,7 @@ export default function FacilityPage() {
 
       window.location.href = "/facility/home";
     } catch (error) {
-      console.error("登録エラー:", error);
+      console.error("施設プロフィール登録エラー:", error instanceof Error ? error.name : "UnknownError");
       alert("通信エラーが発生しました");
     } finally {
       setLoading(false);

@@ -40,11 +40,9 @@ export async function verifyLineIdToken(
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
-
+      // LINEから返るエラー本文をログへ残さず、応答ステータスだけを記録する。
       console.error("LINE IDトークン検証失敗", {
         status: response.status,
-        body: errorBody,
       });
 
       return null;
@@ -76,7 +74,7 @@ export async function verifyLineIdToken(
 
     return { userId: result.sub! };
   } catch (error) {
-    console.error("LINE IDトークン検証エラー:", error);
+    console.error("LINE IDトークン検証エラー:", error instanceof Error ? error.name : "UNKNOWN");
     return null;
   }
 }

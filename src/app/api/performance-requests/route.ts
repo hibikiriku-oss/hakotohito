@@ -117,11 +117,27 @@ function matchesTimeRange(
  * areas に有効な値があれば areas を優先し、
  * 空の場合のみ従来の area を使用します。
  */
+async function isPerformerUser(lineUserId: string): Promise<boolean> {
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("user_type")
+    .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("閲覧ユーザーの確認に失敗しました");
+  }
+
+  return user?.user_type === "performer";
+}
+
 async function getPerformerAreas(lineUserId: string): Promise<string[]> {
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
@@ -293,7 +309,11 @@ export async function GET(request: NextRequest) {
       lineUserId = verified.userId;
     }
 
-    const performerAreas = lineUserId
+    const canViewPerformerDetails = lineUserId
+      ? await isPerformerUser(lineUserId)
+      : false;
+
+    const performerAreas = canViewPerformerDetails && lineUserId
       ? await getPerformerAreas(lineUserId)
       : null;
 
@@ -312,6 +332,7 @@ export async function GET(request: NextRequest) {
           start_time,
           end_time,
           area,
+          venue_address,
           instruments,
           genres,
           reward,
@@ -322,12 +343,13 @@ export async function GET(request: NextRequest) {
           target_levels,
           status,
           created_at,
-          facilities (
+          facilities!inner (
             name,
             facility_type,
-            address
+            users!inner(id)
           )
         `)
+        .eq("facilities.users.account_status", "active")
         .eq("status", "open")
         .gte("application_deadline", today);
 
@@ -385,8 +407,8 @@ export async function GET(request: NextRequest) {
       if (error) {
         console.error("演奏依頼一覧取得エラー:", error);
         return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
+          { error: "演奏依頼一覧の取得に失敗しました" },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -470,12 +492,23 @@ export async function GET(request: NextRequest) {
 
     // 未ログイン利用者には施設プロフィール情報を返さない。
     // selectedRequests の型を維持したまま施設情報だけを null にする。
-    const requests: typeof selectedRequests = lineUserId
-      ? selectedRequests
-      : selectedRequests.map((item) => ({
-          ...item,
-          facilities: null,
-        }));
+    const requests: typeof selectedRequests = selectedRequests.map((item) => {
+      const facility = item.facilities;
+      const safeFacility = facility && typeof facility === "object"
+        ? (() => {
+            const { users: _ownerJoin, ...publicFacility } = facility as any;
+            return publicFacility;
+          })()
+        : facility;
+
+      return canViewPerformerDetails
+        ? { ...item, facilities: safeFacility }
+        : {
+            ...item,
+            venue_address: null,
+            facilities: null,
+          };
+    });
 
     // ログイン中の演奏者の応募状況を取得
     let requestsWithApplicationStatus = requests.map((item) => ({
@@ -483,11 +516,12 @@ export async function GET(request: NextRequest) {
       application_status: null as string | null,
     }));
 
-    if (lineUserId && requests.length > 0) {
+    if (canViewPerformerDetails && lineUserId && requests.length > 0) {
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("id")
         .eq("line_user_id", lineUserId)
+        .eq("account_status", "active")
         .maybeSingle();
 
       if (userError) {
@@ -539,13 +573,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      requests: requestsWithApplicationStatus,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    });
+    return NextResponse.json(
+      {
+        requests: requestsWithApplicationStatus,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("演奏依頼一覧APIエラー:", error);
 
@@ -577,7 +614,25 @@ export async function POST(request: NextRequest) {
       maxParticipants,
       participationFee,
       rentalFee,
+      venue_address,
     } = body;
+
+    const venueAddress =
+      typeof venue_address === "string" ? venue_address.trim() : "";
+
+    if (venue_address != null && typeof venue_address !== "string") {
+      return NextResponse.json(
+        { error: "開催場所住所の形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (venueAddress.length > 500) {
+      return NextResponse.json(
+        { error: "開催場所住所は500文字以内で入力してください" },
+        { status: 400 }
+      );
+    }
 
     if (
       !title ||
@@ -785,6 +840,7 @@ export async function POST(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -820,6 +876,7 @@ export async function POST(request: NextRequest) {
         start_time: startTime,
         end_time: endTime,
         area: area || null,
+        venue_address: venueAddress || null,
         instruments: Array.isArray(instruments) ? instruments : [],
         genres: Array.isArray(genres) ? genres : [],
         reward:
@@ -850,8 +907,8 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("演奏依頼登録エラー:", error);
       return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
+        { error: "演奏依頼の登録に失敗しました" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 

@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
 import { verifyLineIdToken } from "@/lib/line-auth";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -187,6 +187,7 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -350,6 +351,7 @@ export async function POST(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -566,155 +568,12 @@ export async function POST(request: NextRequest) {
       band_id: null,
     };
 
-    // ================================================
-    // 施設へのLINE通知
-    // ================================================
-
+    // 通知はapplication_attemptsのDBトリガーで同一トランザクション内にOutbox登録済み。
+    // ここでは即時配信を試みるだけで、失敗分はOutboxの再試行対象として残す。
     let notificationSent = false;
-
-    try {
-      if (applicationResult.is_replay === true) {
-        notificationSent = false;
-      } else {
-      const {
-        data: facility,
-        error: facilityError,
-      } = await supabase
-        .from("facilities")
-        .select("id, user_id, name")
-        .eq("id", performanceRequest.facility_id)
-        .single();
-
-      if (facilityError || !facility) {
-        console.error("施設取得エラー:", facilityError);
-      } else {
-        const {
-          data: facilityUser,
-          error: facilityUserError,
-        } = await supabase
-          .from("users")
-          .select("line_user_id, display_name")
-          .eq("id", facility.user_id)
-          .single();
-
-        if (facilityUserError || !facilityUser) {
-          console.error(
-            "施設LINEユーザー取得エラー:",
-            facilityUserError
-          );
-        } else {
-          const performerName = performer.name || "演奏者";
-
-          const facilityName =
-            facility.name ||
-            facilityUser.display_name ||
-            "施設";
-
-          const detailUrl =
-            "https://miniapp.line.me/2011785379-l5XCTbIf/facility/requests/" +
-            requestId +
-            "/applications";
-
-          const messages = [
-            {
-              type: "flex",
-              altText: "🎵 新しい応募があります！",
-              contents: {
-                type: "bubble",
-                body: {
-                  type: "box",
-                  layout: "vertical",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "🎵 新しい応募があります！",
-                      weight: "bold",
-                      size: "xl",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text:
-                        facilityName +
-                        "さんの案件に、" +
-                        performerName +
-                        "さんから応募がありました。",
-                      margin: "md",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text: "案件：" + performanceRequest.title,
-                      margin: "md",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text:
-                        "演奏日時：" +
-                        performanceRequest.performance_date +
-                        "\n" +
-                        "時間：" +
-                        performanceRequest.start_time +
-                        " ～ " +
-                        performanceRequest.end_time +
-                        "\n" +
-                        "場所：" +
-                        (performanceRequest.area || "未設定"),
-                      margin: "md",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text: applicationMessage
-                        ? "応募メッセージ：\n" + applicationMessage
-                        : "応募メッセージ：なし",
-                      margin: "md",
-                      wrap: true,
-                    },
-                  ],
-                },
-                footer: {
-                  type: "box",
-                  layout: "vertical",
-                  contents: [
-                    {
-                      type: "button",
-                      style: "primary",
-                      action: {
-                        type: "uri",
-                        label: "応募者を確認する",
-                        uri: detailUrl,
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          ];
-
-          const lineResult = await sendLinePushMessage(
-            facilityUser.line_user_id,
-            messages
-          );
-
-          if (lineResult.success) {
-            notificationSent = true;
-            console.log("施設へのLINE通知送信成功");
-          } else {
-            console.error(
-              "施設へのLINE通知送信失敗:",
-              lineResult.error
-            );
-          }
-        }
-      }
-      }
-    } catch (notificationError) {
-      console.error(
-        "施設へのLINE通知処理エラー:",
-        notificationError
-      );
+    if (applicationResult.is_replay !== true) {
+      const delivery = await drainLineNotificationOutbox(supabase, 20);
+      notificationSent = delivery.sent > 0;
     }
 
     return jsonResponse({

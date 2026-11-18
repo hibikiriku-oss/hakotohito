@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -17,7 +23,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!idToken) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "LINEの認証情報がありません。再ログインしてください" },
         { status: 401 }
       ),
@@ -28,7 +34,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!verified) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "LINEの本人確認に失敗しました。再ログインしてください" },
         { status: 401 }
       ),
@@ -37,7 +43,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!supabase) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       ),
@@ -48,12 +54,13 @@ async function getAuthenticatedPerformer(request: NextRequest) {
     .from("users")
     .select("id")
     .eq("line_user_id", verified.userId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
     console.error("ユーザー取得エラー:", userError);
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "ユーザー情報の取得に失敗しました" },
         { status: 500 }
       ),
@@ -62,7 +69,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!user) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       ),
@@ -78,7 +85,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
   if (performerError) {
     console.error("演奏者取得エラー:", performerError);
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "演奏者プロフィールの取得に失敗しました" },
         { status: 500 }
       ),
@@ -87,7 +94,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!performer) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "先に演奏者プロフィールを登録してください" },
         { status: 404 }
       ),
@@ -100,7 +107,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -126,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("バンド一覧取得エラー:", error);
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド一覧を取得できませんでした" },
         { status: 500 }
       );
@@ -172,13 +179,13 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    return NextResponse.json({
+    return privateJson({
       bands,
       view: showDisbanded ? "disbanded" : "active",
     });
   } catch (error) {
     console.error("バンド一覧APIエラー:", error);
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
@@ -188,7 +195,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -205,14 +212,14 @@ export async function POST(request: NextRequest) {
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return privateJson(
         { error: "リクエスト形式が正しくありません" },
         { status: 400 }
       );
     }
 
     if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "入力内容が正しくありません" },
         { status: 400 }
       );
@@ -228,7 +235,7 @@ export async function POST(request: NextRequest) {
       input.name.trim().length < 1 ||
       input.name.trim().length > 100
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド名は1〜100文字で入力してください" },
         { status: 400 }
       );
@@ -239,7 +246,7 @@ export async function POST(request: NextRequest) {
       input.description !== null &&
       typeof input.description !== "string"
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "紹介文の形式が正しくありません" },
         { status: 400 }
       );
@@ -261,7 +268,7 @@ export async function POST(request: NextRequest) {
 
     if (createError) {
       console.error("バンド作成エラー:", createError);
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドを作成できませんでした" },
         { status: 500 }
       );
@@ -271,13 +278,13 @@ export async function POST(request: NextRequest) {
 
     if (!band?.band_id) {
       console.error("バンド作成結果が不正です:", created);
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド作成結果を確認できませんでした" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(
+    return privateJson(
       {
         success: true,
         band: {
@@ -289,7 +296,7 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     console.error("バンド作成APIエラー:", error);
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

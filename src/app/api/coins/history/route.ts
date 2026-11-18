@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .maybeSingle();
 
     if (userError) {

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -49,6 +55,7 @@ const MATCH_SELECT = `
     start_time,
     end_time,
     area,
+    venue_address,
     instruments,
     genres,
     reward,
@@ -57,7 +64,6 @@ const MATCH_SELECT = `
       id,
       name,
       facility_type,
-      address,
       description,
       users (
         picture_url,
@@ -76,7 +82,7 @@ export async function GET(request: NextRequest) {
       : "";
 
     if (!idToken) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認情報がありません。再ログインしてください。",
         },
@@ -87,7 +93,7 @@ export async function GET(request: NextRequest) {
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認に失敗しました。再ログインしてください。",
         },
@@ -101,10 +107,11 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザーが見つかりません" },
         { status: 404 }
       );
@@ -117,7 +124,7 @@ export async function GET(request: NextRequest) {
       .single();
 
     if (performerError || !performer) {
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -133,7 +140,7 @@ export async function GET(request: NextRequest) {
     if (membershipsError) {
       console.error("バンド所属情報の取得エラー:", membershipsError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド所属情報の取得に失敗しました" },
         { status: 500 }
       );
@@ -155,7 +162,7 @@ export async function GET(request: NextRequest) {
       if (bandsError) {
         console.error("バンド情報の取得エラー:", bandsError);
 
-        return NextResponse.json(
+        return privateJson(
           { error: "バンド情報の取得に失敗しました" },
           { status: 500 }
         );
@@ -198,7 +205,7 @@ export async function GET(request: NextRequest) {
     if (personalMatchesError) {
       console.error("個人マッチングの取得エラー:", personalMatchesError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "マッチング情報の取得に失敗しました" },
         { status: 500 }
       );
@@ -217,7 +224,7 @@ export async function GET(request: NextRequest) {
       if (bandMatchesError) {
         console.error("バンドマッチングの取得エラー:", bandMatchesError);
 
-        return NextResponse.json(
+        return privateJson(
           { error: "バンドのマッチング情報の取得に失敗しました" },
           { status: 500 }
         );
@@ -307,11 +314,11 @@ export async function GET(request: NextRequest) {
         };
       });
 
-    return NextResponse.json({ matches });
+    return privateJson({ matches });
   } catch (error) {
     console.error("マッチング一覧APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "マッチング情報の取得に失敗しました" },
       { status: 500 }
     );

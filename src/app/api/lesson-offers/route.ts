@@ -68,6 +68,7 @@ async function getCurrentPerformer(lineUserId: string) {
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
@@ -154,7 +155,7 @@ if (idToken) {
         status,
         created_at,
         reserved_coins,
-        performers (
+        performers!inner (
           id,
           user_id,
           name,
@@ -164,12 +165,13 @@ if (idToken) {
           genres,
           bio,
           status_level,
-          users (
+          users!inner (
             display_name,
             picture_url
           )
         )
       `)
+      .eq("performers.users.account_status", "active")
       .eq("status", "open")
       .order("created_at", { ascending: false });
 
@@ -208,17 +210,31 @@ if (idToken) {
 
     const offers = (data || []).map((offer: any) => ({
       ...offer,
+      performers: offer.performers
+        ? {
+            ...offer.performers,
+            users: offer.performers.users
+              ? {
+                  display_name: offer.performers.users.display_name,
+                  picture_url: offer.performers.users.picture_url,
+                }
+              : null,
+          }
+        : null,
       is_mine: Boolean(
         currentPerformerId &&
           offer.performer_id === currentPerformerId
       ),
     }));
 
-    return NextResponse.json({
-      success: true,
-      offers,
-      total: offers.length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        offers,
+        total: offers.length,
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("レッスン募集一覧APIエラー:", error);
 

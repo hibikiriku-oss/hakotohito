@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
@@ -57,6 +57,7 @@ export async function POST(
       .from("users")
       .select("id, line_user_id, display_name, picture_url, user_type")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -143,10 +144,11 @@ export async function POST(
     // 辞退と施設への手数料返金をDB関数で実行
     const { data: refundResult, error: refundError } =
       await supabase.rpc(
-        "reject_direct_invitation_with_refund",
+        "reject_direct_invitation_with_notification_outbox",
         {
           p_application_id: application.id,
           p_performer_id: performer.id,
+          p_actor_user_id: user.id,
         }
       );
 
@@ -172,120 +174,26 @@ export async function POST(
       );
     }
 
-    // 施設情報を取得
-    const { data: facility, error: facilityError } = await supabase
-      .from("facilities")
-      .select(`
-        id,
-        user_id,
-        name,
-        users (
-          id,
-          line_user_id,
-          display_name
-        )
-      `)
-      .eq("id", performanceRequest.facility_id)
-      .single();
+    // 旧方式で実際に返金された履歴がある場合だけ、返金済みと案内する。
+    const { data: refundTransaction } = await supabase
+      .from("coin_transactions")
+      .select("id")
+      .eq("idempotency_key", `direct_invite_refund:${application.id}`)
+      .maybeSingle();
+    const wasRefunded = Boolean(refundTransaction?.id);
+    const facilityNoticeText = wasRefunded
+      ? "演奏者が今回の依頼を辞退しました。旧方式で徴収されていた直接依頼手数料は返金されました。"
+      : "演奏者が今回の依頼を辞退しました。今回の依頼ではマッチング成立前の手数料徴収はありません。";
 
-    if (facilityError) {
-      console.error("施設情報取得エラー:", facilityError);
-    }
-
-    let notificationSent = false;
-
-    const facilityUser = facility?.users
-      ? Array.isArray(facility.users)
-        ? facility.users[0]
-        : facility.users
-      : null;
-
-    const facilityLineUserId = facilityUser?.line_user_id;
-
-    if (facilityLineUserId) {
-      const miniAppBaseUrl =
-        "https://miniapp.line.me/2011785379-l5XCTbIf";
-
-      const requestUrl =
-        `${miniAppBaseUrl}/facility/requests/${performanceRequest.id}`;
-
-      const messages = [
-        {
-          type: "flex",
-          altText: "演奏者がオファーを辞退しました",
-          contents: {
-            type: "bubble",
-            body: {
-              type: "box",
-              layout: "vertical",
-              spacing: "md",
-              contents: [
-                {
-                  type: "text",
-                  text: "オファーについて",
-                  weight: "bold",
-                  size: "xl",
-                },
-                {
-                  type: "text",
-                  text: "演奏者が今回の依頼を辞退しました。消費した直接依頼手数料は返金されました。",
-                  wrap: true,
-                },
-                {
-                  type: "separator",
-                  margin: "md",
-                },
-                {
-                  type: "text",
-                  text: performanceRequest.title,
-                  weight: "bold",
-                  size: "lg",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text: `演奏者：${
-                    performer.name || user.display_name || "演奏者"
-                  }`,
-                  wrap: true,
-                },
-              ],
-            },
-            footer: {
-              type: "box",
-              layout: "vertical",
-              spacing: "sm",
-              contents: [
-                {
-                  type: "button",
-                  style: "primary",
-                  action: {
-                    type: "uri",
-                    label: "案件を確認する",
-                    uri: requestUrl,
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ];
-
-      const lineResult = await sendLinePushMessage(
-        facilityLineUserId,
-        messages
-      );
-
-      if (lineResult.success) {
-        notificationSent = true;
-      } else {
-        console.error("施設へのLINE通知エラー:", lineResult.error);
-      }
-    }
+    // 辞退・返金と通知Outbox登録はapplications更新トリガーで同一transaction内に確定済み。
+    const notificationDelivery = await drainLineNotificationOutbox(supabase, 20);
+    const notificationSent = notificationDelivery.sent > 0;
 
     return NextResponse.json({
       success: true,
-      message: "依頼を辞退しました。施設に直接依頼手数料を返金しました。",
+      message: wasRefunded
+        ? "依頼を辞退しました。旧方式で徴収されていた直接依頼手数料を施設に返金しました。"
+        : "依頼を辞退しました。マッチング成立前の手数料徴収はありません。",
       application: {
         ...application,
         status: "rejected",

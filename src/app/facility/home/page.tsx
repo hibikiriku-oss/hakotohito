@@ -246,6 +246,13 @@ export default function FacilityHomePage() {
 
               <button
                 type="button"
+                onClick={() => router.push("/coins/purchase")}
+                className="rounded-lg border px-3 py-2 text-sm font-bold"
+              >
+                コイン購入
+              </button>
+              <button
+                type="button"
                 onClick={() => router.push("/coins/history")}
                 className="rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
                 aria-label="コイン履歴を開く"

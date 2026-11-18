@@ -353,6 +353,9 @@ export default function FacilityPerformerInvitePage() {
           <p className="text-sm text-gray-500 mt-2 leading-relaxed">
             募集中の案件を選択して、この演奏者へ依頼を送れます。
           </p>
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            直接依頼手数料はマッチング成立時に徴収されます。依頼送信時は残高確認のみ行い、コインは消費しません。
+          </p>
         </header>
 
         {/* 演奏者プロフィール */}

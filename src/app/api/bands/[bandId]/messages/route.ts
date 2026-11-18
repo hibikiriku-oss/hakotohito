@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -28,7 +34,7 @@ async function getAuthenticatedPerformer(
 
   if (!idToken) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         {
           error:
             "LINEの認証情報がありません。再ログインしてください",
@@ -42,7 +48,7 @@ async function getAuthenticatedPerformer(
 
   if (!verified) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         {
           error:
             "LINEの本人確認に失敗しました。再ログインしてください",
@@ -54,7 +60,7 @@ async function getAuthenticatedPerformer(
 
   if (!supabase) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       ),
@@ -65,13 +71,14 @@ async function getAuthenticatedPerformer(
     .from("users")
     .select("id")
     .eq("line_user_id", verified.userId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
     console.error("チャットのユーザー取得エラー:", userError);
 
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "ユーザー情報を取得できませんでした" },
         { status: 500 }
       ),
@@ -80,7 +87,7 @@ async function getAuthenticatedPerformer(
 
   if (!user) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       ),
@@ -100,7 +107,7 @@ async function getAuthenticatedPerformer(
     );
 
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "演奏者情報を取得できませんでした" },
         { status: 500 }
       ),
@@ -109,14 +116,14 @@ async function getAuthenticatedPerformer(
 
   if (!performer) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "演奏者プロフィールを登録してください" },
         { status: 404 }
       ),
     };
   }
 
-  return { performerId: performer.id };
+  return { performerId: performer.id, lineUserId: verified.userId };
 }
 
 async function verifyActiveBandMember(
@@ -125,7 +132,7 @@ async function verifyActiveBandMember(
 ) {
   if (!supabase) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       ),
@@ -142,7 +149,7 @@ async function verifyActiveBandMember(
     console.error("チャットのバンド取得エラー:", bandError);
 
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "バンド情報を取得できませんでした" },
         { status: 500 }
       ),
@@ -151,7 +158,7 @@ async function verifyActiveBandMember(
 
   if (!band) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "バンドが見つかりません" },
         { status: 404 }
       ),
@@ -160,7 +167,7 @@ async function verifyActiveBandMember(
 
   if (band.status !== "active") {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "このバンドは現在活動していません" },
         { status: 409 }
       ),
@@ -180,7 +187,7 @@ async function verifyActiveBandMember(
     console.error("チャットの所属確認エラー:", membershipError);
 
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "バンドの所属情報を確認できませんでした" },
         { status: 500 }
       ),
@@ -189,7 +196,7 @@ async function verifyActiveBandMember(
 
   if (!membership) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "このバンドのメンバーだけがチャットを利用できます" },
         { status: 403 }
       ),
@@ -208,115 +215,35 @@ export async function GET(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
-        { error: "サーバーの設定に問題があります" },
-        { status: 500 }
-      );
+      return privateJson({ error: "サーバーの設定に問題があります" }, { status: 500 });
     }
-
     const { bandId } = await context.params;
-
     if (!uuidPattern.test(bandId)) {
-      return NextResponse.json(
-        { error: "バンドIDが正しくありません" },
-        { status: 400 }
-      );
+      return privateJson({ error: "バンドIDが正しくありません" }, { status: 400 });
     }
-
     const auth = await getAuthenticatedPerformer(request);
+    if ("error" in auth) return auth.error;
 
-    if ("error" in auth) {
-      return auth.error;
-    }
-
-    const access = await verifyActiveBandMember(
-      bandId,
-      auth.performerId
-    );
-
-    if ("error" in access) {
-      return access.error;
-    }
-
-    // 最新100件を取得して、画面では古い順に表示する
-    const { data: rows, error: messagesError } = await supabase
-      .from("band_messages")
-      .select(
-        "id, band_id, sender_performer_id, message, created_at"
-      )
-      .eq("band_id", bandId)
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (messagesError) {
-      console.error("バンドメッセージ取得エラー:", messagesError);
-
-      return NextResponse.json(
-        { error: "チャット履歴を取得できませんでした" },
-        { status: 500 }
-      );
-    }
-
-    const messageRows = rows ?? [];
-
-    const senderIds = [
-      ...new Set(
-        messageRows.map((row) => row.sender_performer_id)
-      ),
-    ];
-
-    const senderNames = new Map<string, string>();
-
-    if (senderIds.length > 0) {
-      const { data: senders, error: sendersError } =
-        await supabase
-          .from("performers")
-          .select("id, name")
-          .in("id", senderIds);
-
-      if (sendersError) {
-        console.error("チャット送信者取得エラー:", sendersError);
-
-        return NextResponse.json(
-          { error: "送信者情報を取得できませんでした" },
-          { status: 500 }
-        );
-      }
-
-      for (const sender of senders ?? []) {
-        senderNames.set(sender.id, sender.name);
-      }
-    }
-
-    const messages = messageRows
-      .slice()
-      .reverse()
-      .map((row) => ({
-        id: row.id,
-        bandId: row.band_id,
-        senderPerformerId: row.sender_performer_id,
-        senderName:
-          senderNames.get(row.sender_performer_id) ??
-          "不明な演奏者",
-        message: row.message,
-        createdAt: row.created_at,
-        isMine: row.sender_performer_id === auth.performerId,
-      }));
-
-    return NextResponse.json({
-      band: {
-        id: access.bandId,
-        name: access.bandName,
-      },
-      messages,
+    const { data, error } = await supabase.rpc("get_band_chat_messages_atomic", {
+      p_band_id: bandId,
+      p_sender_performer_id: auth.performerId,
+      p_line_user_id: auth.lineUserId,
     });
+    if (error || !data?.success) {
+      const errorCode = data?.errorCode;
+      if (errorCode === "band_not_active") {
+        return privateJson({ error: "このバンドは現在活動していません" }, { status: 409 });
+      }
+      if (["not_active_member", "user_inactive"].includes(errorCode)) {
+        return privateJson({ error: "このバンドのメンバーだけがチャットを利用できます" }, { status: 403 });
+      }
+      console.error("バンドチャット取得RPCエラー:", error?.message || errorCode);
+      return privateJson({ error: "チャット履歴を取得できませんでした" }, { status: 500 });
+    }
+    return privateJson({ band: data.band, messages: data.messages ?? [] });
   } catch (error) {
     console.error("チャット履歴APIエラー:", error);
-
-    return NextResponse.json(
-      { error: "サーバーエラーが発生しました" },
-      { status: 500 }
-    );
+    return privateJson({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
 }
 
@@ -326,7 +253,7 @@ export async function POST(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -335,7 +262,7 @@ export async function POST(
     const { bandId } = await context.params;
 
     if (!uuidPattern.test(bandId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドIDが正しくありません" },
         { status: 400 }
       );
@@ -352,7 +279,7 @@ export async function POST(
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return privateJson(
         { error: "リクエスト形式が正しくありません" },
         { status: 400 }
       );
@@ -363,7 +290,7 @@ export async function POST(
       typeof body !== "object" ||
       Array.isArray(body)
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "入力内容が正しくありません" },
         { status: 400 }
       );
@@ -372,7 +299,7 @@ export async function POST(
     const input = body as { message?: unknown };
 
     if (typeof input.message !== "string") {
-      return NextResponse.json(
+      return privateJson(
         { error: "メッセージを入力してください" },
         { status: 400 }
       );
@@ -381,7 +308,7 @@ export async function POST(
     const message = input.message.trim();
 
     if (message.length < 1 || message.length > 2000) {
-      return NextResponse.json(
+      return privateJson(
         { error: "メッセージは1〜2000文字で入力してください" },
         { status: 400 }
       );
@@ -396,46 +323,46 @@ export async function POST(
       return access.error;
     }
 
-    const { data: createdMessage, error: insertError } =
-      await supabase
-        .from("band_messages")
-        .insert({
-          band_id: bandId,
-          sender_performer_id: auth.performerId,
-          message,
-        })
-        .select(
-          "id, band_id, sender_performer_id, message, created_at"
-        )
-        .single();
+    const { data: sendResult, error: insertError } = await supabase.rpc(
+      "send_band_chat_message_atomic",
+      {
+        p_band_id: bandId,
+        p_sender_performer_id: auth.performerId,
+        p_message: message,
+        p_line_user_id: auth.lineUserId,
+      }
+    );
 
-    if (insertError) {
-      console.error("チャットメッセージ送信エラー:", insertError);
-
-      return NextResponse.json(
+    if (insertError || !sendResult?.success) {
+      const errorCode = sendResult?.errorCode;
+      if (errorCode === "band_not_active") {
+        return privateJson(
+          { error: "このバンドは現在活動していません" },
+          { status: 409 }
+        );
+      }
+      if (errorCode === "not_active_member" || errorCode === "sender_inactive") {
+        return privateJson(
+          { error: "このバンドのメンバーだけがチャットを利用できます" },
+          { status: 403 }
+        );
+      }
+      console.error("チャットメッセージ送信エラー:", insertError?.message || errorCode);
+      return privateJson(
         { error: "メッセージを送信できませんでした" },
         { status: 500 }
       );
     }
+    const createdMessage = sendResult.message;
 
-    const { data: sender, error: senderError } = await supabase
-      .from("performers")
-      .select("name")
-      .eq("id", auth.performerId)
-      .maybeSingle();
-
-    if (senderError) {
-      console.error("送信者名取得エラー:", senderError);
-    }
-
-    return NextResponse.json(
+    return privateJson(
       {
         success: true,
         message: {
           id: createdMessage.id,
           bandId: createdMessage.band_id,
           senderPerformerId: createdMessage.sender_performer_id,
-          senderName: sender?.name ?? "自分",
+          senderName: createdMessage.sender_name ?? "自分",
           message: createdMessage.message,
           createdAt: createdMessage.created_at,
           isMine: true,
@@ -446,7 +373,7 @@ export async function POST(
   } catch (error) {
     console.error("チャットメッセージAPIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

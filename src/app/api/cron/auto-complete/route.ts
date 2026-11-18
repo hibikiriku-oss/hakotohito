@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       .eq("performance_status", "scheduled")
       .is("completion_disputed_at", null)
       .or(
-        `performer_completion_reported_at.lte.${cutoff},facility_completion_reported_at.lte.${cutoff}`
+        `and(performer_completion_reported_at.not.is.null,facility_completion_reported_at.not.is.null),performer_completion_reported_at.lte.${cutoff},facility_completion_reported_at.lte.${cutoff}`
       );
 
     if (fetchError) {
@@ -108,6 +108,7 @@ export async function GET(request: NextRequest) {
       const facilityReported =
         match.facility_completion_reported_at;
 
+      const bothReported = !!performerReported && !!facilityReported;
       const performerExpired =
         !!performerReported &&
         new Date(performerReported).getTime() <= cutoffTime &&
@@ -118,18 +119,18 @@ export async function GET(request: NextRequest) {
         new Date(facilityReported).getTime() <= cutoffTime &&
         !performerReported;
 
-      // 片側のみが7日以上前に報告している案件だけを対象にする。
-      if (!performerExpired && !facilityExpired) {
+      // 双方報告済みは、API側の一時的なRPC失敗を回復するため相互完了を再試行。
+      // 片側のみの場合は従来どおり7日経過後に自動完了する。
+      if (!bothReported && !performerExpired && !facilityExpired) {
         skippedCount++;
         continue;
       }
 
-      // DB関数内で再検証・行ロック・完了確定・手数料処理を行う。
       const { data: rpcData, error: rpcError } = await supabase.rpc(
         "complete_match_with_fee",
         {
           p_match_id: match.id,
-          p_completion_mode: "auto",
+          p_completion_mode: bothReported ? "mutual" : "auto",
         }
       );
 

@@ -7,6 +7,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 export async function GET(request: NextRequest) {
   try {
         const authorization = request.headers.get("authorization");
@@ -15,7 +21,7 @@ export async function GET(request: NextRequest) {
       : "";
 
     if (!idToken) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認情報がありません。再ログインしてください。",
         },
@@ -26,7 +32,7 @@ export async function GET(request: NextRequest) {
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認に失敗しました。再ログインしてください。",
         },
@@ -44,6 +50,7 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -52,7 +59,7 @@ export async function GET(request: NextRequest) {
         userError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
           error:
             "ユーザー情報が見つかりません",
@@ -77,7 +84,7 @@ export async function GET(request: NextRequest) {
         facilityError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
           error:
             "施設プロフィールが見つかりません",
@@ -119,11 +126,11 @@ export async function GET(request: NextRequest) {
         requestsError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
-          error: requestsError.message,
+          error: "案件一覧の取得に失敗しました",
         },
-        { status: 500 }
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -180,7 +187,7 @@ export async function GET(request: NextRequest) {
           matchesError
         );
 
-        return NextResponse.json(
+        return privateJson(
           {
             error:
               "マッチング情報の取得に失敗しました",
@@ -274,7 +281,7 @@ export async function GET(request: NextRequest) {
         }
       );
 
-    return NextResponse.json({
+    return privateJson({
       requests:
         enrichedRequests,
     });
@@ -284,7 +291,7 @@ export async function GET(request: NextRequest) {
       error
     );
 
-    return NextResponse.json(
+    return privateJson(
       {
         error:
           "サーバーエラー",

@@ -46,7 +46,7 @@ const menuConfig: Record<
       {
         icon: "🗺️",
         title: "地図から探す",
-        description: "演奏案件やレッスンを地図で探す",
+        description: "演奏案件を地図で探す",
         path: "/performer/map",
       },
       {
@@ -149,13 +149,6 @@ const mainMenus: Array<{
     title: "マッチング",
     description: "演奏予定・進行状況を確認する",
     style: "border-emerald-200 bg-emerald-50 active:bg-emerald-100",
-  },
-  {
-    key: "lesson",
-    icon: "🎹",
-    title: "レッスン",
-    description: "レッスンを探す・生徒を募集する",
-    style: "border-purple-200 bg-purple-50 active:bg-purple-100",
   },
   {
     key: "bands",
@@ -404,6 +397,13 @@ export default function PerformerHomePage() {
             </div>
 
             <button
+                type="button"
+                onClick={() => router.push("/coins/purchase")}
+                className="rounded-lg border px-3 py-2 text-sm font-bold"
+              >
+                コイン購入
+              </button>
+              <button
               type="button"
               onClick={() => router.push("/coins/history")}
               className="shrink-0 rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"

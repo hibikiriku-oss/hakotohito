@@ -24,7 +24,6 @@ type MapItem = {
   facilities?: {
     name?: string | null;
     facility_type?: string | null;
-    address?: string | null;
   } | null;
   performers?: {
     area?: string | null;
@@ -210,7 +209,7 @@ export default function PerformerMapPage() {
         try {
           await liff.getProfile();
         } catch (profileError) {
-          console.error("LINEプロフィール取得エラー:", profileError);
+          console.error("LINEプロフィール取得エラー:", profileError instanceof Error ? profileError.name : "UnknownError");
 
           const message =
             profileError instanceof Error
@@ -306,13 +305,10 @@ export default function PerformerMapPage() {
 
         if (cancelled) return;
 
-        setTotal(data.total);
+        setTotal((data.performances || []).length);
         setStatus("案件の位置を検索しています...");
 
-        const items: MapItem[] = [
-          ...(data.performances || []),
-          ...(data.lessons || []),
-        ];
+        const items: MapItem[] = [...(data.performances || [])];
 
         const geocoder = new geocodingLibrary.Geocoder();
         const infoWindow = new mapsLibrary.InfoWindow();
@@ -327,22 +323,14 @@ export default function PerformerMapPage() {
 
           const address =
             item.map_type === "performance"
-              ? item.map_address || item.facilities?.address
+              ? item.map_address || item.area?.trim()
               : item.area?.trim() ||
                 item.performers?.areas?.find((area) => area?.trim())?.trim() ||
                 item.performers?.area?.trim();
 
           if (!address?.trim()) {
             missingAddressCount++;
-            console.warn("[地図診断] 住所・エリアなし:", {
-              id: item.id,
-              type: item.map_type,
-              title: item.title,
-              area: item.area,
-              performerArea: item.performers?.area,
-              performerAreas: item.performers?.areas,
-              facilityAddress: item.facilities?.address,
-            });
+            console.warn("[地図診断] 住所・エリア未設定の募集をスキップしました");
             continue;
           }
 
@@ -359,9 +347,6 @@ export default function PerformerMapPage() {
             if (!location) {
               geocodeFailedCount++;
               console.warn("[地図診断] 座標を取得できません:", {
-                id: item.id,
-                title: item.title,
-                address,
                 geocodeStatus: result.status,
               });
               continue;
@@ -581,9 +566,6 @@ export default function PerformerMapPage() {
       >
         <span>
           <strong style={{ color: "#2563eb" }}>●</strong> 演奏案件
-        </span>
-        <span>
-          <strong style={{ color: "#16a34a" }}>●</strong> レッスン募集
         </span>
       </div>
 
@@ -811,17 +793,6 @@ export default function PerformerMapPage() {
         </div>
       </div>
 
-      <p
-        style={{
-          marginTop: 8,
-          fontSize: 11,
-          color: "#666",
-          lineHeight: 1.6,
-        }}
-      >
-        ※レッスン募集は登録されたエリアをもとに位置を表示するため、正確な所在地とは限りません。
-        住所やエリアが登録されていない案件は地図に表示されません。
-      </p>
     </main>
   );
 }

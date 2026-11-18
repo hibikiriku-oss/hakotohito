@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -32,7 +38,7 @@ export async function GET(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -41,7 +47,7 @@ export async function GET(
     const { bandId } = await context.params;
 
     if (!isUuid(bandId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドIDが正しくありません" },
         { status: 400 }
       );
@@ -53,7 +59,7 @@ export async function GET(
     const idToken = tokenMatch?.[1]?.trim();
 
     if (!idToken) {
-      return NextResponse.json(
+      return privateJson(
         { error: "LINEの認証情報がありません。再ログインしてください" },
         { status: 401 }
       );
@@ -62,7 +68,7 @@ export async function GET(
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return privateJson(
         { error: "LINEの本人確認に失敗しました。再ログインしてください" },
         { status: 401 }
       );
@@ -73,19 +79,20 @@ export async function GET(
       .from("users")
       .select("id, coin_balance")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .maybeSingle();
 
     if (userError) {
       console.error("送金画面のユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!user) {
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
@@ -101,14 +108,14 @@ export async function GET(
     if (performerError) {
       console.error("送金画面の演奏者取得エラー:", performerError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!performer) {
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -124,14 +131,14 @@ export async function GET(
     if (bandError) {
       console.error("送金画面のバンド取得エラー:", bandError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!band || band.status !== "active") {
-      return NextResponse.json(
+      return privateJson(
         { error: "活動中のバンドが見つかりません" },
         { status: 404 }
       );
@@ -150,14 +157,14 @@ export async function GET(
     if (myMembershipError) {
       console.error("送金画面の所属確認エラー:", myMembershipError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドへの所属を確認できませんでした" },
         { status: 500 }
       );
     }
 
     if (!myMembership) {
-      return NextResponse.json(
+      return privateJson(
         { error: "このバンドのメンバーだけが利用できます" },
         { status: 403 }
       );
@@ -174,7 +181,7 @@ export async function GET(
     if (membersError) {
       console.error("送金対象メンバー取得エラー:", membersError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドメンバーを取得できませんでした" },
         { status: 500 }
       );
@@ -187,7 +194,7 @@ export async function GET(
     ];
 
     if (memberIds.length === 0) {
-      return NextResponse.json(
+      return privateJson(
         { error: "アクティブメンバーがいません" },
         { status: 404 }
       );
@@ -202,7 +209,7 @@ export async function GET(
     if (performersError) {
       console.error("送金対象の演奏者取得エラー:", performersError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "メンバーのプロフィールを取得できませんでした" },
         { status: 500 }
       );
@@ -236,13 +243,13 @@ export async function GET(
     if (historyError) {
       console.error("バンド送金履歴取得エラー:", historyError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "送金履歴を取得できませんでした" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       band: {
         id: band.id,
         name: band.name,
@@ -254,7 +261,7 @@ export async function GET(
   } catch (error) {
     console.error("送金画面のメンバー取得エラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
@@ -267,7 +274,7 @@ export async function POST(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -277,7 +284,7 @@ export async function POST(
     const { bandId } = await context.params;
 
     if (!isUuid(bandId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドIDが正しくありません" },
         { status: 400 }
       );
@@ -289,7 +296,7 @@ export async function POST(
     const idToken = tokenMatch?.[1]?.trim();
 
     if (!idToken) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの認証情報がありません。再ログインしてください",
         },
@@ -300,7 +307,7 @@ export async function POST(
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認に失敗しました。再ログインしてください",
         },
@@ -313,19 +320,20 @@ export async function POST(
       .from("users")
       .select("id, coin_balance")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .maybeSingle();
 
     if (senderError) {
       console.error("バンド送金の送金者取得エラー:", senderError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!sender) {
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
@@ -342,14 +350,14 @@ export async function POST(
     if (performerError) {
       console.error("バンド送金の演奏者取得エラー:", performerError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!senderPerformer) {
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -361,14 +369,14 @@ export async function POST(
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return privateJson(
         { error: "リクエスト形式が正しくありません" },
         { status: 400 }
       );
     }
 
     if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "入力内容が正しくありません" },
         { status: 400 }
       );
@@ -382,7 +390,7 @@ export async function POST(
     };
 
     if (!isUuid(input.recipientPerformerId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "送金先のメンバーを選択してください" },
         { status: 400 }
       );
@@ -394,7 +402,7 @@ export async function POST(
       input.amount <= 0 ||
       input.amount > 2147483647
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "送金額は1以上の整数で指定してください" },
         { status: 400 }
       );
@@ -405,7 +413,7 @@ export async function POST(
       input.description !== null &&
       typeof input.description !== "string"
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "送金メモの形式が正しくありません" },
         { status: 400 }
       );
@@ -417,7 +425,7 @@ export async function POST(
         : "";
 
     if (description.length > 100) {
-      return NextResponse.json(
+      return privateJson(
         { error: "送金メモは100文字以内で入力してください" },
         { status: 400 }
       );
@@ -425,7 +433,7 @@ export async function POST(
 
     // 再送時に同じキーを使用し、二重送金を防止する
     if (!isUuid(input.idempotencyKey)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "送金リクエストIDが正しくありません" },
         { status: 400 }
       );
@@ -442,21 +450,21 @@ export async function POST(
     if (recipientError) {
       console.error("バンド送金の送金先取得エラー:", recipientError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "送金先の情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!recipient) {
-      return NextResponse.json(
+      return privateJson(
         { error: "送金先のメンバーが見つかりません" },
         { status: 404 }
       );
     }
 
     if (recipient.user_id === sender.id) {
-      return NextResponse.json(
+      return privateJson(
         { error: "自分自身には送金できません" },
         { status: 400 }
       );
@@ -477,7 +485,7 @@ export async function POST(
     if (transferError) {
       console.error("バンド送金処理エラー:", transferError);
 
-      return NextResponse.json(
+      return privateJson(
         {
           error:
             "送金処理に失敗しました。時間をおいて再度お試しください",
@@ -491,7 +499,7 @@ export async function POST(
       : transferData;
 
     if (!transfer || transfer.success !== true) {
-      return NextResponse.json(
+      return privateJson(
         {
           error:
             transfer?.error_message ||
@@ -513,7 +521,7 @@ export async function POST(
       console.error("送金後の残高取得エラー:", balanceError);
     }
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       message: `${recipient.name || "メンバー"}に${input.amount}コイン送金しました`,
       transfer: {
@@ -530,7 +538,7 @@ export async function POST(
   } catch (error) {
     console.error("バンド送金APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

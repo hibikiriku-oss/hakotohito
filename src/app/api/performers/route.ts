@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
+import { normalizeRequiredStringArray } from "@/lib/profile-input";
+
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,6 +38,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
+
+    const { data: viewer, error: viewerError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
+      .maybeSingle();
+
+    if (viewerError || !viewer) {
+      return NextResponse.json(
+        { error: "有効なユーザーとして認証できません" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     const { data: performers, error: performersError } =
       await supabase
         .from("performers")
@@ -45,13 +67,14 @@ export async function GET(request: NextRequest) {
           bio,
           status_level,
           created_at,
-          users (
+          users!inner (
             display_name,
             picture_url,
             avatar_type,
             avatar_emoji
           )
         `)
+        .eq("users.account_status", "active")
         .order("created_at", {
           ascending: false,
         });
@@ -143,11 +166,7 @@ export async function GET(request: NextRequest) {
               )
             : null;
 
-        // 内部処理用のuser_idはレスポンスに含めない
-        const {
-          user_id: _userId,
-          ...publicPerformer
-        } = performer;
+        const { user_id: _performerUserId, ...publicPerformer } = performer;
 
         return {
           ...publicPerformer,
@@ -220,16 +239,17 @@ export async function POST(request: NextRequest) {
         ? area.trim()
         : normalizedAreas[0] || "";
 
+    const normalizedInstruments = normalizeRequiredStringArray(instruments);
+    const normalizedGenres = normalizeRequiredStringArray(genres);
+
     if (
       typeof name !== "string" ||
       !name.trim() ||
       normalizedAreas.length === 0 ||
-      !Array.isArray(instruments) ||
-      instruments.length === 0 ||
-      !Array.isArray(genres) ||
-      genres.length === 0
+      !normalizedInstruments ||
+      !normalizedGenres
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "名前・活動エリア・楽器・ジャンルを入力してください" },
         { status: 400 }
       );
@@ -241,7 +261,7 @@ if (
   typeof status_level !== "string" ||
   !validStatusLevels.includes(status_level)
 ) {
-  return NextResponse.json(
+  return privateJson(
     { error: "演奏レベルを選択してください" },
     { status: 400 }
   );
@@ -255,7 +275,7 @@ if (
       avatarType !== "line" &&
       avatarType !== "emoji"
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "アイコンの種類が正しくありません" },
         { status: 400 }
       );
@@ -265,7 +285,7 @@ if (
       normalizedAvatarType === "emoji" &&
       (typeof avatarEmoji !== "string" || !avatarEmoji.trim())
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "絵文字アイコンを選択してください" },
         { status: 400 }
       );
@@ -278,7 +298,7 @@ if (
       : "";
 
     if (!idToken) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認情報がありません。再ログインしてください。",
         },
@@ -289,7 +309,7 @@ if (
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return privateJson(
         {
           error: "LINEの本人確認に失敗しました。再ログインしてください。",
         },
@@ -301,16 +321,27 @@ if (
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id")
+      .select("id, user_type")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
+      );
+    }
+
+    // Public performer registration may only create/update the primary performer role.
+    // A secondary performer profile for a facility-primary account is an admin-only
+    // dual-role configuration and must not be created through this self-service route.
+    if (user.user_type !== "performer") {
+      return privateJson(
+        { error: "演奏者プロフィールの新規登録は演奏者アカウントでのみ行えます" },
+        { status: 403 }
       );
     }
 
@@ -329,7 +360,7 @@ if (
     if (avatarError) {
       console.error("アイコン設定保存エラー:", avatarError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "プロフィールアイコンの保存に失敗しました" },
         { status: 500 }
       );
@@ -343,22 +374,8 @@ if (
           name: name.trim(),
           area: primaryArea,
           areas: normalizedAreas,
-          instruments: [
-            ...new Set(
-              instruments
-                .filter((item: unknown) => typeof item === "string")
-                .map((item: string) => item.trim())
-                .filter(Boolean)
-            ),
-          ],
-          genres: [
-            ...new Set(
-              genres
-                .filter((item: unknown) => typeof item === "string")
-                .map((item: string) => item.trim())
-                .filter(Boolean)
-            ),
-          ],
+          instruments: normalizedInstruments,
+          genres: normalizedGenres,
           bio: typeof bio === "string" ? bio : "",
           status_level: status_level || null,
         },
@@ -372,20 +389,20 @@ if (
     if (error) {
       console.error("performer登録エラー:", error);
 
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
+      return privateJson(
+        { error: "演奏者プロフィールの登録に失敗しました" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       performer: data,
     });
   } catch (error) {
     console.error("演奏者登録エラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

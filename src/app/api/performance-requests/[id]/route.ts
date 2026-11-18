@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 type Context = {
   params: Promise<{ id: string }>;
 };
@@ -17,6 +19,7 @@ async function getFacilityByLineUserId(lineUserId: string) {
     .from("users")
     .select("id, user_type")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError || !user || user.user_type !== "facility") {
@@ -73,6 +76,7 @@ export async function GET(
       .from("users")
       .select("id, user_type")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .maybeSingle();
 
     if (userError || !user) {
@@ -91,14 +95,15 @@ export async function GET(
       .from("performance_requests")
       .select(`
         *,
-        facilities (
+        facilities!inner (
           id,
           name,
           facility_type,
-          address,
-          description
+          description,
+          users!inner(id)
         )
       `)
+      .eq("facilities.users.account_status", "active")
       .eq("id", id);
 
     if (user.user_type === "performer") {
@@ -163,8 +168,16 @@ export async function GET(
       );
     }
 
+    const facilityRelation = data.facilities;
+    const safeFacility = facilityRelation && typeof facilityRelation === "object"
+      ? (() => {
+          const { users: _ownerJoin, ...publicFacility } = facilityRelation as any;
+          return publicFacility;
+        })()
+      : facilityRelation;
+
     return NextResponse.json(
-      { request: data },
+      { request: { ...data, facilities: safeFacility } },
       {
         headers: { "Cache-Control": "no-store" },
       }
@@ -291,6 +304,28 @@ export async function PATCH(
       typeof body.description === "string"
         ? body.description.trim()
         : "";
+
+    const venueAddress =
+      typeof body.venue_address === "string"
+        ? body.venue_address.trim()
+        : "";
+
+    if (
+      body.venue_address != null &&
+      typeof body.venue_address !== "string"
+    ) {
+      return NextResponse.json(
+        { error: "開催場所住所の形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (venueAddress.length > 500) {
+      return NextResponse.json(
+        { error: "開催場所住所は500文字以内で入力してください" },
+        { status: 400 }
+      );
+    }
 
     const performanceDate =
       typeof body.performance_date === "string"
@@ -465,6 +500,7 @@ export async function PATCH(
         start_time: startTime,
         end_time: endTime,
         area: area || null,
+        venue_address: venueAddress || null,
         instruments,
         genres,
         reward,
@@ -522,6 +558,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
+    if (!UUID_PATTERN.test(id)) {
+      return NextResponse.json({ error: "案件IDが正しくありません" }, { status: 400 });
+    }
 
     const authorization = request.headers.get("authorization");
     const idToken = authorization?.startsWith("Bearer ")
@@ -557,128 +596,44 @@ export async function DELETE(
       );
     }
 
-    const { data: existingRequest, error: existingError } =
-      await supabase
-        .from("performance_requests")
-        .select("id, facility_id, status")
-        .eq("id", id)
-        .maybeSingle();
+    const { data: deletion, error: deletionError } = await supabase.rpc(
+      "delete_open_performance_request_atomic",
+      {
+        p_request_id: id,
+        p_facility_id: facility.id,
+        p_line_user_id: verified.userId,
+      }
+    );
 
-    if (existingError) {
-      console.error("削除対象案件取得エラー:", existingError);
-
-      return NextResponse.json(
-        { error: "案件情報の確認に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    if (!existingRequest) {
-      return NextResponse.json(
-        { error: "案件が見つかりません" },
-        { status: 404 }
-      );
-    }
-
-    if (existingRequest.facility_id !== facility.id) {
-      return NextResponse.json(
-        { error: "この案件を削除する権限がありません" },
-        { status: 403 }
-      );
-    }
-
-    if (existingRequest.status !== "open") {
-      return NextResponse.json(
-        {
-          error:
-            "募集中の案件のみ削除できます。募集終了またはマッチング済みの案件は削除できません。",
-        },
-        { status: 409 }
-      );
-    }
-
-    // 応募履歴がある案件は削除しない
-    const { count: applicationCount, error: applicationsError } =
-      await supabase
-        .from("applications")
-        .select("id", { count: "exact", head: true })
-        .eq("request_id", id);
-
-    if (applicationsError) {
-      console.error("応募履歴確認エラー:", applicationsError);
-
-      return NextResponse.json(
-        { error: "応募履歴を確認できないため、削除を中止しました" },
-        { status: 500 }
-      );
-    }
-
-    if ((applicationCount ?? 0) > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "応募履歴がある案件は削除できません。応募状況をご確認ください。",
-        },
-        { status: 409 }
-      );
-    }
-
-    // マッチング履歴がある案件は削除しない
-    const { count: matchCount, error: matchesError } =
-      await supabase
-        .from("matches")
-        .select("id", { count: "exact", head: true })
-        .eq("request_id", id);
-
-    if (matchesError) {
-      console.error("マッチング履歴確認エラー:", matchesError);
-
-      return NextResponse.json(
-        {
-          error:
-            "マッチング履歴を確認できないため、削除を中止しました",
-        },
-        { status: 500 }
-      );
-    }
-
-    if ((matchCount ?? 0) > 0) {
-      return NextResponse.json(
-        {
-          error:
-            "マッチング履歴がある案件は削除できません。",
-        },
-        { status: 409 }
-      );
-    }
-
-    // 削除直前にも施設IDとステータスを条件に含める
-    const { data, error } = await supabase
-      .from("performance_requests")
-      .delete()
-      .eq("id", id)
-      .eq("facility_id", facility.id)
-      .eq("status", "open")
-      .select("id")
-      .maybeSingle();
-
-    if (error) {
-      console.error("案件削除エラー:", error);
-
-      return NextResponse.json(
-        { error: "案件の削除に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    if (!data) {
-      return NextResponse.json(
-        {
-          error:
-            "案件を削除できませんでした。案件の状態を再確認してください。",
-        },
-        { status: 409 }
-      );
+    if (deletionError || !deletion?.success) {
+      const errorCode = deletion?.errorCode;
+      if (errorCode === "not_found") {
+        return NextResponse.json({ error: "案件が見つかりません" }, { status: 404 });
+      }
+      if (errorCode === "not_owner") {
+        return NextResponse.json({ error: "この案件を削除する権限がありません" }, { status: 403 });
+      }
+      if (errorCode === "facility_inactive") {
+        return NextResponse.json({ error: "施設アカウントが現在利用できません" }, { status: 403 });
+      }
+      if (errorCode === "not_open") {
+        return NextResponse.json({ error: "募集中の案件のみ削除できます。募集終了またはマッチング済みの案件は削除できません。" }, { status: 409 });
+      }
+      if (errorCode === "has_applications") {
+        return NextResponse.json({ error: "応募履歴がある案件は削除できません。応募状況をご確認ください。" }, { status: 409 });
+      }
+      if (errorCode === "has_matches") {
+        return NextResponse.json({ error: "マッチング履歴がある案件は削除できません。" }, { status: 409 });
+      }
+      if (errorCode === "has_application_attempts") {
+        return NextResponse.json({ error: "応募試行履歴がある案件は削除できません。" }, { status: 409 });
+      }
+      if (errorCode === "unreviewed_dependency") {
+        console.error("案件削除RPC: 未監査の依存関係またはDELETE triggerを検出しました");
+        return NextResponse.json({ error: "案件の関連データ構造が未確認のため、安全のため削除を中止しました" }, { status: 409 });
+      }
+      console.error("案件削除RPCエラー:", deletionError?.message || errorCode);
+      return NextResponse.json({ error: "案件の削除に失敗しました" }, { status: 500 });
     }
 
     return NextResponse.json({

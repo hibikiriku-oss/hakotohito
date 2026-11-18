@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { drainLineNotificationOutbox, enqueueLineNotification } from "@/lib/line-notification-outbox";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
 export const runtime = "nodejs";
@@ -45,13 +46,9 @@ function getSafeMatchingError(message: unknown) {
   const rawMessage =
     typeof message === "string" ? message : "";
 
-  if (
-    /コイン不足|コインが不足|チャージが必要|insufficient/i.test(
-      rawMessage
-    )
-  ) {
+  if (/コイン不足|コインが不足|チャージが必要|insufficient|coin/i.test(rawMessage)) {
     return {
-      error: "施設のコインが不足しています。コイン残高を確認してください。",
+      error: "コイン不足のためマッチングできません",
       status: 400,
     };
   }
@@ -175,8 +172,9 @@ export async function POST(
     const { data: user, error: userError } =
       await supabase
         .from("users")
-        .select("id")
+        .select("id, account_status")
         .eq("line_user_id", verified.userId)
+        .eq("account_status", "active")
         .single();
 
     if (userError || !user) {
@@ -221,7 +219,7 @@ export async function POST(
       error: requestError,
     } = await supabase
       .from("performance_requests")
-      .select("*")
+      .select("id, request_type, status")
       .eq("id", requestId)
       .eq("facility_id", facility.id)
       .single();
@@ -333,6 +331,43 @@ export async function POST(
         matchingError
       );
 
+      const rawMatchingError = matchingError.message || "";
+      if (/コイン不足|コインが不足|insufficient/i.test(rawMatchingError)) {
+        const facilityIsPayer = /施設のコイン残高が不足/.test(rawMatchingError);
+        let otherPartyLineUserId: string | null = null;
+        let noticeText = "";
+
+        if (facilityIsPayer) {
+          const { data: performerForNotice } = await supabase
+            .from("performers")
+            .select("users(line_user_id)")
+            .eq("id", application.performer_id)
+            .maybeSingle();
+          const relatedUser = Array.isArray(performerForNotice?.users)
+            ? performerForNotice.users[0]
+            : performerForNotice?.users;
+          otherPartyLineUserId = relatedUser?.line_user_id ?? null;
+          noticeText = "施設のコイン不足のためマッチングは保留されています。施設側のコイン補充後に、施設から再度採用処理を行います。";
+        } else {
+          const { data: facilityUserForNotice } = await supabase
+            .from("users")
+            .select("line_user_id")
+            .eq("id", user.id)
+            .maybeSingle();
+          otherPartyLineUserId = facilityUserForNotice?.line_user_id ?? null;
+          noticeText = "演奏者のコイン不足のためマッチングは保留されています。演奏者がコインを補充した後、施設から再度採用処理を行います。";
+        }
+
+        if (typeof otherPartyLineUserId === "string" && otherPartyLineUserId) {
+          await enqueueLineNotification(
+            supabase,
+            `matching_insufficient:${applicationId}:${facilityIsPayer ? "facility" : "performer"}`,
+            otherPartyLineUserId,
+            noticeText,
+          );
+        }
+      }
+
       const safeError = getSafeMatchingError(
         matchingError.message
       );
@@ -409,338 +444,20 @@ export async function POST(
     const coinBalance =
       facilityBalance?.coin_balance ?? null;
 
-    // ----------------------------------------
-    // 13. 採用時点の参加者ID取得
-    // ----------------------------------------
-    const {
-      data: acceptedMatch,
-      error: acceptedMatchError,
-    } = await supabase
-      .from("matches")
-      .select("participant_performer_ids")
-      .eq("id", matchId)
-      .single();
-
-    let participantPerformerIds: string[] = [];
-
-    if (acceptedMatchError || !acceptedMatch) {
-      logDatabaseError(
-        "採用通知用参加者ID取得エラー",
-        acceptedMatchError
-      );
-    } else {
-      const savedIds =
-        acceptedMatch.participant_performer_ids;
-
-      if (Array.isArray(savedIds)) {
-        participantPerformerIds = [
-          ...new Set(
-            savedIds.filter(
-              (id): id is string =>
-                typeof id === "string" &&
-                UUID_REGEX.test(id)
-            )
-          ),
-        ];
-      }
-    }
-
-    // 保存済みの参加者IDが取得できない場合、
-    // 現在のバンドメンバーから通知先を推測しない
-    if (participantPerformerIds.length === 0) {
-      console.error(
-        "採用通知用の参加者IDがありません",
-        { matchId }
-      );
-    }
-
-    // ----------------------------------------
-    // 14. LINE通知先取得
-    // ----------------------------------------
-    const bandId =
-      typeof application.band_id === "string"
-        ? application.band_id
-        : null;
-
-    let notificationSent = false;
-    let notificationLineUserIds: string[] = [];
-    let notificationName = "演奏者";
-    let notificationUrl = "";
-    let notificationIntro = "";
-
-    if (bandId) {
-      // バンド応募
-      const { data: band, error: bandError } =
-        await supabase
-          .from("bands")
-          .select("id, name")
-          .eq("id", bandId)
-          .maybeSingle();
-
-      if (bandError || !band) {
-        logDatabaseError(
-          "採用通知用バンド取得エラー",
-          bandError
-        );
-      } else {
-        notificationName = band.name || "バンド";
-
-        notificationIntro =
-          `バンド「${notificationName}」の応募が採用されました。`;
-      }
-
-      notificationUrl =
-        "https://miniapp.line.me/2011785379-l5XCTbIf/performer/bands/" +
-        bandId +
-        "/chat";
-    } else {
-      // 個人応募
-      notificationIntro =
-        "応募した演奏案件が採用されました。";
-
-      notificationUrl =
-        "https://miniapp.line.me/2011785379-l5XCTbIf/performer/matches/" +
-        matchId;
-    }
-
-    // 採用時点で保存した演奏者IDからLINEユーザーIDを取得
-    if (participantPerformerIds.length > 0) {
-      const {
-        data: memberPerformers,
-        error: memberPerformersError,
-      } = await supabase
-        .from("performers")
-        .select(`
-          id,
-          name,
-          users (
-            line_user_id,
-            display_name
-          )
-        `)
-        .in("id", participantPerformerIds);
-
-      if (memberPerformersError) {
-        logDatabaseError(
-          "採用通知用LINEユーザー取得エラー",
-          memberPerformersError
-        );
-      } else {
-        notificationLineUserIds = [
-          ...new Set(
-            (memberPerformers ?? []).flatMap(
-              (performer) => {
-                const userInfo = Array.isArray(
-                  performer.users
-                )
-                  ? performer.users[0]
-                  : performer.users;
-
-                const lineUserId =
-                  userInfo?.line_user_id;
-
-                return typeof lineUserId === "string" &&
-                  lineUserId
-                  ? [lineUserId]
-                  : [];
-              }
-            )
-          ),
-        ];
-
-        if (!bandId && memberPerformers?.[0]) {
-          const performer = memberPerformers[0];
-
-          const performerUser = Array.isArray(
-            performer.users
-          )
-            ? performer.users[0]
-            : performer.users;
-
-          notificationName =
-            performer.name ||
-            performerUser?.display_name ||
-            "演奏者";
-        }
-      }
-    }
-
-    // ----------------------------------------
-    // 15. LINE通知メッセージ作成
-    // ----------------------------------------
-    const rewardText =
-      performanceRequest.reward == null ||
-      Number(performanceRequest.reward) === 0
-        ? "報酬：ボランティア"
-        : `報酬：${Number(
-            performanceRequest.reward
-          ).toLocaleString("ja-JP")}円`;
-
-    const isBandApplication = Boolean(bandId);
-
-    const flexMessage = {
-      type: "flex",
-      altText: isBandApplication
-        ? "🎉 バンド応募が採用されました！"
-        : "🎉 マッチングが成立しました！",
-      contents: {
-        type: "bubble",
-        body: {
-          type: "box",
-          layout: "vertical",
-          contents: [
-            {
-              type: "text",
-              text: isBandApplication
-                ? "🎉 バンド応募が採用されました！"
-                : "🎉 マッチング成立！",
-              weight: "bold",
-              size: "xl",
-              wrap: true,
-            },
-            {
-              type: "text",
-              text: notificationIntro,
-              margin: "md",
-              wrap: true,
-            },
-            {
-              type: "text",
-              text: performanceRequest.title,
-              weight: "bold",
-              size: "lg",
-              margin: "md",
-              wrap: true,
-            },
-            {
-              type: "text",
-              text: `演奏日：${performanceRequest.performance_date}`,
-              margin: "md",
-              wrap: true,
-            },
-            {
-              type: "text",
-              text:
-                `時間：${performanceRequest.start_time}` +
-                `〜${performanceRequest.end_time}`,
-              margin: "sm",
-              wrap: true,
-            },
-            {
-              type: "text",
-              text: rewardText,
-              margin: "sm",
-              wrap: true,
-            },
-          ],
-        },
-        footer: {
-          type: "box",
-          layout: "vertical",
-          contents: [
-            {
-              type: "button",
-              style: "primary",
-              action: {
-                type: "uri",
-                label: isBandApplication
-                  ? "バンドチャットを開く"
-                  : "マッチング詳細を見る",
-                uri: notificationUrl,
-              },
-            },
-          ],
-        },
-      },
-    };
-
-    // ----------------------------------------
-    // 16. LINE通知送信
-    // ----------------------------------------
-    const lineChannelAccessToken =
-      process.env.LINE_CHANNEL_ACCESS_TOKEN;
-
-    if (notificationLineUserIds.length === 0) {
-      console.warn(
-        "採用通知先が見つかりません",
-        { bandId, matchId }
-      );
-    } else if (!lineChannelAccessToken) {
-      console.error(
-        "採用API: LINE_CHANNEL_ACCESS_TOKENが未設定です"
-      );
-    } else {
-      // 通知失敗で成立済みマッチングを取り消さない
-      const notificationResults = await Promise.all(
-        notificationLineUserIds.map(
-          async (to): Promise<boolean> => {
-            try {
-              const lineResponse = await fetch(
-                "https://api.line.me/v2/bot/message/push",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization:
-                      `Bearer ${lineChannelAccessToken}`,
-                  },
-                  body: JSON.stringify({
-                    to,
-                    messages: [flexMessage],
-                  }),
-                }
-              );
-
-              if (!lineResponse.ok) {
-                console.error(
-                  "LINE通知エラー:",
-                  lineResponse.status
-                );
-
-                return false;
-              }
-
-              return true;
-            } catch (lineError) {
-              console.error(
-                "LINE通知例外:",
-                lineError instanceof Error
-                  ? lineError.name
-                  : "UnknownError"
-              );
-
-              return false;
-            }
-          }
-        )
-      );
-
-      const successCount =
-        notificationResults.filter(Boolean).length;
-
-      notificationSent =
-        successCount === notificationResults.length &&
-        successCount > 0;
-
-      console.log("採用通知処理結果:", {
-        bandId,
-        matchId,
-        recipientCount:
-          notificationLineUserIds.length,
-        successCount,
-        notificationSent,
-      });
-    }
-
-    // ----------------------------------------
-    // 17. 成功レスポンス
-    // ----------------------------------------
+    // 成立通知はmatches INSERTと同一トランザクションでOutboxへ登録済み。
+    // ここで即時送信を試み、失敗分はcronが再送する。
+    const notificationResult = await drainLineNotificationOutbox(supabase, 20);
     return jsonResponse({
       success: true,
       message: "マッチングが成立しました",
       matchId,
       coinBalance,
-      notificationSent,
+      notificationQueued: true,
+      notificationDelivery: {
+        sent: notificationResult.sent,
+        retried: notificationResult.retried,
+        failedToRecord: notificationResult.failedToRecord,
+      },
     });
   } catch (error) {
     console.error(

@@ -14,7 +14,6 @@ type User = {
 
 type Performer = {
   id: string;
-  user_id: string;
   name: string;
   instruments: string[];
   genres: string[];
@@ -30,7 +29,7 @@ type Performer = {
 
 type Favorite = {
   id: string;
-  target_user_id: string;
+  target_performer_id: string | null;
 };
 
 export default function FacilityPerformersPage() {
@@ -114,7 +113,7 @@ export default function FacilityPerformersPage() {
           (favoritesData.favorites || []).map(
             (favorite: Favorite) => ({
               id: favorite.id,
-              target_user_id: favorite.target_user_id,
+              target_performer_id: favorite.target_performer_id,
             })
           )
         );
@@ -353,7 +352,7 @@ export default function FacilityPerformersPage() {
 
   const isFavorite = (performer: Performer) =>
     favorites.some(
-      (favorite) => favorite.target_user_id === performer.user_id
+      (favorite) => favorite.target_performer_id === performer.id
     );
 
   const handleFavoriteToggle = async (performer: Performer) => {
@@ -388,7 +387,7 @@ export default function FacilityPerformersPage() {
           Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          targetUserId: performer.user_id,
+          targetPerformerId: performer.id,
         }),
       });
 
@@ -404,15 +403,15 @@ export default function FacilityPerformersPage() {
         setFavorites((current) =>
           current.filter(
             (favorite) =>
-              favorite.target_user_id !== performer.user_id
+              favorite.target_performer_id !== performer.id
           )
         );
       } else {
         setFavorites((current) => [
           ...current,
           {
-            id: data.favorite?.id || `temporary-${performer.user_id}`,
-            target_user_id: performer.user_id,
+            id: data.favorite?.id || `temporary-${performer.id}`,
+            target_performer_id: performer.id,
           },
         ]);
       }

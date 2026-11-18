@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
+import { drainLineNotificationOutbox, enqueueLineNotification } from "@/lib/line-notification-outbox";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
@@ -54,6 +54,7 @@ export async function POST(
       .from("users")
       .select("id, line_user_id, display_name, picture_url, user_type")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -96,7 +97,16 @@ export async function POST(
             id,
             title,
             facility_id,
-            status
+            status,
+            facilities (
+              id,
+              user_id,
+              users (
+                id,
+                line_user_id,
+                account_status
+              )
+            )
           )
         `)
         .eq("id", id)
@@ -144,10 +154,35 @@ export async function POST(
           errorMessage
         );
 
+      const facilityRelation = Array.isArray(performanceRequest.facilities)
+        ? performanceRequest.facilities[0]
+        : performanceRequest.facilities;
+      const facilityUserRelation = Array.isArray(facilityRelation?.users)
+        ? facilityRelation.users[0]
+        : facilityRelation?.users;
+      const facilityLineUserId = facilityUserRelation?.line_user_id;
+
+      // The facility is the payer for a direct invitation. Notify that
+      // account, not the performer who is currently attempting acceptance.
+      if (
+        isInsufficientCoins &&
+        facilityUserRelation?.account_status === "active" &&
+        typeof facilityLineUserId === "string" &&
+        facilityLineUserId &&
+        !facilityLineUserId.startsWith("withdrawn:")
+      ) {
+        await enqueueLineNotification(
+          supabase,
+          `direct_invite_insufficient:${application.id}`,
+          facilityLineUserId,
+          "施設のコイン残高不足により、演奏者からの直接依頼承諾をマッチング成立できませんでした。コイン補充後、演奏者に再度承諾を依頼してください。",
+        );
+      }
+
       return NextResponse.json(
         {
           error: isInsufficientCoins
-            ? "施設側のコインが不足しています。チャージしてから再度お試しください。"
+            ? "コイン不足のためマッチングできません"
             : "依頼の承諾処理に失敗しました。時間をおいて再度お試しください。",
         },
         {
@@ -173,7 +208,7 @@ export async function POST(
     // 作成されたマッチング情報を取得
     const { data: match, error: matchFetchError } = await supabase
       .from("matches")
-      .select("*")
+      .select("id")
       .eq("id", rpcResult.match_id)
       .single();
 
@@ -188,142 +223,23 @@ export async function POST(
         success: true,
         message: "マッチングは成立しました",
         match: { id: rpcResult.match_id },
-        notificationSent: false,
+        notificationQueued: true,
       });
     }
 
-    // 施設情報を取得
-    const { data: facility, error: facilityError } =
-      await supabase
-        .from("facilities")
-        .select(`
-          id,
-          user_id,
-          name,
-          users (
-            id,
-            line_user_id,
-            display_name
-          )
-        `)
-        .eq("id", performanceRequest.facility_id)
-        .single();
-
-    if (facilityError) {
-      console.error("施設情報取得エラー:", facilityError);
-    }
-
-    let notificationSent = false;
-
-    // 施設へLINE通知
-    const facilityUser = facility?.users
-      ? Array.isArray(facility.users)
-        ? facility.users[0]
-        : facility.users
-      : null;
-
-    const facilityLineUserId = facilityUser?.line_user_id;
-
-    if (facilityLineUserId) {
-      const miniAppBaseUrl =
-        "https://miniapp.line.me/2011785379-l5XCTbIf";
-
-      const matchUrl =
-        `${miniAppBaseUrl}/facility/matches/${match.id}`;
-
-      const messages = [
-        {
-          type: "flex",
-          altText:
-            "オファーが承諾され、マッチングが成立しました",
-          contents: {
-            type: "bubble",
-            body: {
-              type: "box",
-              layout: "vertical",
-              spacing: "md",
-              contents: [
-                {
-                  type: "text",
-                  text: "🎉 マッチング成立",
-                  weight: "bold",
-                  size: "xl",
-                },
-                {
-                  type: "text",
-                  text:
-                    "演奏者があなたの依頼を承諾しました。",
-                  wrap: true,
-                },
-                {
-                  type: "separator",
-                  margin: "md",
-                },
-                {
-                  type: "text",
-                  text: performanceRequest.title,
-                  weight: "bold",
-                  size: "lg",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text: `演奏者：${
-                    performer.name ||
-                    user.display_name ||
-                    "演奏者"
-                  }`,
-                  wrap: true,
-                },
-              ],
-            },
-            footer: {
-              type: "box",
-              layout: "vertical",
-              spacing: "sm",
-              contents: [
-                {
-                  type: "button",
-                  style: "primary",
-                  action: {
-                    type: "uri",
-                    label: "マッチングを確認する",
-                    uri: matchUrl,
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ];
-
-      try {
-        const lineResult = await sendLinePushMessage(
-          facilityLineUserId,
-          messages
-        );
-
-        if (lineResult.success) {
-          notificationSent = true;
-        } else {
-          console.error(
-            "施設へのLINE通知エラー:",
-            lineResult.error
-          );
-        }
-      } catch (notificationError) {
-        console.error(
-          "施設へのLINE通知送信エラー:",
-          notificationError
-        );
-      }
-    }
-
+    // 成立通知はmatches INSERTと同一トランザクションでOutboxへ登録済み。
+    // ここで即時送信を試み、失敗分はcronが再送する。
+    const notificationResult = await drainLineNotificationOutbox(supabase, 20);
     return NextResponse.json({
       success: true,
       message: "依頼を承諾し、マッチングが成立しました",
       match,
-      notificationSent,
+      notificationQueued: true,
+      notificationDelivery: {
+        sent: notificationResult.sent,
+        retried: notificationResult.retried,
+        failedToRecord: notificationResult.failedToRecord,
+      },
     });
   } catch (error) {
     console.error("依頼承諾APIエラー:", error);

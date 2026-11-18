@@ -6,7 +6,6 @@ import liff from "@line/liff";
 
 type Performer = {
   id: string;
-  user_id: string;
   name: string | null;
   area: string | null;
   instruments: string[] | null;
@@ -15,7 +14,6 @@ type Performer = {
 };
 
 type User = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
   user_type: string | null;
@@ -26,7 +24,7 @@ type User = {
 
 type Favorite = {
   id: string;
-  target_user_id: string;
+  target_performer_id: string | null;
   created_at: string;
   users: User | User[] | null;
 };
@@ -174,8 +172,8 @@ export default function FacilityFavoritesPage() {
             Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            targetUserId:
-              favorite.target_user_id,
+            targetPerformerId:
+              favorite.target_performer_id,
           }),
         }
       );

@@ -43,6 +43,7 @@ async function getUserByLineUserId(lineUserId: string) {
     .from("users")
     .select("id, user_type")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .single();
 
   if (error || !user) {
@@ -203,7 +204,6 @@ export async function GET(request: NextRequest) {
     return jsonResponse({
       reviewed: !!review,
       review: review || null,
-      reviewee_id: revieweeId,
       performance_status: match.performance_status,
       completed_at: match.completed_at,
       can_review:

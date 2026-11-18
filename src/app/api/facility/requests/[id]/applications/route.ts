@@ -108,6 +108,7 @@ export async function GET(
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {

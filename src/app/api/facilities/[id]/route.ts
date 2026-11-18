@@ -50,10 +50,11 @@ export async function GET(
         user_id,
         name,
         facility_type,
-        address,
-        description
+        description,
+        users!inner(id)
       `)
       .eq("id", id)
+      .eq("users.account_status", "active")
       .maybeSingle();
 
     if (facilityError) {
@@ -68,6 +69,35 @@ export async function GET(
       return NextResponse.json(
         { error: "施設が見つかりません。" },
         { status: 404, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const { data: viewer, error: viewerError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
+      .maybeSingle();
+
+    if (viewerError || !viewer) {
+      return NextResponse.json(
+        { error: "有効なユーザー情報が見つかりません。" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    const { data: favorite, error: favoriteError } = await supabase
+      .from("favorites")
+      .select("id")
+      .eq("user_id", viewer.id)
+      .eq("target_user_id", facility.user_id)
+      .maybeSingle();
+
+    if (favoriteError) {
+      console.error("Facility favorite lookup failed:", favoriteError.code ?? "UNKNOWN");
+      return NextResponse.json(
+        { error: "お気に入り状態の取得に失敗しました。" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -154,7 +184,13 @@ export async function GET(
 
     return NextResponse.json(
       {
-        facility,
+        facility: {
+          id: facility.id,
+          name: facility.name,
+          facility_type: facility.facility_type,
+          description: facility.description,
+        },
+        is_favorite: Boolean(favorite),
         rating,
         review_count: reviewCount,
         reviews,

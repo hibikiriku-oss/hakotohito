@@ -109,6 +109,7 @@ async function getCurrentPerformerId(lineUserId: string) {
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) throw userError;
@@ -257,18 +258,20 @@ export async function GET(request: NextRequest) {
         start_time,
         end_time,
         area,
+        venue_address,
         instruments,
         genres,
         reward,
         request_type,
         status,
-        facilities (
+        facilities!inner (
           id,
           name,
           facility_type,
-          address
+          users!inner(id)
         )
-      `);
+      `)
+      .eq("facilities.users.account_status", "active");
 
     if (startDate) {
       performanceQuery = performanceQuery.gte(
@@ -322,21 +325,20 @@ export async function GET(request: NextRequest) {
 
         return instrumentMatch && genreMatch;
       })
-      .map((item) => {
-        const facilityData: any = item.facilities;
-        const facility = Array.isArray(facilityData)
-          ? facilityData[0]
-          : facilityData;
-
-        return {
-          ...item,
-          map_type: "performance",
-          is_applied: applicationStatusByRequestId.has(item.id),
-          application_status:
-            applicationStatusByRequestId.get(item.id) ?? null,
-          map_address: facility?.address ?? null,
-        };
-      });
+      .map((item) => ({
+        ...item,
+        facilities: item.facilities && typeof item.facilities === "object"
+          ? (() => {
+              const { users: _ownerJoin, ...facility } = item.facilities as Record<string, unknown>;
+              return facility;
+            })()
+          : item.facilities,
+        map_type: "performance",
+        is_applied: applicationStatusByRequestId.has(item.id),
+        application_status:
+          applicationStatusByRequestId.get(item.id) ?? null,
+        map_address: item.venue_address || null,
+      }));
 
     // 自分が応募したレッスン募集を取得
     const {
@@ -376,13 +378,15 @@ export async function GET(request: NextRequest) {
         capacity,
         target_levels,
         status,
-        performers (
+        performers!inner (
           id,
           name,
           area,
-          areas
+          areas,
+          users!inner(id)
         )
-      `);
+      `)
+      .eq("performers.users.account_status", "active");
 
     if (startDate && endDate && startDate === endDate) {
       lessonQuery = lessonQuery.or(
@@ -441,6 +445,12 @@ export async function GET(request: NextRequest) {
       })
       .map((item) => ({
         ...item,
+        performers: item.performers && typeof item.performers === "object"
+          ? (() => {
+              const { users: _ownerJoin, ...performer } = item.performers as Record<string, unknown>;
+              return performer;
+            })()
+          : item.performers,
         map_type: "lesson",
         is_applied: lessonApplicationStatusByOfferId.has(item.id),
         application_status:
@@ -448,17 +458,20 @@ export async function GET(request: NextRequest) {
         map_address: null,
       }));
 
-    return NextResponse.json({
-      success: true,
-      date: startDate === endDate ? startDate : null,
-      startDate,
-      endDate,
-      performances: visiblePerformanceRequests,
-      lessons: visibleLessonOffers,
-      total:
-        visiblePerformanceRequests.length +
-        visibleLessonOffers.length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        date: startDate === endDate ? startDate : null,
+        startDate,
+        endDate,
+        performances: visiblePerformanceRequests,
+        lessons: visibleLessonOffers,
+        total:
+          visiblePerformanceRequests.length +
+          visibleLessonOffers.length,
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("地図検索APIエラー:", error);
 

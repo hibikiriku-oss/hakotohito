@@ -21,6 +21,7 @@ const FIXED_RATE_FIELDS = [
   "direct_invitation_fee_coins",
   "match_fee_coins",
   "free_lesson_match_fee_coins",
+  "coin_purchase_yen_per_coin",
 ] as const;
 
 const PERCENT_RATE_FIELDS = [
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
           "completion_fee_percent",
           "free_lesson_match_fee_coins",
           "paid_lesson_fee_percent",
+          "coin_purchase_yen_per_coin",
           "updated_at",
           "updated_by_line_user_id",
         ].join(", ")
@@ -156,14 +158,15 @@ export async function PUT(request: NextRequest) {
     for (const field of FIXED_RATE_FIELDS) {
       const value = input[field];
 
+      const maximum = field === "coin_purchase_yen_per_coin" ? 100_000 : 1_000_000;
       if (
         typeof value !== "number" ||
         !Number.isSafeInteger(value) ||
         value < 1 ||
-        value > 1_000_000
+        value > maximum
       ) {
         return jsonError(
-          `${field} は1〜1,000,000の整数で指定してください。`,
+          `${field} は1〜${maximum.toLocaleString("ja-JP")}の整数で指定してください。`,
           400
         );
       }
@@ -207,6 +210,7 @@ export async function PUT(request: NextRequest) {
           "completion_fee_percent",
           "free_lesson_match_fee_coins",
           "paid_lesson_fee_percent",
+          "coin_purchase_yen_per_coin",
           "updated_at",
           "updated_by_line_user_id",
         ].join(", ")

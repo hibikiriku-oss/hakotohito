@@ -7,6 +7,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 function getIdToken(request: NextRequest) {
   const authorization = request.headers.get("authorization");
 
@@ -40,6 +46,7 @@ async function getFacilityUser(request: NextRequest) {
     .from("users")
     .select("id, user_type, avatar_type, avatar_emoji")
     .eq("line_user_id", verified.userId)
+    .eq("account_status", "active")
     .single();
 
   if (error || !user) {
@@ -73,7 +80,7 @@ export async function GET(request: NextRequest) {
     const auth = await getFacilityUser(request);
 
     if (!auth.user) {
-      return NextResponse.json(
+      return privateJson(
         { error: auth.error },
         {
           status: auth.status,
@@ -91,7 +98,7 @@ export async function GET(request: NextRequest) {
     if (error || !facility) {
       console.error("施設プロフィール取得エラー:", error);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "施設プロフィールが見つかりません" },
         {
           status: 404,
@@ -100,7 +107,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
+    return privateJson(
       {
         success: true,
         facility: {
@@ -114,7 +121,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("施設プロフィール取得APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
@@ -129,7 +136,7 @@ export async function POST(request: NextRequest) {
     const auth = await getFacilityUser(request);
 
     if (!auth.user) {
-      return NextResponse.json(
+      return privateJson(
         { error: auth.error },
         { status: auth.status }
       );
@@ -154,7 +161,7 @@ export async function POST(request: NextRequest) {
       typeof address !== "string" ||
       !address.trim()
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "必須項目が入力されていません" },
         { status: 400 }
       );
@@ -166,7 +173,7 @@ export async function POST(request: NextRequest) {
       normalizedAvatarType !== "line" &&
       normalizedAvatarType !== "emoji"
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "プロフィールアイコンの設定が正しくありません" },
         { status: 400 }
       );
@@ -176,7 +183,7 @@ export async function POST(request: NextRequest) {
       normalizedAvatarType === "emoji" &&
       (typeof avatarEmoji !== "string" || !avatarEmoji.trim())
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "絵文字アイコンを選択してください" },
         { status: 400 }
       );
@@ -196,7 +203,7 @@ export async function POST(request: NextRequest) {
     if (avatarError) {
       console.error("プロフィールアイコン保存エラー:", avatarError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "プロフィールアイコンの保存に失敗しました" },
         { status: 500 }
       );
@@ -223,20 +230,20 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("施設登録エラー:", error);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "施設プロフィールの登録に失敗しました" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       facility: data,
     });
   } catch (error) {
     console.error("施設登録APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
@@ -251,7 +258,7 @@ export async function PATCH(request: NextRequest) {
     const auth = await getFacilityUser(request);
 
     if (!auth.user) {
-      return NextResponse.json(
+      return privateJson(
         { error: auth.error },
         { status: auth.status }
       );
@@ -284,21 +291,21 @@ export async function PATCH(request: NextRequest) {
         : "";
 
     if (!name || !facilityType || !address) {
-      return NextResponse.json(
+      return privateJson(
         { error: "施設名・施設種類・住所は必須項目です" },
         { status: 400 }
       );
     }
 
     if (avatarType !== "line" && avatarType !== "emoji") {
-      return NextResponse.json(
+      return privateJson(
         { error: "プロフィールアイコンの設定が正しくありません" },
         { status: 400 }
       );
     }
 
     if (avatarType === "emoji" && !avatarEmoji) {
-      return NextResponse.json(
+      return privateJson(
         { error: "絵文字アイコンを選択してください" },
         { status: 400 }
       );
@@ -319,7 +326,7 @@ export async function PATCH(request: NextRequest) {
     if (facilityError || !facility) {
       console.error("施設プロフィール更新エラー:", facilityError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "施設プロフィールの更新に失敗しました" },
         { status: 500 }
       );
@@ -336,13 +343,13 @@ export async function PATCH(request: NextRequest) {
     if (avatarError) {
       console.error("プロフィールアイコン更新エラー:", avatarError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "プロフィールアイコンの更新に失敗しました" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       facility: {
         ...facility,
@@ -353,7 +360,7 @@ export async function PATCH(request: NextRequest) {
   } catch (error) {
     console.error("施設プロフィール更新APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

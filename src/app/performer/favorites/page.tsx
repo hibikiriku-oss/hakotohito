@@ -8,12 +8,10 @@ type Facility = {
   id: string;
   name: string | null;
   facility_type: string | null;
-  address: string | null;
   description: string | null;
 };
 
 type FavoriteUser = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
   user_type: string | null;
@@ -27,7 +25,7 @@ type FavoriteUser = {
 
 type Favorite = {
   id: string;
-  target_user_id: string;
+  target_facility_id: string | null;
   created_at: string;
   users:
     | FavoriteUser
@@ -286,8 +284,8 @@ export default function PerformerFavoritesPage() {
             Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            targetUserId:
-              favorite.target_user_id,
+            targetFacilityId:
+              favorite.target_facility_id,
           }),
         }
       );
@@ -537,11 +535,6 @@ export default function PerformerFavoritesPage() {
                         </span>
                       </div>
 
-                      {facility?.address && (
-                        <p className="text-sm text-gray-500 mt-3 line-clamp-2">
-                          📍 {facility.address}
-                        </p>
-                      )}
                     </div>
                   </div>
 
@@ -642,20 +635,9 @@ export default function PerformerFavoritesPage() {
 
                 <div className="mt-7 space-y-6">
 
-                  {/* 住所 */}
                   <section>
-                    <p className="text-xs font-bold text-gray-400">
-                      LOCATION
-                    </p>
-
-                    <h4 className="font-bold mt-1">
-                      📍 住所
-                    </h4>
-
-                    <p className="text-gray-700 mt-2 leading-6">
-                      {selectedFacility.facility
-                        .address ||
-                        "住所は登録されていません"}
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      施設登録住所は非公開です。開催場所は各募集の詳細で確認してください。
                     </p>
                   </section>
 
@@ -692,12 +674,12 @@ export default function PerformerFavoritesPage() {
                       handleRemoveFavorite(
                         favorites.find(
                           (favorite) =>
-                            favorite.target_user_id ===
-                            selectedFacility.user.id
+                            favorite.target_facility_id ===
+                            selectedFacility.facility.id
                         ) ?? {
                           id: "",
-                          target_user_id:
-                            selectedFacility.user.id,
+                          target_facility_id:
+                            selectedFacility.facility.id,
                           created_at: "",
                           users:
                             selectedFacility.user,

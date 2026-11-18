@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { LESSON_FEATURE_ENABLED } from "@/lib/feature-flags";
 import liff from "@line/liff";
 
 type Performer = {
@@ -518,15 +519,17 @@ const response = await fetch(
           <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <p className="text-sm leading-6 text-amber-900">
               これはあなたが募集しているレッスンです。
-              募集内容を変更する場合は、下のボタンから編集してください。
+              {LESSON_FEATURE_ENABLED ? "募集内容を変更できます。" : "現在、編集機能は停止しています。"}
             </p>
-            <button
-              type="button"
-              onClick={handleEdit}
-              className="w-full rounded-xl bg-black px-4 py-3 font-bold text-white"
-            >
-              ✏️ 募集内容を編集する
-            </button>
+            {LESSON_FEATURE_ENABLED && (
+              <button
+                type="button"
+                onClick={handleEdit}
+                className="w-full rounded-xl bg-black px-4 py-3 font-bold text-white"
+              >
+                ✏️ 募集内容を編集する
+              </button>
+            )}
           </section>
 
           <section className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -672,7 +675,7 @@ const response = await fetch(
             )}
           </section>
         </>
-      ) : isOpen ? (
+      ) : isOpen && LESSON_FEATURE_ENABLED ? (
         <section className="space-y-3 rounded-2xl border p-5">
           <h2 className="text-lg font-bold">このレッスンに応募する</h2>
           <p className="text-sm leading-6 text-gray-600">
@@ -703,7 +706,7 @@ const response = await fetch(
         </section>
       ) : (
         <section className="rounded-xl border bg-gray-50 p-4 text-sm text-gray-600">
-          このレッスンは現在応募できません。
+          {LESSON_FEATURE_ENABLED ? "このレッスンは現在応募できません。" : "レッスンの応募機能は現在停止しています。"}
         </section>
       )}
     </main>

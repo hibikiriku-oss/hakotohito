@@ -70,40 +70,27 @@ export async function sendLinePushMessage(
     );
 
     if (response.ok) {
-      console.log(
-        "LINE通知送信成功:",
-        to
-      );
-
       return {
         success: true,
       };
     }
 
-    const responseText =
-      await response.text();
-
-    const error =
-      `LINE通知送信エラー: ${response.status} ${responseText}`;
-
-    console.error(error);
+    console.error("LINE通知送信失敗:", {
+      status: response.status,
+    });
 
     return {
       success: false,
-      error,
+      error: "LINE_PUSH_FAILED",
     };
   } catch (error) {
-    console.error(
-      "LINE通知通信エラー:",
-      error
-    );
+    console.error("LINE通知通信エラー:", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "LINE通知通信中にエラーが発生しました",
+      error: "LINE_PUSH_NETWORK_ERROR",
     };
   }
 }

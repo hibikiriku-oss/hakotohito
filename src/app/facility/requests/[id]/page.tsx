@@ -471,16 +471,23 @@ async function handleCancelEvent() {
               </p>
             </div>
 
-            {/* エリア */}
-            {request.area && (
+            {/* 開催場所 */}
+            {(request.area || request.venue_address) && (
               <div>
                 <p className="text-xs font-medium text-gray-400">
-                  活動エリア
+                  開催場所
                 </p>
 
-                <p className="mt-1 font-medium text-gray-900">
-                  📍 {request.area}
-                </p>
+                {request.area && (
+                  <p className="mt-1 font-medium text-gray-900">
+                    📍 {request.area}
+                  </p>
+                )}
+                {request.venue_address && (
+                  <p className="mt-2 text-sm leading-6 text-gray-700">
+                    {request.venue_address}
+                  </p>
+                )}
               </div>
             )}
 

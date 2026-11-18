@@ -72,6 +72,7 @@ async function getAuthorizedMatch(
       .from("users")
       .select("id")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .single();
 
   if (currentUserError || !currentUser) {
@@ -232,50 +233,8 @@ async function getAuthorizedMatch(
   return {
     currentUser,
     match,
+    lineUserId: verified.userId,
   };
-}
-
-async function getOrCreateConversation(matchId: string) {
-  const { data: existingConversation, error: existingError } =
-    await supabase
-      .from("conversations")
-      .select("id, match_id, created_at")
-      .eq("match_id", matchId)
-      .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  if (existingConversation) {
-    return existingConversation;
-  }
-
-  const { data: newConversation, error: createError } =
-    await supabase
-      .from("conversations")
-      .insert({
-        match_id: matchId,
-      })
-      .select("id, match_id, created_at")
-      .single();
-
-  if (createError) {
-    const { data: retryConversation, error: retryError } =
-      await supabase
-        .from("conversations")
-        .select("id, match_id, created_at")
-        .eq("match_id", matchId)
-        .single();
-
-    if (retryError || !retryConversation) {
-      throw createError;
-    }
-
-    return retryConversation;
-  }
-
-  return newConversation;
 }
 
 export async function GET(
@@ -284,185 +243,69 @@ export async function GET(
 ) {
   try {
     const { id: matchId } = await context.params;
-
     if (!UUID_PATTERN.test(matchId)) {
       return jsonError("マッチングIDが正しくありません", 400);
     }
 
-    const authorization = await getAuthorizedMatch(
-      request,
-      matchId
-    );
-
-    if (authorization.error) {
-      return authorization.error;
-    }
-
+    const authorization = await getAuthorizedMatch(request, matchId);
+    if (authorization.error) return authorization.error;
     const { currentUser } = authorization;
 
-    const conversation =
-      await getOrCreateConversation(matchId);
-
     const searchParams = request.nextUrl.searchParams;
-
-    const isSummary =
-      searchParams.get("summary") === "true";
-
-    const beforeCreatedAt =
-      searchParams.get("beforeCreatedAt");
-
-    const beforeId =
-      searchParams.get("beforeId");
-
+    const isSummary = searchParams.get("summary") === "true";
+    const beforeCreatedAt = searchParams.get("beforeCreatedAt");
+    const beforeId = searchParams.get("beforeId");
     const hasCreatedAt = beforeCreatedAt !== null;
     const hasId = beforeId !== null;
 
-    if (hasCreatedAt !== hasId) {
-      return jsonError(
-        "過去メッセージの取得条件が正しくありません",
-        400
-      );
-    }
-
-    if (isSummary && hasCreatedAt) {
-      return jsonError(
-        "未読件数取得と過去メッセージ取得は同時に指定できません",
-        400
-      );
+    if (hasCreatedAt !== hasId || (isSummary && hasCreatedAt)) {
+      return jsonError("過去メッセージの取得条件が正しくありません", 400);
     }
 
     let cursorCreatedAt: string | null = null;
-
     if (hasCreatedAt && hasId) {
-      if (
-        !UUID_PATTERN.test(beforeId!) ||
-        !beforeCreatedAt ||
-        !Number.isFinite(Date.parse(beforeCreatedAt))
-      ) {
-        return jsonError(
-          "過去メッセージの取得条件が正しくありません",
-          400
-        );
+      if (!UUID_PATTERN.test(beforeId!) || !beforeCreatedAt || !Number.isFinite(Date.parse(beforeCreatedAt))) {
+        return jsonError("過去メッセージの取得条件が正しくありません", 400);
       }
+      cursorCreatedAt = new Date(beforeCreatedAt).toISOString();
+    }
 
-      cursorCreatedAt =
-        new Date(beforeCreatedAt).toISOString();
+    const { data, error } = await supabase.rpc("get_match_chat_page_atomic", {
+      p_match_id: matchId,
+      p_user_id: currentUser.id,
+      p_summary: isSummary,
+      p_before_created_at: cursorCreatedAt,
+      p_before_id: hasId ? beforeId : null,
+      p_page_size: PAGE_SIZE,
+      p_line_user_id: authorization.lineUserId,
+    });
+
+    if (error || !data?.success) {
+      const errorCode = data?.errorCode;
+      if (errorCode === "match_unavailable" || errorCode === "user_inactive") {
+        return jsonError("このマッチングではチャットを利用できません", 403);
+      }
+      if (errorCode === "not_authorized") {
+        return jsonError("このチャットを利用する権限がありません", 403);
+      }
+      console.error("チャット取得RPCエラー:", error?.message || errorCode);
+      return jsonError("チャット情報の取得に失敗しました", 500);
     }
 
     if (isSummary) {
-      const { count: unreadCount, error: unreadError } =
-        await supabase
-          .from("messages")
-          .select("id", {
-            count: "exact",
-            head: true,
-          })
-          .eq("conversation_id", conversation.id)
-          .neq("sender_id", currentUser.id)
-          .is("read_at", null);
-
-      if (unreadError) {
-        console.error("未読件数取得エラー:", unreadError);
-
-        return jsonError(
-          "未読件数の取得に失敗しました",
-          500
-        );
-      }
-
       return NextResponse.json(
-        {
-          conversation,
-          currentUserId: currentUser.id,
-          unreadCount: unreadCount ?? 0,
-        },
+        { unreadCount: data.unreadCount ?? 0 },
         { headers: NO_STORE_HEADERS }
       );
     }
 
-    const isOlderPage = cursorCreatedAt !== null;
-
-    // 過去ページの取得では既読処理を行わない。
-    if (!isOlderPage) {
-      const { error: readError } =
-        await supabase
-          .from("messages")
-          .update({
-            read_at: new Date().toISOString(),
-          })
-          .eq("conversation_id", conversation.id)
-          .neq("sender_id", currentUser.id)
-          .is("read_at", null);
-
-      if (readError) {
-        console.error("既読更新エラー:", readError);
-      }
-    }
-
-    let messagesQuery = supabase
-      .from("messages")
-      .select(
-        `
-        id,
-        conversation_id,
-        sender_id,
-        message,
-        read_at,
-        created_at,
-        users (
-          id,
-          display_name,
-          picture_url
-        )
-        `
-      )
-      .eq("conversation_id", conversation.id)
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(PAGE_SIZE + 1);
-
-    if (isOlderPage) {
-      // 日時が同じ場合もUUIDで順序を確定し、取りこぼしを防ぐ。
-      messagesQuery = messagesQuery.or(
-        `created_at.lt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},id.lt.${beforeId})`
-      );
-    }
-
-    const { data: fetchedMessages, error: messagesError } =
-      await messagesQuery;
-
-    if (messagesError) {
-      console.error("メッセージ取得エラー:", messagesError);
-
-      return jsonError(
-        "メッセージの取得に失敗しました",
-        500
-      );
-    }
-
-    const rows = fetchedMessages ?? [];
-    const hasMore = rows.length > PAGE_SIZE;
-
-    const pageMessages = rows
-      .slice(0, PAGE_SIZE)
-      .reverse();
-
     return NextResponse.json(
-      {
-        conversation,
-        currentUserId: currentUser.id,
-        messages: pageMessages,
-        hasMore,
-      },
+      { messages: data.messages ?? [], hasMore: data.hasMore === true },
       { headers: NO_STORE_HEADERS }
     );
   } catch (error) {
     console.error("チャット取得APIエラー:", error);
-
-    return jsonError(
-      "チャット情報の取得中にエラーが発生しました",
-      500
-    );
+    return jsonError("チャット情報の取得中にエラーが発生しました", 500);
   }
 }
 
@@ -527,46 +370,34 @@ export async function POST(
       );
     }
 
-    const conversation =
-      await getOrCreateConversation(matchId);
+    const { data: sendResult, error: messageError } = await supabase.rpc(
+      "send_match_chat_message_atomic",
+      {
+        p_match_id: matchId,
+        p_user_id: currentUser.id,
+        p_message: message,
+        p_line_user_id: authorization.lineUserId,
+      }
+    );
 
-    const { data: newMessage, error: messageError } =
-      await supabase
-        .from("messages")
-        .insert({
-          conversation_id: conversation.id,
-          sender_id: currentUser.id,
-          message,
-        })
-        .select(
-          `
-          id,
-          conversation_id,
-          sender_id,
-          message,
-          read_at,
-          created_at,
-          users (
-            id,
-            display_name,
-            picture_url
-          )
-          `
-        )
-        .single();
-
-    if (messageError) {
-      console.error("メッセージ送信エラー:", messageError);
-
-      return jsonError(
-        "メッセージの送信に失敗しました",
-        500
-      );
+    if (messageError || !sendResult?.success) {
+      const errorCode = sendResult?.errorCode;
+      if (errorCode === "match_unavailable" || errorCode === "user_inactive") {
+        return jsonError("このマッチングではチャットを利用できません", 403);
+      }
+      if (errorCode === "not_authorized") {
+        return jsonError("このチャットを利用する権限がありません", 403);
+      }
+      console.error("メッセージ送信エラー:", messageError?.message || errorCode);
+      return jsonError("メッセージの送信に失敗しました", 500);
     }
 
     return NextResponse.json(
       {
-        message: newMessage,
+        message: {
+          ...sendResult.message,
+          isMine: true,
+        },
       },
       { headers: NO_STORE_HEADERS }
     );

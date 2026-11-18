@@ -12,6 +12,7 @@ const DEFAULT_RATES = {
   completion_fee_percent: 1,
   free_lesson_match_fee_coins: 5,
   paid_lesson_fee_percent: 1,
+  coin_purchase_yen_per_coin: 10,
 };
 
 const NO_STORE_HEADERS = {
@@ -73,7 +74,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("coin_rate_settings")
       .select(
-        "application_fee_coins,direct_invitation_fee_coins,match_fee_coins,completion_fee_percent,free_lesson_match_fee_coins,paid_lesson_fee_percent"
+        "application_fee_coins,direct_invitation_fee_coins,match_fee_coins,completion_fee_percent,free_lesson_match_fee_coins,paid_lesson_fee_percent,coin_purchase_yen_per_coin"
       )
       .eq("id", 1)
       .maybeSingle();
@@ -127,6 +128,9 @@ export async function GET() {
       )
         ? settings.paid_lesson_fee_percent
         : DEFAULT_RATES.paid_lesson_fee_percent,
+      coin_purchase_yen_per_coin: validFixedRate(settings.coin_purchase_yen_per_coin)
+        ? settings.coin_purchase_yen_per_coin
+        : DEFAULT_RATES.coin_purchase_yen_per_coin,
     };
 
     return jsonResponse(rates);

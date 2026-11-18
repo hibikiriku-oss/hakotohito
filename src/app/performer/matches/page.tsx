@@ -10,7 +10,6 @@ type Facility = {
   id: string;
   name: string | null;
   facility_type: string | null;
-  address: string | null;
   description: string | null;
   picture_url: string | null;
   avatar_type: "line" | "emoji" | null;
@@ -25,6 +24,7 @@ type PerformanceRequest = {
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -407,7 +407,7 @@ facility.avatar_type !== undefined ? (
           </p>
         </div>
 
-        {(request.area || facility?.address) && (
+        {(request.area || request.venue_address) && (
           <div className="mt-4">
             <p className="text-xs font-medium text-gray-400">場所</p>
 
@@ -417,9 +417,9 @@ facility.avatar_type !== undefined ? (
               </p>
             )}
 
-            {facility?.address && (
+            {request.venue_address && (
               <p className="mt-1 text-xs text-gray-500">
-                {facility.address}
+                {request.venue_address}
               </p>
             )}
           </div>

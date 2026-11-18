@@ -20,6 +20,7 @@ type Invitation = {
     start_time: string;
     end_time: string;
     area: string | null;
+    venue_address: string | null;
     reward: number | null;
     status: string;
   } | null;
@@ -27,7 +28,6 @@ type Invitation = {
     id: string;
     name: string | null;
     facility_type: string | null;
-    address: string | null;
     description: string | null;
   } | null;
 };
@@ -360,6 +360,11 @@ export default function PerformerInvitationsPage() {
                       <p className="text-sm font-medium text-gray-900 mt-1">
                         {invitation.request?.area || "未設定"}
                       </p>
+                      {invitation.request?.venue_address && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          開催場所：{invitation.request.venue_address}
+                        </p>
+                      )}
                     </div>
 
                     {invitation.request?.reward !== null &&

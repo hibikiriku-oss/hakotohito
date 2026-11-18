@@ -11,23 +11,20 @@ import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
 type MessageUser = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
 };
 
 type Message = {
   id: string;
-  conversation_id: string;
-  sender_id: string;
   message: string;
   read_at: string | null;
   created_at: string;
+  isMine: boolean;
   users: MessageUser | MessageUser[] | null;
 };
 
 type ChatResponse = {
-  currentUserId: string;
   messages: Message[];
   hasMore?: boolean;
 };
@@ -90,7 +87,6 @@ export default function FacilityMatchChatPage() {
   const matchId = params.id as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentUserId, setCurrentUserId] = useState("");
 
   const [messageText, setMessageText] = useState("");
 
@@ -163,7 +159,6 @@ export default function FacilityMatchChatPage() {
       const chatData = data as ChatResponse;
 
       setAccessDenied(false);
-      setCurrentUserId(chatData.currentUserId);
       setError("");
 
       const container = messagesContainerRef.current;
@@ -575,8 +570,7 @@ export default function FacilityMatchChatPage() {
                 </div>
               ) : (
                 messages.map((item) => {
-                  const isMine =
-                    item.sender_id === currentUserId;
+                  const isMine = item.isMine;
 
                   const user = getUser(item.users);
 

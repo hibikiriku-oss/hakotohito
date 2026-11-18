@@ -9,6 +9,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const auth = await requireAdmin(request);
@@ -23,7 +29,7 @@ export async function GET(request: NextRequest) {
     const allowedStatuses = ["all", "in_progress", "resolved"];
 
     if (!allowedStatuses.includes(requestedStatus)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "指定された対応状況が不正です。" },
         { status: 400 }
       );
@@ -93,19 +99,19 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error("異議申し立て一覧取得エラー:", error.message);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "異議申し立て一覧を取得できませんでした。" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       disputes: data ?? [],
     });
   } catch (error) {
     console.error("管理者異議申し立てAPIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました。" },
       { status: 500 }
     );

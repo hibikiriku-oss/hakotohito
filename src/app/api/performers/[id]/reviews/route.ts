@@ -49,6 +49,28 @@ export async function GET(
       );
     }
 
+    const { data: viewer, error: viewerError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
+      .maybeSingle();
+
+    if (viewerError) {
+      console.error("Viewer account lookup failed:", viewerError.code ?? "UNKNOWN");
+      return NextResponse.json(
+        { error: "ユーザー情報の確認に失敗しました" },
+        { status: 500, headers: noStoreHeaders }
+      );
+    }
+
+    if (!viewer) {
+      return NextResponse.json(
+        { error: "有効なユーザーとして認証できません" },
+        { status: 403, headers: noStoreHeaders }
+      );
+    }
+
     const { id } = await context.params;
 
     if (!id) {
@@ -60,8 +82,9 @@ export async function GET(
 
     const { data: performer, error: performerError } = await supabase
       .from("performers")
-      .select("id, user_id, name")
+      .select("id, user_id, name, users!inner(id)")
       .eq("id", id)
+      .eq("users.account_status", "active")
       .maybeSingle();
 
     if (performerError) {

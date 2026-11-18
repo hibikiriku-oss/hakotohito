@@ -6,10 +6,8 @@ import { useParams, useRouter } from "next/navigation";
 import liff from "@line/liff";
 
 type Facility = {
-  id: string;
   name: string | null;
   facility_type: string | null;
-  address: string | null;
   description: string | null;
   picture_url: string | null;
   avatar_type: "line" | "emoji" | null;
@@ -17,13 +15,13 @@ type Facility = {
 };
 
 type PerformanceRequest = {
-  id: string;
   title: string;
   description: string | null;
   performance_date: string;
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -33,11 +31,8 @@ type PerformanceRequest = {
 
 type Match = {
   id: string;
-  request_id: string;
-  performer_id: string;
-  band_id: string | null;
+  isBandMatch: boolean;
   band: {
-    id: string;
     name: string | null;
     description: string | null;
     status: string;
@@ -567,7 +562,7 @@ export default function PerformerMatchDetailPage() {
 
   // 個人マッチングは本人が操作可能。
   // バンドマッチングはAPIが返すリーダー情報に基づいて表示を制御する。
-  const canManageMatch = !match.band_id || match.isBandLeader;
+  const canManageMatch = !match.isBandMatch || match.isBandLeader;
 
   const isCancelled =
     match.performance_status === "cancelled";
@@ -733,9 +728,9 @@ export default function PerformerMatchDetailPage() {
                 📍 {performanceRequest.area}
               </p>
             )}
-            {facility?.address && (
+            {performanceRequest.venue_address && (
               <p className="mt-1 text-xs leading-5 text-gray-500">
-                {facility.address}
+                {performanceRequest.venue_address}
               </p>
             )}
           </div>
@@ -1203,7 +1198,7 @@ export default function PerformerMatchDetailPage() {
             </div>
           </div>
 
-          {match.band_id && !canManageMatch ? (
+          {match.isBandMatch && !canManageMatch ? (
             <div className="mt-4 rounded-xl bg-gray-50 p-4">
               <p className="font-bold text-gray-700">
                 バンドリーダーが代表して施設を評価します

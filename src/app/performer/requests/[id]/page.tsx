@@ -8,10 +8,8 @@ import liff from "@line/liff";
 
 type Facility = {
   id: string;
-  user_id: string;
   name: string;
   facility_type: string;
-  address: string;
   description: string | null;
 };
 
@@ -30,6 +28,7 @@ type PerformanceRequest = {
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -385,6 +384,7 @@ export default function PerformerRequestDetailPage() {
                   facilityData.review_count ?? 0
                 );
                 setFacilityReviews(facilityData.reviews ?? []);
+                setIsFavorite(facilityData.is_favorite ?? false);
               }
             } catch (facilityError) {
               console.error(
@@ -398,42 +398,7 @@ export default function PerformerRequestDetailPage() {
             }
           })();
 
-          const favoriteTask = (async () => {
-            try {
-              const favoritesResponse = await fetch(
-                "/api/favorites",
-                {
-                  headers: authHeaders,
-                  cache: "no-store",
-                }
-              );
-
-              const favoritesData =
-                await favoritesResponse.json();
-
-              if (!cancelled && favoritesResponse.ok) {
-                const favoriteExists =
-                  favoritesData.favorites?.some(
-                    (favorite: {
-                      target_user_id: string;
-                    }) =>
-                      favorite.target_user_id === facility.user_id
-                  );
-
-                setIsFavorite(favoriteExists ?? false);
-              }
-            } catch (favoriteError) {
-              console.error(
-                "お気に入り状態取得エラー:",
-                favoriteError
-              );
-            }
-          })();
-
-          void Promise.allSettled([
-            facilityTask,
-            favoriteTask,
-          ]);
+          void facilityTask;
         }
 
         // 補助データの取得完了を画面表示の条件にしない
@@ -576,7 +541,7 @@ export default function PerformerRequestDetailPage() {
             Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
           body: JSON.stringify({
-            targetUserId: request.facilities.user_id,
+            targetFacilityId: request.facilities.id,
           }),
         });
 
@@ -596,7 +561,7 @@ export default function PerformerRequestDetailPage() {
             Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
           },
           body: JSON.stringify({
-            targetUserId: request.facilities.user_id,
+            targetFacilityId: request.facilities.id,
           }),
         });
 
@@ -657,7 +622,7 @@ export default function PerformerRequestDetailPage() {
     }
 
     const confirmed = window.confirm(
-      `この案件に個人名義で応募しますか？\n応募には${applicationFeeCoins}コイン必要です。`
+      `この案件に個人名義で応募しますか？\nマッチング成立時に応募手数料${applicationFeeCoins}コインが徴収されます。応募時は残高確認のみ行います。`
     );
 
     if (!confirmed) {
@@ -775,7 +740,7 @@ export default function PerformerRequestDetailPage() {
     }
 
     const confirmed = window.confirm(
-      `バンド「${selectedBand.name || "バンド名未設定"}」でこの案件に応募しますか？\n\n応募手数料${applicationFeeCoins}コインは、バンドリーダーであるあなた個人のコイン残高から支払われます。`
+      `バンド「${selectedBand.name || "バンド名未設定"}」でこの案件に応募しますか？\n\nマッチング成立時に応募手数料${applicationFeeCoins}コインが、バンドリーダーであるあなた個人の残高から徴収されます。応募時は残高確認のみ行います。`
     );
 
     if (!confirmed) {
@@ -1025,14 +990,16 @@ export default function PerformerRequestDetailPage() {
               </button>
             </div>
 
-            <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3">
-              <p className="text-xs font-medium text-gray-500">
-                所在地
-              </p>
-              <p className="mt-1 text-sm leading-6 text-gray-700">
-                📍 {request.facilities.address}
-              </p>
-            </div>
+            {request.venue_address && (
+              <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3">
+                <p className="text-xs font-medium text-gray-500">
+                  この案件の開催場所
+                </p>
+                <p className="mt-1 text-sm leading-6 text-gray-700">
+                  📍 {request.venue_address}
+                </p>
+              </div>
+            )}
 
             <button
               type="button"
@@ -1319,7 +1286,7 @@ export default function PerformerRequestDetailPage() {
                     💰 応募手数料：{applicationFeeCoins}コイン
                   </p>
                   <p className="mt-1 text-xs leading-5 text-gray-600">
-                    応募手数料はバンド共有残高ではなく、リーダー本人のコイン残高から支払われます。応募ボタンを押すと残高が確認されます。
+                    応募手数料はマッチング成立時に、バンド共有残高ではなくリーダー本人のコイン残高から徴収されます。応募時は残高確認のみ行います。
                   </p>
                 </div>
               </div>
@@ -1404,7 +1371,7 @@ export default function PerformerRequestDetailPage() {
             </button>
 
             <p className="mt-3 text-center text-xs leading-5 text-gray-400">
-              応募には{applicationFeeCoins}コイン必要です。施設から承認されるとマッチングが成立します。
+              マッチング成立時に応募手数料{applicationFeeCoins}コインが徴収されます。応募時は残高確認のみ行います。
             </p>
           </section>
         ) : (
@@ -1467,15 +1434,6 @@ export default function PerformerRequestDetailPage() {
                 </p>
                 <p className="mt-2 text-sm text-gray-600">
                   {request.facilities.facility_type}
-                </p>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-gray-100 p-4">
-                <p className="text-xs font-semibold text-gray-400">
-                  住所
-                </p>
-                <p className="mt-2 text-sm leading-6 text-gray-700">
-                  {request.facilities.address}
                 </p>
               </div>
 

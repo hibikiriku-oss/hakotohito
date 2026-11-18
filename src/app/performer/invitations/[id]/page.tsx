@@ -20,6 +20,7 @@ type Invitation = {
     start_time: string;
     end_time: string;
     area: string | null;
+    venue_address: string | null;
     instruments: string[];
     genres: string[];
     reward: number | null;
@@ -27,10 +28,8 @@ type Invitation = {
     facility_id: string;
     facilities: {
       id: string;
-      user_id: string;
       name: string | null;
       facility_type: string | null;
-      address: string | null;
       description: string | null;
     };
   };
@@ -455,9 +454,9 @@ export default function PerformerInvitationDetailPage() {
                       </p>
                     )}
 
-                    {facility?.address && (
+                    {invitation.performance_requests.venue_address && (
                       <p className="text-sm text-gray-600 mt-2">
-                        📍 {facility.address}
+                        📍 開催場所：{invitation.performance_requests.venue_address}
                       </p>
                     )}
                   </div>

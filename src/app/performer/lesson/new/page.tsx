@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
+import { LESSON_FEATURE_ENABLED } from "@/lib/feature-flags";
+import LessonFeatureNotice from "@/components/LessonFeatureNotice";
 
 const instrumentOptions = [
   "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ",
@@ -320,6 +322,8 @@ export default function NewLessonOfferPage() {
     }
   };
 
+  if (!LESSON_FEATURE_ENABLED) return <LessonFeatureNotice />;
+
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto px-4 py-6">
@@ -430,9 +434,12 @@ export default function NewLessonOfferPage() {
                 placeholder="例：名古屋市千種区、豊田市"
                 className={`${inputClass} mt-3`}
               />
-                            <label className="font-bold text-sm text-gray-800 mt-4 mb-2 block">
+              <label className="font-bold text-sm text-gray-800 mt-4 mb-2 block">
                 詳しい開催住所（任意）
               </label>
+              <p className="text-xs text-amber-700 leading-relaxed mb-2">
+                入力した住所は、アプリ内のログイン済み利用者に公開されます。公開してよい住所だけを入力してください。
+              </p>
               <input
                 type="text"
                 value={address}

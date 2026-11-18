@@ -2,7 +2,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
-import { sendLinePushMessage } from "@/lib/line";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
+
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,7 +31,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!idToken) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "LINEの認証情報がありません。再ログインしてください" },
         { status: 401 }
       ),
@@ -36,7 +42,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!verified) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "LINEの本人確認に失敗しました。再ログインしてください" },
         { status: 401 }
       ),
@@ -45,7 +51,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!supabase) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       ),
@@ -56,13 +62,14 @@ async function getAuthenticatedPerformer(request: NextRequest) {
     .from("users")
     .select("id")
     .eq("line_user_id", verified.userId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
     console.error("バンド応募のユーザー取得エラー:", userError);
 
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "ユーザー情報を取得できませんでした" },
         { status: 500 }
       ),
@@ -71,7 +78,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!user) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       ),
@@ -88,7 +95,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
     console.error("バンド応募の演奏者取得エラー:", performerError);
 
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "演奏者情報を取得できませんでした" },
         { status: 500 }
       ),
@@ -97,7 +104,7 @@ async function getAuthenticatedPerformer(request: NextRequest) {
 
   if (!performer) {
     return {
-      error: NextResponse.json(
+      error: privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       ),
@@ -126,7 +133,7 @@ export async function GET(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -138,7 +145,7 @@ export async function GET(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     if (!uuidPattern.test(bandId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドIDが正しくありません" },
         { status: 400 }
       );
@@ -147,7 +154,7 @@ export async function GET(
     const requestId = request.nextUrl.searchParams.get("requestId");
 
     if (!requestId || !uuidPattern.test(requestId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "案件IDが正しくありません" },
         { status: 400 }
       );
@@ -172,14 +179,14 @@ export async function GET(
     if (membershipError) {
       console.error("バンドリーダー権限確認エラー:", membershipError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドの権限を確認できませんでした" },
         { status: 500 }
       );
     }
 
     if (!membership) {
-      return NextResponse.json(
+      return privateJson(
         { error: "このバンドの応募状態を確認する権限がありません" },
         { status: 403 }
       );
@@ -195,14 +202,14 @@ export async function GET(
     if (bandError) {
       console.error("バンド状態取得エラー:", bandError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド情報を取得できませんでした" },
         { status: 500 }
       );
     }
 
     if (!band) {
-      return NextResponse.json(
+      return privateJson(
         { error: "このバンドは現在応募に使用できません" },
         { status: 403 }
       );
@@ -219,13 +226,13 @@ export async function GET(
     if (applicationError) {
       console.error("バンド応募状態取得エラー:", applicationError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "バンド応募状態を取得できませんでした" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       application: application
         ? {
             id: application.id,
@@ -236,269 +243,10 @@ export async function GET(
   } catch (error) {
     console.error("バンド応募状態APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
-  }
-}
-
-async function sendApplicationNotification(
-  requestId: string,
-  bandId: string,
-  message: string
-): Promise<boolean> {
-  if (!supabase) {
-    return false;
-  }
-
-  try {
-    const { data: performanceRequest, error: requestError } =
-      await supabase
-        .from("performance_requests")
-        .select(
-          "id, title, performance_date, start_time, end_time, area, facility_id"
-        )
-        .eq("id", requestId)
-        .maybeSingle();
-
-    if (requestError || !performanceRequest) {
-      console.error("バンド応募の通知用案件取得エラー:", requestError);
-      return false;
-    }
-
-    const { data: band, error: bandError } = await supabase
-      .from("bands")
-      .select("name")
-      .eq("id", bandId)
-      .maybeSingle();
-
-    if (bandError || !band) {
-      console.error("バンド応募の通知用バンド取得エラー:", bandError);
-      return false;
-    }
-
-    const { data: facility, error: facilityError } = await supabase
-      .from("facilities")
-      .select("user_id")
-      .eq("id", performanceRequest.facility_id)
-      .maybeSingle();
-
-    if (facilityError || !facility) {
-      console.error("バンド応募の施設取得エラー:", facilityError);
-      return false;
-    }
-
-    const { data: facilityUser, error: facilityUserError } =
-      await supabase
-        .from("users")
-        .select("line_user_id")
-        .eq("id", facility.user_id)
-        .maybeSingle();
-
-    if (facilityUserError || !facilityUser?.line_user_id) {
-      console.error(
-        "バンド応募の施設LINE情報取得エラー:",
-        facilityUserError
-      );
-      return false;
-    }
-
-    const notificationResult = await sendLinePushMessage(
-      facilityUser.line_user_id,
-      [
-        {
-          type: "flex",
-          altText: "🎵 新しいバンド応募があります",
-          contents: {
-            type: "bubble",
-            size: "mega",
-            header: {
-              type: "box",
-              layout: "vertical",
-              backgroundColor: "#5B46D8",
-              paddingAll: "16px",
-              contents: [
-                {
-                  type: "text",
-                  text: "🎵 新しいバンド応募",
-                  color: "#FFFFFF",
-                  weight: "bold",
-                  size: "lg",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text: "演奏案件にバンドから応募が届きました",
-                  color: "#EAE6FF",
-                  size: "xs",
-                  wrap: true,
-                  margin: "sm",
-                },
-              ],
-            },
-            body: {
-              type: "box",
-              layout: "vertical",
-              paddingAll: "16px",
-              spacing: "md",
-              contents: [
-                {
-                  type: "text",
-                  text: "応募バンド",
-                  size: "xs",
-                  color: "#6B7280",
-                },
-                {
-                  type: "text",
-                  text: band.name || "バンド名未設定",
-                  size: "lg",
-                  weight: "bold",
-                  color: "#111827",
-                  wrap: true,
-                },
-                {
-                  type: "separator",
-                  margin: "sm",
-                },
-                {
-                  type: "text",
-                  text: "案件名",
-                  size: "xs",
-                  color: "#6B7280",
-                },
-                {
-                  type: "text",
-                  text: performanceRequest.title || "未設定",
-                  size: "md",
-                  weight: "bold",
-                  color: "#111827",
-                  wrap: true,
-                },
-                {
-                  type: "box",
-                  layout: "horizontal",
-                  spacing: "sm",
-                  margin: "md",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "演奏日",
-                      size: "sm",
-                      color: "#6B7280",
-                      flex: 2,
-                    },
-                    {
-                      type: "text",
-                      text: String(
-                        performanceRequest.performance_date || "未設定"
-                      ),
-                      size: "sm",
-                      color: "#111827",
-                      flex: 5,
-                      wrap: true,
-                    },
-                  ],
-                },
-                {
-                  type: "box",
-                  layout: "horizontal",
-                  spacing: "sm",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "演奏時間",
-                      size: "sm",
-                      color: "#6B7280",
-                      flex: 2,
-                    },
-                    {
-                      type: "text",
-                      text:
-                        `${performanceRequest.start_time || "未設定"}` +
-                        `〜${performanceRequest.end_time || "未設定"}`,
-                      size: "sm",
-                      color: "#111827",
-                      flex: 5,
-                      wrap: true,
-                    },
-                  ],
-                },
-                {
-                  type: "box",
-                  layout: "horizontal",
-                  spacing: "sm",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "場所",
-                      size: "sm",
-                      color: "#6B7280",
-                      flex: 2,
-                    },
-                    {
-                      type: "text",
-                      text: performanceRequest.area || "未設定",
-                      size: "sm",
-                      color: "#111827",
-                      flex: 5,
-                      wrap: true,
-                    },
-                  ],
-                },
-                {
-                  type: "text",
-                  text: "応募メッセージ",
-                  size: "xs",
-                  color: "#6B7280",
-                  margin: "lg",
-                },
-                {
-                  type: "text",
-                  text: message || "メッセージはありません",
-                  size: "sm",
-                  color: "#374151",
-                  wrap: true,
-                },
-              ],
-            },
-            footer: {
-              type: "box",
-              layout: "vertical",
-              paddingAll: "16px",
-              contents: [
-                {
-                  type: "button",
-                  style: "primary",
-                  color: "#5B46D8",
-                  height: "md",
-                  action: {
-                    type: "uri",
-                    label: "応募者を確認する",
-                    uri:
-                      `https://liff.line.me/${process.env.NEXT_PUBLIC_LIFF_ID}` +
-                      `/facility/requests/${requestId}/applications`,
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ]
-    );
-
-    if (!notificationResult?.success) {
-      console.error(
-        "バンド応募の施設LINE通知に失敗しました:",
-        notificationResult?.error
-      );
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error("バンド応募LINE通知エラー:", error);
-    return false;
   }
 }
 
@@ -508,7 +256,7 @@ export async function POST(
 ) {
   try {
     if (!supabase) {
-      return NextResponse.json(
+      return privateJson(
         { error: "サーバーの設定に問題があります" },
         { status: 500 }
       );
@@ -520,7 +268,7 @@ export async function POST(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     if (!uuidPattern.test(bandId)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "バンドIDが正しくありません" },
         { status: 400 }
       );
@@ -537,14 +285,14 @@ export async function POST(
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
+      return privateJson(
         { error: "リクエスト形式が正しくありません" },
         { status: 400 }
       );
     }
 
     if (!body || typeof body !== "object" || Array.isArray(body)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "入力内容が正しくありません" },
         { status: 400 }
       );
@@ -562,7 +310,7 @@ export async function POST(
       typeof input.operationId !== "string" ||
       !uuidPattern.test(input.operationId)
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "案件IDが正しくありません" },
         { status: 400 }
       );
@@ -573,7 +321,7 @@ export async function POST(
       input.message !== null &&
       typeof input.message !== "string"
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "応募メッセージの形式が正しくありません" },
         { status: 400 }
       );
@@ -585,7 +333,7 @@ export async function POST(
         : "";
 
     if (message.length > 2000) {
-      return NextResponse.json(
+      return privateJson(
         { error: "応募メッセージは2000文字以内で入力してください" },
         { status: 400 }
       );
@@ -606,7 +354,7 @@ export async function POST(
     if (rpcError) {
       console.error("バンド応募DB処理エラー:", rpcError);
 
-      return NextResponse.json(
+      return privateJson(
         {
           error:
             "バンド応募の処理に失敗しました。時間をおいて再度お試しください。",
@@ -637,7 +385,7 @@ export async function POST(
                 ? 400
                 : 400;
 
-      return NextResponse.json(
+      return privateJson(
         { error: errorMessage },
         { status }
       );
@@ -645,15 +393,12 @@ export async function POST(
 
     let notificationSent = false;
 
-    if (result.coins_spent > 0 && result.is_replay !== true) {
-      notificationSent = await sendApplicationNotification(
-        input.requestId,
-        bandId,
-        message
-      );
+    if (result.is_replay !== true) {
+      const delivery = await drainLineNotificationOutbox(supabase, 20);
+      notificationSent = delivery.sent > 0;
     }
 
-    return NextResponse.json(
+    return privateJson(
       {
         success: true,
         application: {
@@ -672,7 +417,7 @@ export async function POST(
   } catch (error) {
     console.error("バンド応募APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

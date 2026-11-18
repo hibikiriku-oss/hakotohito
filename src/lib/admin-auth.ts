@@ -3,6 +3,13 @@ import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+function privateError(message: string, status: number) {
+  return NextResponse.json(
+    { error: message },
+    { status, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+  );
+}
+
 export async function requireAdmin(
   request: NextRequest
 ): Promise<
@@ -16,10 +23,7 @@ export async function requireAdmin(
 
     return {
       authorized: false,
-      response: NextResponse.json(
-        { error: "管理者設定がありません" },
-        { status: 500 }
-      ),
+      response: privateError("管理者設定がありません", 500),
     };
   }
 
@@ -30,10 +34,7 @@ export async function requireAdmin(
   if (!idToken) {
     return {
       authorized: false,
-      response: NextResponse.json(
-        { error: "認証が必要です" },
-        { status: 401 }
-      ),
+      response: privateError("認証が必要です", 401),
     };
   }
 
@@ -42,20 +43,14 @@ export async function requireAdmin(
   if (!verified) {
     return {
       authorized: false,
-      response: NextResponse.json(
-        { error: "LINEの本人確認に失敗しました" },
-        { status: 401 }
-      ),
+      response: privateError("LINEの本人確認に失敗しました", 401),
     };
   }
 
   if (verified.userId !== adminLineUserId) {
     return {
       authorized: false,
-      response: NextResponse.json(
-        { error: "管理者権限がありません" },
-        { status: 403 }
-      ),
+      response: privateError("管理者権限がありません", 403),
     };
   }
 

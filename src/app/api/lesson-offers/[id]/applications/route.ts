@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage, type LineMessage } from "@/lib/line";
 import { verifyLineIdToken } from "@/lib/line-auth";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
+
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,7 +32,7 @@ const idToken = authorization?.startsWith("Bearer ")
   : "";
 
 if (!idToken) {
-  return NextResponse.json(
+  return privateJson(
     {
       success: false,
       error: "LINEの本人確認情報がありません。再ログインしてください。",
@@ -38,7 +44,7 @@ if (!idToken) {
 const verified = await verifyLineIdToken(idToken);
 
 if (!verified) {
-  return NextResponse.json(
+  return privateJson(
     {
       success: false,
       error: "LINEの本人確認に失敗しました。再ログインしてください。",
@@ -52,7 +58,7 @@ const lineUserId = verified.userId;
     const { id: lessonOfferId } = await context.params;
 
     if (!uuidPattern.test(lessonOfferId)) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "レッスン募集IDが正しくありません",
@@ -66,12 +72,13 @@ const lineUserId = verified.userId;
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .maybeSingle();
 
     if (userError) {
       console.error("応募一覧：ユーザー取得エラー", userError);
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "ユーザー情報を取得できませんでした",
@@ -81,7 +88,7 @@ const lineUserId = verified.userId;
     }
 
     if (!user) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "ユーザー登録が見つかりません",
@@ -103,7 +110,7 @@ const lineUserId = verified.userId;
         performerError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "演奏者情報を取得できませんでした",
@@ -113,7 +120,7 @@ const lineUserId = verified.userId;
     }
 
     if (!currentPerformer) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "演奏者プロフィールが見つかりません",
@@ -134,7 +141,7 @@ const lineUserId = verified.userId;
     if (offerError) {
       console.error("応募一覧：募集取得エラー", offerError);
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "レッスン募集を取得できませんでした",
@@ -144,7 +151,7 @@ const lineUserId = verified.userId;
     }
 
     if (!offer) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "レッスン募集が見つかりません",
@@ -154,7 +161,7 @@ const lineUserId = verified.userId;
     }
 
     if (offer.performer_id !== currentPerformer.id) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error:
@@ -180,7 +187,7 @@ const lineUserId = verified.userId;
         applicationsError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "応募一覧を取得できませんでした",
@@ -228,7 +235,7 @@ const lineUserId = verified.userId;
           applicantsError
         );
 
-        return NextResponse.json(
+        return privateJson(
           {
             success: false,
             error: "応募者情報を取得できませんでした",
@@ -273,7 +280,7 @@ const lineUserId = verified.userId;
           applicantUsersError
         );
 
-        return NextResponse.json(
+        return privateJson(
           {
             success: false,
             error:
@@ -325,7 +332,7 @@ const lineUserId = verified.userId;
       };
     });
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       offer: {
         id: offer.id,
@@ -339,7 +346,7 @@ const lineUserId = verified.userId;
   } catch (error) {
     console.error("レッスン応募一覧APIエラー", error);
 
-    return NextResponse.json(
+    return privateJson(
       {
         success: false,
         error: "サーバーエラーが発生しました",
@@ -353,6 +360,7 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
+
   try {
     const authorization = request.headers.get("authorization");
 const idToken = authorization?.startsWith("Bearer ")
@@ -360,7 +368,7 @@ const idToken = authorization?.startsWith("Bearer ")
   : "";
 
 if (!idToken) {
-  return NextResponse.json(
+  return privateJson(
     {
       success: false,
       error: "LINEの本人確認情報がありません。再ログインしてください。",
@@ -372,7 +380,7 @@ if (!idToken) {
 const verified = await verifyLineIdToken(idToken);
 
 if (!verified) {
-  return NextResponse.json(
+  return privateJson(
     {
       success: false,
       error: "LINEの本人確認に失敗しました。再ログインしてください。",
@@ -386,7 +394,7 @@ const lineUserId = verified.userId;
     const { id: lessonOfferId } = await context.params;
 
     if (!uuidPattern.test(lessonOfferId)) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "レッスン募集IDが正しくありません",
@@ -403,7 +411,7 @@ const lineUserId = verified.userId;
         : "";
 
     if (message.length > 1000) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "メッセージは1000文字以内で入力してください",
@@ -417,6 +425,7 @@ const lineUserId = verified.userId;
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .maybeSingle();
 
     if (userError) {
@@ -425,7 +434,7 @@ const lineUserId = verified.userId;
         userError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "ユーザー情報の取得に失敗しました",
@@ -435,7 +444,7 @@ const lineUserId = verified.userId;
     }
 
     if (!user) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "ユーザー登録が見つかりません",
@@ -458,7 +467,7 @@ const lineUserId = verified.userId;
         performerError
       );
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: "演奏者プロフィールの取得に失敗しました",
@@ -468,7 +477,7 @@ const lineUserId = verified.userId;
     }
 
     if (!performer) {
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error:
@@ -491,7 +500,7 @@ const lineUserId = verified.userId;
     if (error) {
       console.error("レッスン申し込みRPCエラー:", error);
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error:
@@ -509,7 +518,7 @@ const lineUserId = verified.userId;
             ? data.message
             : "レッスンに申し込めませんでした";
 
-      return NextResponse.json(
+      return privateJson(
         {
           success: false,
           error: errorMessage,
@@ -519,216 +528,11 @@ const lineUserId = verified.userId;
       );
     }
 
-    // 応募が成立したあと、レッスン募集者へLINE通知を送信する。
-    // 通知に失敗しても、応募やコイン精算の結果には影響させない。
-    try {
-      const {
-        data: lessonOffer,
-        error: lessonOfferError,
-      } = await supabase
-        .from("lesson_offers")
-        .select(
-          "id, performer_id, title, lesson_date, start_time, end_time, area"
-        )
-        .eq("id", lessonOfferId)
-        .maybeSingle();
+    // lesson_applications INSERTトリガーが同一transaction内でOutbox登録済み。
+    // ここでは即時配信を試し、失敗分はworkerの再試行へ委ねる。
+    await drainLineNotificationOutbox(supabase, 20);
 
-      if (lessonOfferError) {
-        console.error(
-          "レッスン応募通知：募集情報取得エラー",
-          lessonOfferError
-        );
-      } else if (lessonOffer) {
-        const {
-          data: ownerPerformer,
-          error: ownerPerformerError,
-        } = await supabase
-          .from("performers")
-          .select("user_id")
-          .eq("id", lessonOffer.performer_id)
-          .maybeSingle();
-
-        if (ownerPerformerError) {
-          console.error(
-            "レッスン応募通知：募集者取得エラー",
-            ownerPerformerError
-          );
-        } else if (ownerPerformer?.user_id) {
-          const {
-            data: ownerUser,
-            error: ownerUserError,
-          } = await supabase
-            .from("users")
-            .select("line_user_id")
-            .eq("id", ownerPerformer.user_id)
-            .maybeSingle();
-
-          if (ownerUserError) {
-            console.error(
-              "レッスン応募通知：通知先取得エラー",
-              ownerUserError
-            );
-          } else if (ownerUser?.line_user_id) {
-            const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-            const detailUrl = liffId
-              ? `https://liff.line.me/${liffId}/performer/lesson/${lessonOfferId}`
-              : null;
-
-            const applicantName =
-              performer.name || "演奏者";
-
-            const messageText =
-              `🎹 レッスンに新しい応募がありました\n` +
-              `募集：${lessonOffer.title || "未設定"}\n` +
-              `応募者：${applicantName}\n` +
-              `開催日：${lessonOffer.lesson_date || "未設定"}\n` +
-              `時間：${lessonOffer.start_time || "未設定"} ～ ${lessonOffer.end_time || "未設定"}\n` +
-              `エリア：${lessonOffer.area || "未設定"}\n` +
-              `応募メッセージ：${message || "なし"}`;
-
-            const notificationMessages: LineMessage[] = detailUrl
-              ? [
-                  {
-                    type: "flex",
-                    altText: "🎹 レッスンに新しい応募がありました",
-                    contents: {
-                      type: "bubble",
-                      size: "mega",
-                      header: {
-                        type: "box",
-                        layout: "vertical",
-                        backgroundColor: "#2563EB",
-                        paddingAll: "16px",
-                        contents: [
-                          {
-                            type: "text",
-                            text: "🎹 レッスンに新しい応募",
-                            color: "#FFFFFF",
-                            weight: "bold",
-                            size: "lg",
-                            wrap: true,
-                          },
-                          {
-                            type: "text",
-                            text: "あなたのレッスン募集に応募が届きました",
-                            color: "#DBEAFE",
-                            size: "xs",
-                            wrap: true,
-                            margin: "sm",
-                          },
-                        ],
-                      },
-                      body: {
-                        type: "box",
-                        layout: "vertical",
-                        paddingAll: "16px",
-                        spacing: "md",
-                        contents: [
-                          {
-                            type: "text",
-                            text: "募集タイトル",
-                            size: "xs",
-                            color: "#6B7280",
-                          },
-                          {
-                            type: "text",
-                            text: lessonOffer.title || "未設定",
-                            size: "lg",
-                            weight: "bold",
-                            color: "#111827",
-                            wrap: true,
-                          },
-                          {
-                            type: "separator",
-                          },
-                          {
-                            type: "text",
-                            text: `応募者：${applicantName}`,
-                            size: "md",
-                            weight: "bold",
-                            color: "#111827",
-                            wrap: true,
-                          },
-                          {
-                            type: "text",
-                            text:
-                              `開催日：${lessonOffer.lesson_date || "未設定"}\n` +
-                              `時間：${lessonOffer.start_time || "未設定"} ～ ${lessonOffer.end_time || "未設定"}\n` +
-                              `エリア：${lessonOffer.area || "未設定"}`,
-                            size: "sm",
-                            color: "#374151",
-                            wrap: true,
-                          },
-                          {
-                            type: "text",
-                            text: "応募メッセージ",
-                            size: "xs",
-                            color: "#6B7280",
-                            margin: "md",
-                          },
-                          {
-                            type: "text",
-                            text: message || "メッセージはありません",
-                            size: "sm",
-                            color: "#374151",
-                            wrap: true,
-                          },
-                        ],
-                      },
-                      footer: {
-                        type: "box",
-                        layout: "vertical",
-                        paddingAll: "16px",
-                        contents: [
-                          {
-                            type: "button",
-                            style: "primary",
-                            color: "#2563EB",
-                            action: {
-                              type: "uri",
-                              label: "応募内容を確認する",
-                              uri: detailUrl,
-                            },
-                          },
-                        ],
-                      },
-                    },
-                  },
-                ]
-              : [
-                  {
-                    type: "text",
-                    text: messageText,
-                  },
-                ];
-
-            const notificationResult = await sendLinePushMessage(
-              ownerUser.line_user_id,
-              notificationMessages
-            );
-
-            if (!notificationResult.success) {
-              console.error(
-                "レッスン応募LINE通知の送信エラー:",
-                notificationResult.error
-              );
-            }
-          } else {
-            console.warn(
-              "レッスン募集者のLINEユーザーIDがありません",
-              ownerPerformer.user_id
-            );
-          }
-        }
-      }
-    } catch (notificationError) {
-      console.error(
-        "レッスン応募LINE通知エラー:",
-        notificationError
-      );
-    }
-
-    return NextResponse.json({
+    return privateJson({
       success: true,
       application_id: data.application_id,
       coins_charged: data.coins_charged ?? 0,
@@ -740,7 +544,7 @@ const lineUserId = verified.userId;
   } catch (error) {
     console.error("レッスン申し込みAPIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       {
         success: false,
         error: "サーバーエラーが発生しました",

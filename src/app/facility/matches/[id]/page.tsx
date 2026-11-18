@@ -7,8 +7,6 @@ import liff from "@line/liff";
 
 type Match = {
   id: string;
-  request_id: string;
-  performer_id: string;
   matched_at: string;
   status: string;
   performance_status: "scheduled" | "completed" | "cancelled";
@@ -23,36 +21,33 @@ type Match = {
   completion_method: string | null;
   performance_requests:
     | {
-        id: string;
         title: string;
         description: string | null;
         performance_date: string;
         start_time: string;
         end_time: string;
         area: string | null;
+        venue_address: string | null;
         instruments: string[];
         genres: string[];
         reward: number | null;
         status: string;
-        facility_id: string;
       }
     | Array<{
-        id: string;
         title: string;
         description: string | null;
         performance_date: string;
         start_time: string;
         end_time: string;
         area: string | null;
+        venue_address: string | null;
         instruments: string[];
         genres: string[];
         reward: number | null;
         status: string;
-        facility_id: string;
       }>;
   performers:
     | {
-        id: string;
         name: string | null;
         instruments: string[];
         genres: string[];
@@ -60,18 +55,15 @@ type Match = {
         bio: string | null;
         users:
           | {
-              id: string;
               display_name: string | null;
               picture_url: string | null;
             }
           | Array<{
-              id: string;
               display_name: string | null;
               picture_url: string | null;
             }>;
       }
     | Array<{
-        id: string;
         name: string | null;
         instruments: string[];
         genres: string[];
@@ -79,12 +71,10 @@ type Match = {
         bio: string | null;
         users:
           | {
-              id: string;
               display_name: string | null;
               picture_url: string | null;
             }
           | Array<{
-              id: string;
               display_name: string | null;
               picture_url: string | null;
             }>;
@@ -92,7 +82,6 @@ type Match = {
 };
 
 type Application = {
-  id: string;
   message: string | null;
   status: string;
   created_at: string;
@@ -835,8 +824,13 @@ export default function FacilityMatchDetailPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">場所</p>
+                  <p className="text-sm text-gray-500">開催場所</p>
                   <p>{performanceRequest.area || "未設定"}</p>
+                  {performanceRequest.venue_address && (
+                    <p className="mt-1 text-sm text-gray-600">
+                      {performanceRequest.venue_address}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">報酬</p>

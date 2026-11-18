@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import liff from "@line/liff";
 import AdminAnnouncementPanel from "@/components/AdminAnnouncementPanel";
 import AdminDisputesPanel from "@/components/AdminDisputesPanel";
+import AdminPaymentSettingsPanel from "@/components/AdminPaymentSettingsPanel";
 
 type AdminUser = {
   id: string;
@@ -46,7 +47,8 @@ type AdminTab =
   | "inquiries"
   | "rates"
   | "announcements"
-  | "disputes";
+  | "disputes"
+  | "payments";
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: "不具合・エラー",
@@ -457,7 +459,7 @@ export default function AdminCoinsPage() {
         </header>
 
         <div
-          className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm sm:grid-cols-5"
+          className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-sm sm:grid-cols-3 lg:grid-cols-6"
           role="tablist"
           aria-label="管理機能"
         >
@@ -539,6 +541,24 @@ export default function AdminCoinsPage() {
           <button
             type="button"
             role="tab"
+            aria-selected={activeTab === "payments"}
+            onClick={() => {
+              setActiveTab("payments");
+              setError("");
+              setNotice("");
+            }}
+            className={`rounded-xl px-2 py-3 text-sm font-bold ${
+              activeTab === "payments"
+                ? "bg-black text-white"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            💳 決済設定
+          </button>
+
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeTab === "disputes"}
             onClick={() => {
               setActiveTab("disputes");
@@ -573,7 +593,9 @@ export default function AdminCoinsPage() {
           </div>
         )}
 
-        {activeTab === "disputes" ? (
+        {activeTab === "payments" ? (
+          <AdminPaymentSettingsPanel token={idToken} />
+        ) : activeTab === "disputes" ? (
           <AdminDisputesPanel token={idToken} />
         ) : activeTab === "announcements" ? (
           <AdminAnnouncementPanel token={idToken} />
@@ -909,6 +931,7 @@ type CoinRateDraft = {
   completion_fee_percent: string;
   free_lesson_match_fee_coins: string;
   paid_lesson_fee_percent: string;
+  coin_purchase_yen_per_coin: string;
 };
 
 type CoinRateKey = keyof CoinRateDraft;
@@ -985,6 +1008,16 @@ const COIN_RATE_FIELDS: CoinRateField[] = [
     step: 0.01,
     integer: false,
   },
+  {
+    key: "coin_purchase_yen_per_coin",
+    label: "コイン購入レート",
+    description: "Stripeで購入する際の1コインあたりの価格。変更後の購入にのみ適用",
+    unit: "円 / コイン",
+    min: 1,
+    max: 100000,
+    step: 1,
+    integer: true,
+  },
 ];
 
 const DEFAULT_COIN_RATE_DRAFT: CoinRateDraft = {
@@ -994,6 +1027,7 @@ const DEFAULT_COIN_RATE_DRAFT: CoinRateDraft = {
   completion_fee_percent: "1",
   free_lesson_match_fee_coins: "5",
   paid_lesson_fee_percent: "1",
+  coin_purchase_yen_per_coin: "10",
 };
 
 type CoinRateRecord = CoinRateDraft & {
@@ -1050,6 +1084,7 @@ function CoinRateSettingsPanel({ token }: { token: string }) {
           saved.free_lesson_match_fee_coins
         ),
         paid_lesson_fee_percent: String(saved.paid_lesson_fee_percent),
+        coin_purchase_yen_per_coin: String(saved.coin_purchase_yen_per_coin ?? 10),
       });
 
       setUpdatedAt(saved.updated_at || "");
@@ -1121,7 +1156,8 @@ function CoinRateSettingsPanel({ token }: { token: string }) {
         `成立手数料：${numericRates.match_fee_coins} コイン\n` +
         `完了手数料率：${numericRates.completion_fee_percent}%\n` +
         `無料レッスン：${numericRates.free_lesson_match_fee_coins} コイン / 人\n` +
-        `有料レッスン：${numericRates.paid_lesson_fee_percent}%\n\n` +
+        `有料レッスン：${numericRates.paid_lesson_fee_percent}%\n` +
+        `コイン購入レート：1コイン ${numericRates.coin_purchase_yen_per_coin}円\n\n` +
         "この内容で保存しますか？"
     );
 
@@ -1162,11 +1198,12 @@ function CoinRateSettingsPanel({ token }: { token: string }) {
           saved.free_lesson_match_fee_coins
         ),
         paid_lesson_fee_percent: String(saved.paid_lesson_fee_percent),
+        coin_purchase_yen_per_coin: String(saved.coin_purchase_yen_per_coin ?? 10),
       });
 
       setUpdatedAt(saved.updated_at || "");
       setNotice(
-        "設定を保存しました。実際の消費・返金への反映確認は、DB関数の更新後に行います。"
+        "設定を保存しました。コイン購入レートは今後の購入に適用され、購入済み分には影響しません。"
       );
     } catch (err) {
       setError(

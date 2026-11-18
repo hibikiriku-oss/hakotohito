@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { LESSON_FEATURE_ENABLED } from "@/lib/feature-flags";
+import LessonFeatureNotice from "@/components/LessonFeatureNotice";
 import liff from "@line/liff";
 
 const prefectures = [
@@ -394,6 +396,8 @@ const response = await fetch(`/api/lesson-offers/${offerId}`, {
       setLoading(false);
     }
   }
+
+  if (!LESSON_FEATURE_ENABLED) return <LessonFeatureNotice />;
 
   if (errorMessage && !loaded) {
     return (

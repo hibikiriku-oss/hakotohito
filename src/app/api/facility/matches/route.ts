@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -90,28 +91,24 @@ export async function GET(request: NextRequest) {
       .from("matches")
       .select(`
         id,
-        request_id,
-        performer_id,
         matched_at,
         status,
         performance_status,
         completed_at,
         performance_requests!inner (
-          id,
           title,
           description,
           performance_date,
           start_time,
           end_time,
           area,
+          venue_address,
           instruments,
           genres,
           reward,
-          status,
-          facility_id
+          status
         ),
         performers (
-          id,
           name,
           instruments,
           genres,

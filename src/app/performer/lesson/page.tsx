@@ -3,6 +3,7 @@
 import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { LESSON_FEATURE_ENABLED } from "@/lib/feature-flags";
 import liff from "@line/liff";
 
 type Performer = {
@@ -282,15 +283,23 @@ export default function LessonListPage() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={() => router.push("/performer/lesson/new")}
-              className="shrink-0 bg-black text-white rounded-xl px-3 py-3 text-sm font-bold"
-            >
-              ＋ 募集する
-            </button>
+            {LESSON_FEATURE_ENABLED && (
+              <button
+                type="button"
+                onClick={() => router.push("/performer/lesson/new")}
+                className="shrink-0 bg-black text-white rounded-xl px-3 py-3 text-sm font-bold"
+              >
+                ＋ 募集する
+              </button>
+            )}
           </div>
         </header>
+
+        {!LESSON_FEATURE_ENABLED && (
+          <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-900">
+            レッスン機能は現在停止中です。募集・編集・応募はできません。
+          </div>
+        )}
 
         <section className="bg-white border border-gray-200 rounded-2xl p-4 mb-5">
           <h2 className="font-bold text-gray-900 mb-3">
@@ -426,13 +435,15 @@ export default function LessonListPage() {
             <p className="text-sm text-gray-500 mt-2">
               検索条件を変えるか、新しいレッスン募集を登録してください。
             </p>
-            <button
-              type="button"
-              onClick={() => router.push("/performer/lesson/new")}
-              className="mt-4 bg-black text-white rounded-xl px-4 py-3 text-sm font-bold"
-            >
-              レッスンを募集する
-            </button>
+            {LESSON_FEATURE_ENABLED && (
+              <button
+                type="button"
+                onClick={() => router.push("/performer/lesson/new")}
+                className="mt-4 bg-black text-white rounded-xl px-4 py-3 text-sm font-bold"
+              >
+                レッスンを募集する
+              </button>
+            )}
           </div>
         )}
 
@@ -565,7 +576,7 @@ export default function LessonListPage() {
                     募集の詳細を見る →
                   </button>
 
-                  {!offer.is_mine && (
+                  {!offer.is_mine && LESSON_FEATURE_ENABLED && (
                     <div className="mt-5 border-t border-gray-100 pt-4">
                       <label
                         htmlFor={`lesson-message-${offer.id}`}
@@ -586,16 +597,13 @@ export default function LessonListPage() {
                         rows={2}
                         className={`${inputClass} resize-none`}
                       />
-
                       <button
                         type="button"
                         onClick={() => handleApply(offer)}
                         disabled={applyingId === offer.id || !lineUserId}
                         className="w-full mt-3 bg-black text-white rounded-xl py-3 font-bold disabled:bg-gray-300"
                       >
-                        {applyingId === offer.id
-                          ? "申し込み中..."
-                          : "このレッスンに申し込む"}
+                        {applyingId === offer.id ? "申し込み中..." : "このレッスンに申し込む"}
                       </button>
                     </div>
                   )}

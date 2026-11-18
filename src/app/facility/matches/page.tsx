@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 
 type User = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
   avatar_type: "line" | "emoji" | null;
@@ -13,7 +12,6 @@ type User = {
 };
 
 type Performer = {
-  id: string;
   name: string | null;
   instruments: string[];
   genres: string[];
@@ -23,13 +21,13 @@ type Performer = {
 };
 
 type PerformanceRequest = {
-  id: string;
   title: string;
   description: string | null;
   performance_date: string;
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -38,8 +36,6 @@ type PerformanceRequest = {
 
 type Match = {
   id: string;
-  request_id: string;
-  performer_id: string;
   matched_at: string;
   status: string;
   performance_status: string;
@@ -327,10 +323,13 @@ export default function FacilityMatchesPage() {
           </p>
         </div>
 
-        {request.area && (
+        {(request.area || request.venue_address) && (
           <div className="mt-4">
-            <p className="text-sm text-gray-500">場所</p>
-            <p className="mt-1">📍 {request.area}</p>
+            <p className="text-sm text-gray-500">開催場所</p>
+            {request.area && <p className="mt-1">📍 {request.area}</p>}
+            {request.venue_address && (
+              <p className="mt-1 text-sm text-gray-600">{request.venue_address}</p>
+            )}
           </div>
         )}
 

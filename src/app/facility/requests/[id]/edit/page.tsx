@@ -13,6 +13,7 @@ type PerformanceRequest = {
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -62,6 +63,8 @@ export default function FacilityRequestEditPage() {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [area, setArea] = useState("");
+  const [venueAddress, setVenueAddress] = useState("");
+  const [registeredFacilityAddress, setRegisteredFacilityAddress] = useState("");
   const [instruments, setInstruments] = useState("");
   const [genres, setGenres] = useState("");
   const [reward, setReward] = useState("");
@@ -133,6 +136,23 @@ export default function FacilityRequestEditPage() {
 
       setRequest(loadedRequest);
 
+      try {
+        const facilityResponse = await fetch("/api/facilities", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          cache: "no-store",
+        });
+        if (facilityResponse.ok) {
+          const facilityData = await facilityResponse.json();
+          setRegisteredFacilityAddress(
+            typeof facilityData.facility?.address === "string"
+              ? facilityData.facility.address
+              : ""
+          );
+        }
+      } catch {
+        // 住所のコピー補助が使えない場合も、開催場所住所は手入力できる。
+      }
+
       if (loadedRequest.status !== "open") {
         setError(
           "マッチング済みまたは募集終了のオファーは編集できません。"
@@ -157,6 +177,7 @@ export default function FacilityRequestEditPage() {
           : ""
       );
       setArea(loadedRequest.area || "");
+      setVenueAddress(loadedRequest.venue_address || "");
       setInstruments(loadedRequest.instruments?.join(", ") || "");
       setGenres(loadedRequest.genres?.join(", ") || "");
       setReward(
@@ -337,6 +358,7 @@ export default function FacilityRequestEditPage() {
             start_time: startTime,
             end_time: endTime,
             area: area.trim(),
+            venue_address: venueAddress.trim() || null,
             instruments: convertToArray(instruments),
             genres: convertToArray(genres),
             reward:
@@ -549,6 +571,35 @@ export default function FacilityRequestEditPage() {
                 placeholder="例：名古屋市"
                 className={inputClass}
               />
+            </div>
+
+            <div className="mt-5">
+              <label className="font-bold text-sm text-gray-800 mb-2 block">
+                開催場所の住所（任意）
+              </label>
+              <p className="text-xs text-amber-700 leading-relaxed mb-3">
+                入力した住所は、アプリ内のログイン済み演奏者に公開されます。施設登録住所は自動では公開されません。公開してよい開催場所の住所だけを入力してください。
+              </p>
+              {registeredFacilityAddress && (
+                <button
+                  type="button"
+                  onClick={() => setVenueAddress(registeredFacilityAddress)}
+                  className="mb-3 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700"
+                >
+                  施設登録住所を開催場所に使用
+                </button>
+              )}
+              <textarea
+                value={venueAddress}
+                onChange={(e) => setVenueAddress(e.target.value)}
+                maxLength={500}
+                rows={3}
+                placeholder="公開する開催場所の住所を入力してください"
+                className={`${inputClass} resize-y`}
+              />
+              <p className="text-xs text-gray-400 mt-1 text-right">
+                {venueAddress.length}/500文字
+              </p>
             </div>
           </section>
 

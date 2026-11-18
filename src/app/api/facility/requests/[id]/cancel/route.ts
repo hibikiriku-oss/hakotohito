@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
 const UUID_PATTERN =
@@ -55,8 +55,9 @@ export async function POST(
 
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id, line_user_id, display_name")
+      .select("id, account_status, line_user_id, display_name")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -105,34 +106,11 @@ export async function POST(
       );
     }
 
-    // キャンセル前に、今回の全体キャンセルで通知する演奏者を取得
-    const { data: matches, error: matchesError } = await supabase
-      .from("matches")
-      .select(`
-        performer_id,
-        performers (
-          users (
-            line_user_id
-          )
-        )
-      `)
-      .eq("request_id", requestId)
-      .eq("status", "active")
-      .neq("performance_status", "cancelled");
-
-    if (matchesError) {
-      console.error("通知対象取得エラー:", matchesError);
-
-      return NextResponse.json(
-        { error: "通知対象の取得に失敗したため、キャンセル処理を中止しました" },
-        { status: 500 }
-      );
-    }
-
     const { data: cancelResult, error: cancelError } =
-      await supabase.rpc("cancel_event_request_with_refund", {
+      await supabase.rpc("cancel_event_request_with_notification_outbox", {
         p_request_id: requestId,
         p_facility_id: facility.id,
+        p_actor_user_id: user.id,
       });
 
     if (cancelError) {
@@ -148,10 +126,17 @@ export async function POST(
       success?: boolean;
       errorMessage?: string | null;
       cancelledMatches?: number;
+      cancelledMatchIds?: string[];
       refundAmount?: number;
       initialFeeRefund?: number;
       directInviteRefund?: number;
       balanceAfter?: number | null;
+      pendingDirectInviteNotifications?: Array<{
+        lineUserId: string;
+        requestTitle?: string | null;
+        performerName?: string | null;
+        refundAmount?: number;
+      }>;
     } | null;
 
     if (!result?.success) {
@@ -165,55 +150,9 @@ export async function POST(
       );
     }
 
-    const notifiedLineUserIds = new Set<string>();
-    let notificationSent = 0;
-
-    for (const match of matches ?? []) {
-      const performer = Array.isArray(match.performers)
-        ? match.performers[0]
-        : match.performers;
-
-      const performerUsers = performer?.users;
-      const performerUser = Array.isArray(performerUsers)
-        ? performerUsers[0]
-        : performerUsers;
-
-      const performerLineUserId = performerUser?.line_user_id;
-
-      if (
-        !performerLineUserId ||
-        notifiedLineUserIds.has(performerLineUserId)
-      ) {
-        continue;
-      }
-
-      notifiedLineUserIds.add(performerLineUserId);
-
-      try {
-        const lineResult = await sendLinePushMessage(
-          performerLineUserId,
-          [
-            {
-              type: "text",
-              text:
-                `「${performanceRequest.title}」は施設によってイベント全体がキャンセルされました。` +
-                "詳細については施設へご確認ください。",
-            },
-          ]
-        );
-
-        if (lineResult.success) {
-          notificationSent++;
-        } else {
-          console.error(
-            "イベントキャンセルLINE通知エラー:",
-            lineResult.error
-          );
-        }
-      } catch (lineError) {
-        console.error("イベントキャンセルLINE通知例外:", lineError);
-      }
-    }
+    // 全体キャンセル・返金と通知Outbox登録はwrapper RPC内で同一transactionに確定済み。
+    const notificationDelivery = await drainLineNotificationOutbox(supabase, 100);
+    const notificationSent = notificationDelivery.sent;
 
     return NextResponse.json({
       success: true,

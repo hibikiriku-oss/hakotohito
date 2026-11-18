@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -17,7 +23,7 @@ export async function GET(
     const idToken = tokenMatch?.[1]?.trim();
 
     if (!idToken) {
-      return NextResponse.json(
+      return privateJson(
         { error: "LINEの本人確認情報がありません。再ログインしてください。" },
         { status: 401 }
       );
@@ -26,7 +32,7 @@ export async function GET(
     const verified = await verifyLineIdToken(idToken);
 
     if (!verified) {
-      return NextResponse.json(
+      return privateJson(
         { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
         { status: 401 }
       );
@@ -38,12 +44,13 @@ export async function GET(
       .from("users")
       .select("id")
       .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザーが見つかりません" },
         { status: 404 }
       );
@@ -59,7 +66,7 @@ export async function GET(
     if (facilityError || !facility) {
       console.error("施設取得エラー:", facilityError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "施設プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -69,9 +76,22 @@ export async function GET(
     const { data: rawMatch, error: matchError } = await supabase
       .from("matches")
       .select(`
-        *,
+        id,
+        request_id,
+        performer_id,
+        matched_at,
+        status,
+        performance_status,
+        completed_at,
+        performer_completion_reported_at,
+        facility_completion_reported_at,
+        completion_disputed_at,
+        completion_disputed_by,
+        completion_dispute_reason,
+        completion_dispute_facility_agreed_at,
+        completion_dispute_performer_agreed_at,
+        completion_method,
         performance_requests (
-          id,
           facility_id,
           title,
           description,
@@ -79,20 +99,19 @@ export async function GET(
           start_time,
           end_time,
           area,
+          venue_address,
           instruments,
           genres,
           reward,
           status
         ),
         performers (
-          id,
           name,
           instruments,
           genres,
           area,
           bio,
           users (
-            id,
             display_name,
             picture_url,
             avatar_type,
@@ -106,7 +125,7 @@ export async function GET(
     if (matchError || !rawMatch) {
       console.error("マッチング取得エラー:", matchError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "マッチング情報が見つかりません" },
         { status: 404 }
       );
@@ -138,7 +157,7 @@ export async function GET(
       : match.performance_requests;
 
     if (!performanceRequest) {
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏案件が見つかりません" },
         { status: 404 }
       );
@@ -146,7 +165,7 @@ export async function GET(
 
     // 施設本人の案件か確認
     if (performanceRequest.facility_id !== facility.id) {
-      return NextResponse.json(
+      return privateJson(
         { error: "このマッチングを閲覧する権限がありません" },
         { status: 403 }
       );
@@ -156,7 +175,7 @@ export async function GET(
     const { data: application, error: applicationError } =
       await supabase
         .from("applications")
-        .select("id, message, status, created_at")
+        .select("message, status, created_at")
         .eq("request_id", match.request_id)
         .eq("performer_id", match.performer_id)
         .maybeSingle();
@@ -165,14 +184,58 @@ export async function GET(
       console.error("応募情報取得エラー:", applicationError);
     }
 
-    return NextResponse.json({
-      match,
+    const {
+      request_id: _requestId,
+      performer_id: _performerId,
+      ...publicMatchFields
+    } = match;
+
+    const {
+      id: _performanceRequestId,
+      facility_id: _facilityId,
+      ...publicPerformanceRequest
+    } = performanceRequest as Record<string, unknown>;
+
+    const rawPerformer = Array.isArray(match.performers)
+      ? match.performers[0]
+      : match.performers;
+    let publicPerformer: Record<string, unknown> | null = null;
+
+    if (rawPerformer && typeof rawPerformer === "object") {
+      const {
+        id: _performerProfileId,
+        users: rawUsers,
+        ...publicPerformerFields
+      } = rawPerformer as Record<string, unknown>;
+      const publicUsers = Array.isArray(rawUsers)
+        ? rawUsers.map((rawUser) => {
+            const { id: _userId, ...publicUser } = rawUser as Record<string, unknown>;
+            return publicUser;
+          })
+        : rawUsers && typeof rawUsers === "object"
+          ? (() => {
+              const { id: _userId, ...publicUser } = rawUsers as Record<string, unknown>;
+              return publicUser;
+            })()
+          : rawUsers;
+      publicPerformer = {
+        ...publicPerformerFields,
+        users: publicUsers,
+      };
+    }
+
+    return privateJson({
+      match: {
+        ...publicMatchFields,
+        performance_requests: publicPerformanceRequest,
+        performers: publicPerformer,
+      },
       application: application || null,
     });
   } catch (error) {
     console.error("施設マッチング詳細APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラー" },
       { status: 500 }
     );
