@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
+
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,33 +21,52 @@ export async function GET(
     const { id } = await context.params;
 
     if (!id) {
-      return NextResponse.json(
+      return privateJson(
         { error: "依頼IDが指定されていません" },
         { status: 400 }
       );
     }
 
-    // LINEユーザーIDを取得
-    const lineUserId = request.headers.get("x-line-user-id");
+    // LINE IDトークンを検証
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザーIDが取得できません" },
+    if (!idToken) {
+      return privateJson(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
         { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return privateJson(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     // LINEユーザーからユーザー情報を取得
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id, line_user_id, display_name, picture_url, user_type")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
@@ -56,7 +82,7 @@ export async function GET(
     if (performerError || !performer) {
       console.error("演奏者取得エラー:", performerError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者情報が見つかりません" },
         { status: 404 }
       );
@@ -81,6 +107,7 @@ export async function GET(
           start_time,
           end_time,
           area,
+          venue_address,
           instruments,
           genres,
           reward,
@@ -88,10 +115,8 @@ export async function GET(
           facility_id,
           facilities (
             id,
-            user_id,
             name,
             facility_type,
-            address,
             description
           )
         )
@@ -104,26 +129,62 @@ export async function GET(
     if (applicationError) {
       console.error("依頼取得エラー:", applicationError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "依頼情報の取得に失敗しました" },
         { status: 500 }
       );
     }
 
     if (!application) {
-      return NextResponse.json(
+      return privateJson(
         { error: "依頼が見つかりません" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({
-      invitation: application,
+    const {
+      request_id: _requestId,
+      performer_id: _performerId,
+      performance_requests: rawPerformanceRequest,
+      ...publicApplication
+    } = application as any;
+
+    const performanceRequest = Array.isArray(rawPerformanceRequest)
+      ? rawPerformanceRequest[0]
+      : rawPerformanceRequest;
+
+    let publicPerformanceRequest = performanceRequest;
+    if (performanceRequest && typeof performanceRequest === "object") {
+      const {
+        id: _performanceRequestId,
+        facility_id: _facilityId,
+        facilities: rawFacilities,
+        ...requestFields
+      } = performanceRequest;
+      const facility = Array.isArray(rawFacilities)
+        ? rawFacilities[0]
+        : rawFacilities;
+      let publicFacility = facility;
+      if (facility && typeof facility === "object") {
+        const { id: _facilityId, ...facilityFields } = facility;
+        publicFacility = facilityFields;
+      }
+      publicPerformanceRequest = {
+        ...requestFields,
+        facilities: publicFacility,
+      };
+    }
+
+    return privateJson({
+      invitation: {
+        ...publicApplication,
+        performance_requests: publicPerformanceRequest,
+      },
     });
   } catch (error) {
     console.error("演奏依頼詳細APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "依頼情報の取得中にエラーが発生しました" },
       { status: 500 }
     );

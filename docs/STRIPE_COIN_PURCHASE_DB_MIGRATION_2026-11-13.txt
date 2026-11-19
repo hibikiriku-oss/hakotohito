@@ -1,0 +1,69 @@
+Hakotohito Stripe coin-purchase-only DB migration 004
+Date: 2026-11-13
+
+Files:
+- 20261113_004_stripe_coin_purchase_only.sql
+
+Purpose:
+This is the single coin-purchase-only DB foundation for the limited release.
+It supersedes (do not run) 20261112_002_stripe_payment_foundation.sql and
+20261112_003_stripe_coin_purchase_hardening.sql.
+
+Existing tables users, coin_rate_settings, and coin_transactions are preserved.
+The migration adds the coin purchase rate, payment feature switch, coin-only
+payment orders, Stripe webhook event log, payment incident records, incident
+action history, and the server-only RPCs for atomic fulfillment and admin
+incident handling.
+
+Important behavior:
+- Checkout fulfillment credits coins atomically and idempotently.
+- A paid order for a withdrawn account is held as paid_review.
+- A refund/dispute incident recorded before Checkout fulfillment causes the
+  paid order to be held as paid_review instead of automatically crediting coins.
+- Refund/dispute events received after coin credit are recorded for admin review.
+  This migration and webhook do NOT automatically deduct coins or issue refunds.
+- Admin incident actions (under_review/resolved/dismissed) are stored in an
+  append-only action history table.
+- Only service_role can access the new tables and execute the RPCs; app routes
+  must enforce requireAdmin before calling the incident-management RPC.
+
+Webhook events to enable in Stripe for this source version:
+- checkout.session.completed
+- checkout.session.async_payment_succeeded
+- checkout.session.expired
+- checkout.session.async_payment_failed
+- charge.refunded
+- refund.created
+- refund.updated
+- refund.failed
+- charge.dispute.created
+- charge.dispute.updated
+- charge.dispute.closed
+- charge.dispute.funds_withdrawn
+- charge.dispute.funds_reinstated
+
+Apply instructions:
+1. Confirm the current DB is still in the preflight state this migration expects.
+2. Do not apply 002 or 003.
+3. Review this SQL and take a fresh backup before application.
+4. Apply this file once, as a single transaction, in Supabase SQL Editor.
+5. Verify the created tables, function signatures, RLS, grants, and service_role
+   execution rights before enabling coin purchases.
+
+This artifact has NOT been applied to Supabase. No live DB, GitHub, or Vercel
+changes were made. Build/lint/test/local checks were not run per user instruction.
+
+Still required before production:
+- Stripe test-mode end-to-end tests, including duplicate/reordered webhooks,
+  partial/multiple refunds, disputes, withdrawn-account payment, and admin review.
+- Confirm the exact event payloads delivered by the configured Stripe account.
+- Final legal review of prepaid-payment treatment, terms, and the Act on Specified
+  Commercial Transactions disclosure.
+
+
+Additional verification / recovery files in the DB package:
+- 20261113_004_stripe_coin_purchase_postflight.sql: read-only verification to
+  run only after migration 004 has been applied.
+- 20261113_004_STRIPE_DB_ROLLBACK_README.md: safe containment and recovery
+  guidance. No destructive rollback SQL is supplied because financial/audit
+  records must not be dropped blindly.

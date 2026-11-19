@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(
   request: NextRequest,
@@ -12,16 +16,36 @@ export async function POST(
 ) {
   try {
     const { id: matchId } = await params;
-    const lineUserId = request.headers.get("x-line-user-id");
 
-    if (!lineUserId) {
+    if (!UUID_PATTERN.test(matchId)) {
       return NextResponse.json(
-        { error: "LINEユーザーIDがありません" },
+        { error: "マッチングIDが不正です" },
+        { status: 400 }
+      );
+    }
+
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
+
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
         { status: 401 }
       );
     }
 
-    let body: { reason?: unknown };
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
+
+    let body: unknown;
 
     try {
       body = await request.json();
@@ -33,7 +57,12 @@ export async function POST(
     }
 
     const reason =
-      typeof body.reason === "string" ? body.reason.trim() : "";
+      typeof body === "object" &&
+      body !== null &&
+      "reason" in body &&
+      typeof body.reason === "string"
+        ? body.reason.trim()
+        : "";
 
     if (!reason) {
       return NextResponse.json(
@@ -53,6 +82,7 @@ export async function POST(
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -75,6 +105,7 @@ export async function POST(
       );
     }
 
+    // マッチングを取得
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
@@ -82,17 +113,61 @@ export async function POST(
         status,
         performance_status,
         performer_id,
+        band_id,
         completion_disputed_at
       `)
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
-      .single();
+      .maybeSingle();
 
-    if (matchError || !match) {
+    if (matchError) {
+      console.error("異議申し立て対象の取得エラー:", matchError);
+
+      return NextResponse.json(
+        { error: "マッチング情報の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    if (!match) {
       return NextResponse.json(
         { error: "マッチングが見つかりません" },
         { status: 404 }
       );
+    }
+
+    if (match.band_id) {
+      // バンドの場合、現在のアクティブなリーダーだけが申し立て可能
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンド申し立て権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドの異議申し立てはリーダーのみ行えます" },
+          { status: 403 }
+        );
+      }
+    } else {
+      // 個人マッチングは本人だけが申し立て可能
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、操作する権限がありません" },
+          { status: 404 }
+        );
+      }
     }
 
     if (match.status !== "active") {
@@ -119,32 +194,58 @@ export async function POST(
       );
     }
 
-    const { data: updatedRows, error: updateError } = await supabase
-      .from("matches")
-      .update({
-        completion_disputed_at: new Date().toISOString(),
-        completion_disputed_by: "performer",
-        completion_dispute_reason: reason,
-      })
-      .eq("id", matchId)
-      .eq("performer_id", performer.id)
-      .eq("status", "active")
-      .eq("performance_status", match.performance_status)
-      .is("completion_disputed_at", null)
-      .select("id");
+    // matchesの更新と管理者対応案件の作成をDB側で一括実行
+    const { data: caseId, error: disputeError } = await supabase.rpc(
+      "register_completion_dispute",
+      {
+        p_match_id: matchId,
+        p_disputed_by: "performer",
+        p_reason: reason,
+        p_user_id: user.id,
+      }
+    );
 
-    if (updateError) {
-      console.error("演奏者側の異議申し立てエラー:", updateError);
+    if (disputeError) {
+      console.error("演奏者側の異議申し立てエラー:", disputeError);
+
+      const errorMessage = disputeError.message ?? "";
+
+      if (
+        errorMessage.includes("Dispute already exists") ||
+        errorMessage.includes("duplicate key") ||
+        errorMessage.includes("idx_dispute_admin_cases_one_open_per_match")
+      ) {
+        return NextResponse.json(
+          { error: "この演奏にはすでに異議申し立てがあります" },
+          { status: 409 }
+        );
+      }
+
+      if (
+        errorMessage.includes("Match is not active") ||
+        errorMessage.includes("already completed or cancelled")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "演奏状況が変更されています。画面を再読み込みしてください",
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         { error: "異議申し立ての登録に失敗しました" },
         { status: 500 }
       );
     }
 
-    if (!updatedRows || updatedRows.length === 0) {
+    if (!caseId) {
+      console.error("異議申し立ての管理者案件IDが返されませんでした");
+
       return NextResponse.json(
-        { error: "演奏状況が変更されています。画面を再読み込みしてください" },
-        { status: 409 }
+        { error: "異議申し立ての登録に失敗しました" },
+        { status: 500 }
       );
     }
 
@@ -154,6 +255,7 @@ export async function POST(
     });
   } catch (error) {
     console.error("演奏者側の異議申し立てAPIエラー:", error);
+
     return NextResponse.json(
       { error: "異議申し立ての処理に失敗しました" },
       { status: 500 }

@@ -1,27 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
-const supabaseUrl =
-  process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error(
-    "Supabaseの環境変数が設定されていません"
-  );
+  throw new Error("Supabase environment variables are not configured");
 }
 
-const supabase = createClient(
-  supabaseUrl,
-  supabaseKey
-);
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const noStoreHeaders = {
+  "Cache-Control": "no-store",
+};
 
 type RouteContext = {
-  params: Promise<{
-    id: string;
-  }>;
+  params: Promise<{ id: string }>;
 };
 
 export async function GET(
@@ -29,173 +24,190 @@ export async function GET(
   context: RouteContext
 ) {
   try {
+    // LINEログイン確認
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice(7)
+      : null;
+
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "ログインが必要です" },
+        { status: 401, headers: noStoreHeaders }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error:
+            "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401, headers: noStoreHeaders }
+      );
+    }
+
+    const { data: viewer, error: viewerError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
+      .maybeSingle();
+
+    if (viewerError) {
+      console.error("Viewer account lookup failed:", viewerError.code ?? "UNKNOWN");
+      return NextResponse.json(
+        { error: "ユーザー情報の確認に失敗しました" },
+        { status: 500, headers: noStoreHeaders }
+      );
+    }
+
+    if (!viewer) {
+      return NextResponse.json(
+        { error: "有効なユーザーとして認証できません" },
+        { status: 403, headers: noStoreHeaders }
+      );
+    }
+
     const { id } = await context.params;
 
     if (!id) {
       return NextResponse.json(
-        {
-          error: "演奏者IDが指定されていません",
-        },
-        { status: 400 }
+        { error: "演奏者IDが指定されていません" },
+        { status: 400, headers: noStoreHeaders }
       );
     }
 
-    // ==============================
-    // 演奏者取得
-    // ==============================
-
-    const {
-      data: performer,
-      error: performerError,
-    } = await supabase
+    const { data: performer, error: performerError } = await supabase
       .from("performers")
-      .select("id, user_id, name")
+      .select("id, user_id, name, users!inner(id)")
       .eq("id", id)
-      .single();
+      .eq("users.account_status", "active")
+      .maybeSingle();
 
-    if (performerError || !performer) {
-      console.error(
-        "演奏者取得エラー:",
-        performerError
-      );
-
+    if (performerError) {
+      console.error("Performer lookup failed:", performerError);
       return NextResponse.json(
-        {
-          error: "演奏者が見つかりません",
-        },
-        { status: 404 }
+        { error: "演奏者情報の取得に失敗しました" },
+        { status: 500, headers: noStoreHeaders }
       );
     }
 
-    // ==============================
-    // 評価取得
-    // ==============================
-
-    const {
-      data: reviews,
-      error: reviewsError,
-    } = await supabase
-      .from("reviews")
-      .select(
-        "id, rating, comment, created_at, reviewer_id"
-      )
-      .eq("reviewee_id", performer.user_id)
-      .order("created_at", {
-        ascending: false,
-      });
-
-    if (reviewsError) {
-      console.error(
-        "評価取得エラー:",
-        reviewsError
-      );
-
+    if (!performer) {
       return NextResponse.json(
-        {
-          error: "評価の取得に失敗しました",
-        },
-        { status: 500 }
+        { error: "演奏者が見つかりません" },
+        { status: 404, headers: noStoreHeaders }
       );
     }
 
-    const reviewList = reviews || [];
+    // 完了済みの演奏に限定する
+    const { data: completedMatches, error: matchesError } =
+      await supabase
+        .from("matches")
+        .select("id")
+        .eq("performer_id", performer.id)
+        .eq("performance_status", "completed")
+        .not("completed_at", "is", null);
 
-    // ==============================
-    // 平均評価
-    // ==============================
+    if (matchesError) {
+      console.error("Completed matches lookup failed:", matchesError);
+      return NextResponse.json(
+        { error: "レビュー情報の取得に失敗しました" },
+        { status: 500, headers: noStoreHeaders }
+      );
+    }
 
-    const reviewCount = reviewList.length;
-
-    const averageRating =
-      reviewCount > 0
-        ? reviewList.reduce(
-            (total, review) =>
-              total + review.rating,
-            0
-          ) / reviewCount
-        : 0;
-
-    // ==============================
-    // 評価者の表示名取得
-    // ==============================
-
-    const reviewerIds = Array.from(
-      new Set(
-        reviewList.map(
-          (review) => review.reviewer_id
-        )
-      )
+    const completedMatchIds = (completedMatches ?? []).map(
+      (match) => match.id
     );
 
-    let reviewerMap: Record<
-      string,
-      string
-    > = {};
+    let reviewList: {
+      id: string;
+      rating: number;
+      comment: string | null;
+      created_at: string;
+      reviewer_id: string;
+    }[] = [];
+
+    if (completedMatchIds.length > 0) {
+      const { data: reviews, error: reviewsError } =
+        await supabase
+          .from("reviews")
+          .select("id, match_id, rating, comment, created_at, reviewer_id")
+          .eq("reviewee_id", performer.user_id)
+          .in("match_id", completedMatchIds)
+          .order("created_at", { ascending: false });
+
+      if (reviewsError) {
+        console.error("Reviews lookup failed:", reviewsError);
+        return NextResponse.json(
+          { error: "レビュー情報の取得に失敗しました" },
+          { status: 500, headers: noStoreHeaders }
+        );
+      }
+
+      reviewList = reviews ?? [];
+    }
+
+    const reviewCount = reviewList.length;
+    const averageRating =
+      reviewCount > 0
+        ? reviewList.reduce((total, review) => total + review.rating, 0) /
+          reviewCount
+        : 0;
+
+    const reviewerIds = Array.from(
+      new Set(reviewList.map((review) => review.reviewer_id))
+    );
+
+    let reviewerMap: Record<string, string> = {};
 
     if (reviewerIds.length > 0) {
-      const {
-        data: reviewers,
-        error: reviewersError,
-      } = await supabase
-        .from("users")
-        .select("id, display_name")
-        .in("id", reviewerIds);
+      const { data: reviewers, error: reviewersError } =
+        await supabase
+          .from("users")
+          .select("id, display_name")
+          .in("id", reviewerIds);
 
       if (reviewersError) {
-        console.error(
-          "評価者取得エラー:",
-          reviewersError
-        );
+        console.error("Reviewer lookup failed:", reviewersError);
       } else {
         reviewerMap = Object.fromEntries(
-          (reviewers || []).map(
-            (reviewer) => [
-              reviewer.id,
-              reviewer.display_name ||
-                "匿名ユーザー",
-            ]
-          )
+          (reviewers ?? []).map((reviewer) => [
+            reviewer.id,
+            reviewer.display_name || "匿名ユーザー",
+          ])
         );
       }
     }
 
-    // ==============================
-    // レスポンス
-    // ==============================
-
-    const formattedReviews =
-      reviewList.map((review) => ({
-        id: review.id,
-        rating: review.rating,
-        comment: review.comment,
-        created_at: review.created_at,
-        reviewer_name:
-          reviewerMap[review.reviewer_id] ||
-          "匿名ユーザー",
-      }));
-
-    return NextResponse.json({
-      performer: {
-        id: performer.id,
-        name: performer.name,
-      },
-      average_rating:
-        Math.round(averageRating * 10) / 10,
-      review_count: reviewCount,
-      reviews: formattedReviews,
-    });
-
-  } catch (error) {
-    console.error(
-      "演奏者評価APIエラー:",
-      error
-    );
+    const formattedReviews = reviewList.map((review) => ({
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment,
+      created_at: review.created_at,
+      reviewer_name: reviewerMap[review.reviewer_id] || "匿名ユーザー",
+    }));
 
     return NextResponse.json(
       {
-        error: "評価情報の取得に失敗しました",
+        performer: {
+          id: performer.id,
+          name: performer.name,
+        },
+        average_rating: Math.round(averageRating * 10) / 10,
+        review_count: reviewCount,
+        reviews: formattedReviews,
       },
-      { status: 500 }
+      { headers: noStoreHeaders }
+    );
+  } catch (error) {
+    console.error("Performer reviews API error:", error);
+    return NextResponse.json(
+      { error: "レビュー情報の取得に失敗しました" },
+      { status: 500, headers: noStoreHeaders }
     );
   }
 }

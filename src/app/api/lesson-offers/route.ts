@@ -1,6 +1,6 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,6 +68,7 @@ async function getCurrentPerformer(lineUserId: string) {
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
@@ -96,13 +97,37 @@ async function getCurrentPerformer(lineUserId: string) {
 // レッスン募集一覧。自分の募集も含めて返します。
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
     let currentPerformerId: string | null = null;
 
-    if (lineUserId) {
-      const performer = await getCurrentPerformer(lineUserId);
-      currentPerformerId = performer?.id ?? null;
-    }
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
+
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "ログインが必要です。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+if (idToken) {
+  const verified = await verifyLineIdToken(idToken);
+
+  if (!verified) {
+    return NextResponse.json(
+      {
+        error: "LINEの本人確認に失敗しました。再ログインしてください。",
+      },
+      { status: 401 }
+    );
+  }
+
+  const performer = await getCurrentPerformer(verified.userId);
+  currentPerformerId = performer?.id ?? null;
+}
 
     const { searchParams } = new URL(request.url);
     const keyword = (searchParams.get("keyword") || "").trim();
@@ -120,6 +145,7 @@ export async function GET(request: NextRequest) {
         instruments,
         genres,
         area,
+        address,
         lesson_date,
         start_time,
         end_time,
@@ -128,8 +154,7 @@ export async function GET(request: NextRequest) {
         target_levels,
         status,
         created_at,
-        reserved_coins,
-        performers (
+        performers!inner (
           id,
           user_id,
           name,
@@ -139,12 +164,13 @@ export async function GET(request: NextRequest) {
           genres,
           bio,
           status_level,
-          users (
+          users!inner (
             display_name,
             picture_url
           )
         )
       `)
+      .eq("performers.users.account_status", "active")
       .eq("status", "open")
       .order("created_at", { ascending: false });
 
@@ -183,17 +209,31 @@ export async function GET(request: NextRequest) {
 
     const offers = (data || []).map((offer: any) => ({
       ...offer,
+      performers: offer.performers
+        ? {
+            ...offer.performers,
+            users: offer.performers.users
+              ? {
+                  display_name: offer.performers.users.display_name,
+                  picture_url: offer.performers.users.picture_url,
+                }
+              : null,
+          }
+        : null,
       is_mine: Boolean(
         currentPerformerId &&
           offer.performer_id === currentPerformerId
       ),
     }));
 
-    return NextResponse.json({
-      success: true,
-      offers,
-      total: offers.length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        offers,
+        total: offers.length,
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("レッスン募集一覧APIエラー:", error);
 
@@ -204,19 +244,35 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// レッスン募集登録。対象ランクを保存し、定員分のコインを仮押さえします。
+// レッスン募集登録。対象ランクを保存し、定員分の必要残高を確認します（仮押さえなし）。
 export async function POST(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const performer = await getCurrentPerformer(lineUserId);
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const performer = await getCurrentPerformer(verified.userId);
 
     if (!performer) {
       return NextResponse.json(
@@ -240,6 +296,16 @@ export async function POST(request: NextRequest) {
 
     const area =
       typeof body.area === "string" ? body.area.trim() : "";
+
+    const address =
+      typeof body.address === "string" ? body.address.trim() : "";
+
+    if (address.length > 500) {
+      return NextResponse.json(
+        { error: "住所は500文字以内で入力してください" },
+        { status: 400 }
+      );
+    }
 
     const instruments = normalizeStringArray(body.instruments);
     const genres = normalizeStringArray(body.genres);
@@ -350,9 +416,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 対象ランクの保存とコイン仮押さえをDB関数でまとめて処理
+    // 対象ランク・住所の保存と必要残高の確認をDB関数で処理
     const { data: result, error } = await supabase.rpc(
-      "create_lesson_offer_with_levels",
+      "create_lesson_offer_with_levels_and_address",
       {
         p_performer_id: performer.id,
         p_title: title,
@@ -366,6 +432,7 @@ export async function POST(request: NextRequest) {
         p_lesson_fee: lessonFee,
         p_capacity: capacity,
         p_target_levels: targetLevels,
+        p_address: address || null,
       }
     );
 
@@ -409,6 +476,7 @@ export async function POST(request: NextRequest) {
         instruments,
         genres,
         area,
+        address,
         lesson_date,
         start_time,
         end_time,
@@ -416,8 +484,7 @@ export async function POST(request: NextRequest) {
         capacity,
         target_levels,
         status,
-        created_at,
-        reserved_coins
+        created_at
       `)
       .eq("id", result.offer_id)
       .single();
@@ -430,10 +497,12 @@ export async function POST(request: NextRequest) {
         success: true,
         offer: {
           id: result.offer_id,
+          area: area || null,
+          address: address || null,
           target_levels: targetLevels,
-          reserved_coins: result.reserved_coins,
+          required_coins: result.required_coins,
         },
-        reserved_coins: result.reserved_coins,
+        required_coins: result.required_coins,
         message: result.message,
       });
     }
@@ -441,7 +510,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       offer,
-      reserved_coins: result.reserved_coins,
+      required_coins: result.required_coins,
       message: result.message,
     });
   } catch (error) {

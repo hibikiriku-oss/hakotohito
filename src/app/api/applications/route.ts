@@ -1,11 +1,33 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
+import { verifyLineIdToken } from "@/lib/line-auth";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+
+// 全レスポンスにキャッシュ禁止ヘッダーを設定
+function jsonResponse(
+  body: unknown,
+  init: ResponseInit = {}
+): NextResponse {
+  const headers = new Headers(init.headers);
+
+  headers.set("Cache-Control", "no-store, max-age=0");
+  headers.set("Pragma", "no-cache");
+  headers.set("Vary", "Authorization");
+
+  return NextResponse.json(body, {
+    ...init,
+    headers,
+  });
+}
 
 // 日本時間の今日を YYYY-MM-DD 形式で取得
 function getJapanToday(): string {
@@ -23,30 +45,304 @@ function getJapanToday(): string {
   return `${year}-${month}-${day}`;
 }
 
-export async function POST(request: NextRequest) {
+// LINE IDトークンを取得
+function getBearerToken(request: NextRequest): string | null {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+
+  return token || null;
+}
+
+// DB関数のエラーを利用者向けの安全なメッセージに変換
+function getSafeApplicationError(errorMessage: string): {
+  message: string;
+  status: number;
+} {
+  if (errorMessage === "IDEMPOTENCY_CONFLICT") {
+    return { message: "同じ応募操作IDに異なる内容が指定されました。画面を再読み込みして再度お試しください。", status: 409 };
+  }
+
+  if (errorMessage.includes("すでに応募")) {
+    return {
+      message: "この案件にはすでに応募しています。",
+      status: 409,
+    };
+  }
+
+  if (errorMessage.includes("すでに採用")) {
+    return {
+      message: "この案件ではすでに採用されています。",
+      status: 409,
+    };
+  }
+
+  if (errorMessage.includes("再応募できない")) {
+    return {
+      message: "この案件には再応募できません。",
+      status: 409,
+    };
+  }
+
+  if (errorMessage.includes("応募期限")) {
+    return {
+      message: "応募期限を過ぎているため、この案件には応募できません。",
+      status: 400,
+    };
+  }
+
+  if (
+    errorMessage.includes("対象レベル") ||
+    errorMessage.includes("募集対象")
+  ) {
+    return {
+      message: "この案件の募集対象とプロフィールの演奏者レベルが一致しません。",
+      status: 403,
+    };
+  }
+
+  if (errorMessage.includes("権限")) {
+    return {
+      message: "この操作を行う権限がありません。",
+      status: 403,
+    };
+  }
+
+  if (errorMessage.includes("見つかりません")) {
+    return {
+      message: "対象の情報が見つかりません。",
+      status: 404,
+    };
+  }
+
+  if (
+    errorMessage.includes("コイン") ||
+    errorMessage.includes("残高")
+  ) {
+    return {
+      message: "コイン残高が不足しているか、利用できない状態です。",
+      status: 400,
+    };
+  }
+
+  if (
+    errorMessage.includes("現在応募できません") ||
+    errorMessage.includes("募集を終了")
+  ) {
+    return {
+      message: "この案件は現在応募できません。",
+      status: 400,
+    };
+  }
+
+  return {
+    message: "応募処理を完了できませんでした。内容を確認して再度お試しください。",
+    status: 400,
+  };
+}
+
+// =====================================================
+// GET：応募状態取得
+// =====================================================
+
+export async function GET(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { requestId, message } = body;
+    const requestId = request.nextUrl.searchParams.get("requestId");
 
     if (!requestId) {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "案件IDがありません" },
         { status: 400 }
       );
     }
 
-    const lineUserId = request.headers.get("x-line-user-id");
-
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
+    if (!UUID_PATTERN.test(requestId)) {
+      return jsonResponse(
+        { error: "案件IDの形式が正しくありません" },
         { status: 400 }
       );
     }
 
-    // ==============================
+    // LINE本人確認
+    const idToken = getBearerToken(request);
+
+    if (!idToken) {
+      return jsonResponse(
+        { error: "LINEの本人確認情報がありません" },
+        { status: 401 }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return jsonResponse(
+        { error: "LINEの本人確認に失敗しました" },
+        { status: 401 }
+      );
+    }
+
     // LINEユーザー取得
-    // ==============================
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
+      .single();
+
+    if (userError || !user) {
+      return jsonResponse(
+        { error: "ユーザー情報が見つかりません" },
+        { status: 404 }
+      );
+    }
+
+    // 演奏者情報取得
+    const { data: performer, error: performerError } =
+      await supabase
+        .from("performers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+    if (performerError || !performer) {
+      return jsonResponse(
+        { error: "演奏者プロフィールが見つかりません" },
+        { status: 404 }
+      );
+    }
+
+    // 個人名義の応募状態を取得（バンド応募は除外）
+    const { data: application, error: applicationError } =
+      await supabase
+        .from("applications")
+        .select("id, status")
+        .eq("request_id", requestId)
+        .eq("performer_id", performer.id)
+        .is("band_id", null)
+        .maybeSingle();
+
+    if (applicationError) {
+      console.error("応募状態取得エラー:", applicationError);
+
+      return jsonResponse(
+        { error: "応募状態の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    return jsonResponse({
+      success: true,
+      application: application
+        ? {
+            id: application.id,
+            status: application.status,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("応募状態取得APIエラー:", error);
+
+    return jsonResponse(
+      { error: "サーバーエラーが発生しました" },
+      { status: 500 }
+    );
+  }
+}
+
+// =====================================================
+// POST：応募登録・コイン消費
+// =====================================================
+
+export async function POST(request: NextRequest) {
+  try {
+    // JSON解析と入力形式確認
+    let body: unknown;
+
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse(
+        { error: "リクエストの形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body)
+    ) {
+      return jsonResponse(
+        { error: "入力内容が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    const { requestId, message, operationId } = body as {
+      requestId?: unknown;
+      message?: unknown;
+      operationId?: unknown;
+    };
+
+    if (!requestId) {
+      return jsonResponse(
+        { error: "案件IDがありません" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      typeof requestId !== "string" ||
+      !UUID_PATTERN.test(requestId) ||
+      typeof operationId !== "string" ||
+      !UUID_PATTERN.test(operationId) ||
+      (message !== undefined &&
+        message !== null &&
+        typeof message !== "string") ||
+      (typeof message === "string" && message.length > 2000)
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "入力内容を確認してください（メッセージは2000文字以内です）",
+        },
+        { status: 400 }
+      );
+    }
+
+    const applicationMessage =
+      typeof message === "string" ? message : "";
+
+    // ================================================
+    // LINE本人確認
+    // ================================================
+
+    const idToken = getBearerToken(request);
+
+    if (!idToken) {
+      return jsonResponse(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return jsonResponse(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    // ================================================
+    // LINEユーザー取得
+    // ================================================
 
     const {
       data: user,
@@ -54,21 +350,22 @@ export async function POST(request: NextRequest) {
     } = await supabase
       .from("users")
       .select("id")
-      .eq("line_user_id", lineUserId)
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 演奏者情報取得
-    // ==============================
+    // ================================================
 
     const {
       data: performer,
@@ -82,15 +379,15 @@ export async function POST(request: NextRequest) {
     if (performerError || !performer) {
       console.error("演奏者取得エラー:", performerError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 案件取得
-    // ==============================
+    // ================================================
 
     const {
       data: performanceRequest,
@@ -98,7 +395,7 @@ export async function POST(request: NextRequest) {
     } = await supabase
       .from("performance_requests")
       .select(
-        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels, application_deadline, reward"
+        "id, status, title, performance_date, start_time, end_time, area, facility_id, target_levels, application_deadline"
       )
       .eq("id", requestId)
       .single();
@@ -106,20 +403,20 @@ export async function POST(request: NextRequest) {
     if (requestError || !performanceRequest) {
       console.error("案件取得エラー:", requestError);
 
-      return NextResponse.json(
+      return jsonResponse(
         { error: "案件が見つかりません" },
         { status: 404 }
       );
     }
 
-    // ==============================
-    // 応募期限確認（最優先）
-    // ==============================
+    // ================================================
+    // 応募期限確認
+    // ================================================
 
     // 締切日当日は応募可能。
     // 日本時間で締切日の翌日になった時点で応募不可。
-    // このチェックは応募登録・再応募・コイン消費より前に行う。
     const today = getJapanToday();
+
     const applicationDeadline = String(
       performanceRequest.application_deadline || ""
     ).slice(0, 10);
@@ -128,7 +425,7 @@ export async function POST(request: NextRequest) {
       !applicationDeadline ||
       today > applicationDeadline
     ) {
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             "応募期限を過ぎているため、この案件には応募できません",
@@ -137,20 +434,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ==============================
+    // ================================================
     // 募集中の案件か確認
-    // ==============================
+    // ================================================
 
     if (performanceRequest.status !== "open") {
-      return NextResponse.json(
+      return jsonResponse(
         { error: "この案件は現在応募できません" },
         { status: 400 }
       );
     }
 
-    // ==============================
+    // ================================================
     // 募集対象レベルの確認
-    // ==============================
+    // ================================================
 
     // target_levels が NULL または空配列なら制限なし。
     const targetLevels = performanceRequest.target_levels;
@@ -173,7 +470,7 @@ export async function POST(request: NextRequest) {
         .map((level: string) => levelNames[level] ?? level)
         .join("・");
 
-      return NextResponse.json(
+      return jsonResponse(
         {
           error:
             `この案件の募集対象は「${targetLevelNames}」です。` +
@@ -183,425 +480,112 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ==============================
-    // 既存応募確認
-    // ==============================
+    // ================================================
+    // 応募登録・コイン消費をDBで一括実行
+    // ================================================
+
+    // operationIdは画面が生成し、通信再送時も同じ値を使う。
+    const {
+      data: applicationResultData,
+      error: applicationResultError,
+    } = await supabase.rpc("submit_personal_application_idempotent", {
+      p_operation_id: operationId,
+      p_user_id: user.id,
+      p_request_id: requestId,
+      p_performer_id: performer.id,
+      p_message: applicationMessage,
+    });
+
+    if (applicationResultError) {
+      console.error(
+        "応募一括処理RPCエラー:",
+        applicationResultError
+      );
+
+      return jsonResponse(
+        {
+          error:
+            "応募処理に失敗しました。時間をおいて再度お試しください。",
+        },
+        { status: 500 }
+      );
+    }
+
+    const applicationResult = Array.isArray(applicationResultData)
+      ? applicationResultData[0]
+      : applicationResultData;
+
+    if (!applicationResult?.success) {
+      const internalErrorMessage =
+        typeof applicationResult?.error_message === "string"
+          ? applicationResult.error_message
+          : "";
+
+      // 詳細なDBエラーはサーバーログだけに記録する
+      console.error("応募一括処理が失敗しました");
+
+      const safeError =
+        getSafeApplicationError(internalErrorMessage);
+
+      return jsonResponse(
+        { error: safeError.message },
+        { status: safeError.status }
+      );
+    }
+
+    // ================================================
+    // 登録された応募情報を取得
+    // ================================================
 
     const {
-      data: existingApplication,
-      error: existingApplicationError,
+      data: savedApplication,
+      error: savedApplicationError,
     } = await supabase
       .from("applications")
       .select(
-        "id, request_id, performer_id, message, status, source, created_at"
+        "id, request_id, performer_id, message, status, source, band_id, created_at"
       )
-      .eq("request_id", requestId)
+      .eq("id", applicationResult.application_id)
       .eq("performer_id", performer.id)
-      .maybeSingle();
-
-    if (existingApplicationError) {
-      console.error(
-        "既存応募確認エラー:",
-        existingApplicationError
-      );
-
-      return NextResponse.json(
-        { error: "既存応募情報の確認に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    // すでに応募中
-    if (
-      existingApplication &&
-      existingApplication.status === "pending"
-    ) {
-      return NextResponse.json(
-        { error: "この案件にはすでに応募しています" },
-        { status: 409 }
-      );
-    }
-
-    // すでに採用済み
-    if (
-      existingApplication &&
-      existingApplication.status === "accepted"
-    ) {
-      return NextResponse.json(
-        { error: "この案件にはすでに採用されています" },
-        { status: 409 }
-      );
-    }
-
-    // ==============================
-    // 応募前の必要コイン確認
-    // ==============================
-
-    // 応募料10コイン + 謝礼の1%（端数切り上げ）
-    const rewardAmount = Number(performanceRequest.reward ?? 0);
-
-    const rewardFee =
-      Number.isFinite(rewardAmount) && rewardAmount > 0
-        ? Math.ceil(rewardAmount * 0.01)
-        : 0;
-
-    const requiredCoins = 10 + rewardFee;
-
-    // 最新の残高を取得
-    const {
-      data: latestUser,
-      error: balanceError,
-    } = await supabase
-      .from("users")
-      .select("coin_balance")
-      .eq("id", user.id)
       .single();
 
-    if (balanceError || !latestUser) {
-      console.error("応募前の残高取得エラー:", balanceError);
-
-      return NextResponse.json(
-        { error: "コイン残高の確認に失敗しました。時間をおいて再度お試しください。" },
-        { status: 500 }
-      );
-    }
-
-    const currentBalance = Number(latestUser.coin_balance ?? 0);
-
-    if (currentBalance < requiredCoins) {
-      return NextResponse.json(
-        {
-          error:
-            `コイン不足のため応募できません。` +
-            `この案件への応募には${requiredCoins}コイン必要です` +
-            `（応募料10コイン＋成立時手数料${rewardFee}コイン）。` +
-            `現在の残高は${currentBalance}コインです。` +
-            "チャージしてから再度お試しください。",
-        },
-        { status: 400 }
-      );
-    }
-
-    // ==============================
-    // 応募登録・再応募
-    // ==============================
-
-    let data;
-    let isReapply = false;
-
-    if (
-      existingApplication &&
-      existingApplication.status === "rejected"
-    ) {
-      isReapply = true;
-
-      const {
-        data: updatedApplication,
-        error: updateApplicationError,
-      } = await supabase
-        .from("applications")
-        .update({
-          message: message || null,
-          status: "pending",
-          source: "performer_apply",
-        })
-        .eq("id", existingApplication.id)
-        .eq("request_id", requestId)
-        .eq("performer_id", performer.id)
-        .select()
-        .single();
-
-      if (updateApplicationError || !updatedApplication) {
-        console.error(
-          "再応募更新エラー:",
-          updateApplicationError
-        );
-
-        return NextResponse.json(
-          { error: "再応募の登録に失敗しました" },
-          { status: 500 }
-        );
-      }
-
-      data = updatedApplication;
-    } else {
-      const {
-        data: newApplication,
-        error: insertError,
-      } = await supabase
-        .from("applications")
-        .insert({
-          request_id: requestId,
-          performer_id: performer.id,
-          message: message || null,
-          status: "pending",
-          source: "performer_apply",
-        })
-        .select()
-        .single();
-
-      if (insertError || !newApplication) {
-        console.error("応募登録エラー:", insertError);
-
-        if (insertError?.code === "23505") {
-          return NextResponse.json(
-            { error: "この案件にはすでに応募しています" },
-            { status: 409 }
-          );
-        }
-
-        return NextResponse.json(
-          {
-            error:
-              insertError?.message ||
-              "応募登録に失敗しました",
-          },
-          { status: 500 }
-        );
-      }
-
-      data = newApplication;
-    }
-
-    // ==============================
-    // 10コイン消費
-    // ==============================
-
-    const idempotencyKey =
-      `application_fee:${data.id}:${crypto.randomUUID()}`;
-
-    const {
-      data: coinResult,
-      error: coinError,
-    } = await supabase.rpc("spend_coins", {
-      p_user_id: user.id,
-      p_amount: 10,
-      p_transaction_type: "application_fee",
-      p_description: "演奏案件への応募手数料",
-      p_idempotency_key: idempotencyKey,
-      p_request_id: requestId,
-      p_application_id: data.id,
-    });
-
-    if (coinError) {
-      console.error("応募コイン消費RPCエラー:", coinError);
-
-      // コイン処理に失敗した場合は応募状態を元に戻す
-      if (isReapply) {
-        await supabase
-          .from("applications")
-          .update({
-            message: existingApplication?.message ?? null,
-            status: existingApplication?.status ?? "rejected",
-            source:
-              existingApplication?.source ?? "performer_apply",
-          })
-          .eq("id", data.id);
-      } else {
-        await supabase
-          .from("applications")
-          .delete()
-          .eq("id", data.id);
-      }
-
-      return NextResponse.json(
-        { error: "応募コインの処理に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    const coin = Array.isArray(coinResult)
-      ? coinResult[0]
-      : coinResult;
-
-    if (!coin?.success) {
-      console.error("応募コイン不足:", coin);
-
-      // コイン不足の場合も応募状態を元に戻す
-      if (isReapply) {
-        await supabase
-          .from("applications")
-          .update({
-            message: existingApplication?.message ?? null,
-            status: existingApplication?.status ?? "rejected",
-            source:
-              existingApplication?.source ?? "performer_apply",
-          })
-          .eq("id", data.id);
-      } else {
-        await supabase
-          .from("applications")
-          .delete()
-          .eq("id", data.id);
-      }
-
-
-      return NextResponse.json(
-        {
-          error:
-            "コインが不足しています。応募には10コイン必要です。チャージしてから再度お試しください。",
-        },
-        { status: 400 }
-      );
-
-    }
-
-    // ==============================
-    // 施設へのLINE通知
-    // ==============================
-
-    let notificationSent = false;
-
-    try {
-      const {
-        data: facility,
-        error: facilityError,
-      } = await supabase
-        .from("facilities")
-        .select("id, user_id, name")
-        .eq("id", performanceRequest.facility_id)
-        .single();
-
-      if (facilityError || !facility) {
-        console.error("施設取得エラー:", facilityError);
-      } else {
-        const {
-          data: facilityUser,
-          error: facilityUserError,
-        } = await supabase
-          .from("users")
-          .select("line_user_id, display_name")
-          .eq("id", facility.user_id)
-          .single();
-
-        if (facilityUserError || !facilityUser) {
-          console.error(
-            "施設LINEユーザー取得エラー:",
-            facilityUserError
-          );
-        } else {
-          const performerName = performer.name || "演奏者";
-
-          const facilityName =
-            facility.name ||
-            facilityUser.display_name ||
-            "施設";
-
-          const detailUrl =
-            "https://miniapp.line.me/2011785379-l5XCTbIf/facility/requests/" +
-            requestId;
-
-          const messages = [
-            {
-              type: "flex",
-              altText: "🎵 新しい応募があります！",
-              contents: {
-                type: "bubble",
-                body: {
-                  type: "box",
-                  layout: "vertical",
-                  contents: [
-                    {
-                      type: "text",
-                      text: "🎵 新しい応募があります！",
-                      weight: "bold",
-                      size: "xl",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text:
-                        facilityName +
-                        "さんの案件に、" +
-                        performerName +
-                        "さんから応募がありました。",
-                      margin: "md",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text: "案件：" + performanceRequest.title,
-                      margin: "md",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text:
-                        "演奏日時：" +
-                        performanceRequest.performance_date +
-                        "\n" +
-                        "時間：" +
-                        performanceRequest.start_time +
-                        " ～ " +
-                        performanceRequest.end_time +
-                        "\n" +
-                        "場所：" +
-                        (performanceRequest.area || "未設定"),
-                      margin: "md",
-                      wrap: true,
-                    },
-                    {
-                      type: "text",
-                      text: message
-                        ? "応募メッセージ：\n" + message
-                        : "応募メッセージ：なし",
-                      margin: "md",
-                      wrap: true,
-                    },
-                  ],
-                },
-                footer: {
-                  type: "box",
-                  layout: "vertical",
-                  contents: [
-                    {
-                      type: "button",
-                      style: "primary",
-                      action: {
-                        type: "uri",
-                        label: "応募者を確認する",
-                        uri: detailUrl,
-                      },
-                    },
-                  ],
-                },
-              },
-            },
-          ];
-
-          const lineResult = await sendLinePushMessage(
-            facilityUser.line_user_id,
-            messages
-          );
-
-          if (lineResult.success) {
-            notificationSent = true;
-            console.log("施設へのLINE通知送信成功");
-          } else {
-            console.error(
-              "施設へのLINE通知送信失敗:",
-              lineResult.error
-            );
-          }
-        }
-      }
-    } catch (notificationError) {
+    if (savedApplicationError || !savedApplication) {
       console.error(
-        "施設へのLINE通知処理エラー:",
-        notificationError
+        "応募データ取得エラー:",
+        savedApplicationError
       );
     }
 
-    return NextResponse.json({
+    // 応募データの取得に失敗しても、
+    // DB側の応募・コイン処理はすでに完了している
+    const application = savedApplication ?? {
+      id: applicationResult.application_id,
+      request_id: requestId,
+      performer_id: performer.id,
+      message: applicationMessage || null,
+      status: "pending",
+      source: "performer_apply",
+      band_id: null,
+    };
+
+    // 通知はapplication_attemptsのDBトリガーで同一トランザクション内にOutbox登録済み。
+    // ここでは即時配信を試みるだけで、失敗分はOutboxの再試行対象として残す。
+    let notificationSent = false;
+    if (applicationResult.is_replay !== true) {
+      const delivery = await drainLineNotificationOutbox(supabase, 20);
+      notificationSent = delivery.sent > 0;
+    }
+
+    return jsonResponse({
       success: true,
-      application: data,
-      coinBalance: coin.balance_after,
+      application,
+      coinBalance: applicationResult.balance_after,
       notificationSent,
     });
   } catch (error) {
     console.error("応募APIエラー:", error);
 
-    return NextResponse.json(
+    return jsonResponse(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

@@ -1,103 +1,152 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET(request: NextRequest) {
-  try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+type AuthResult =
+  | { userId: string; userType: string }
+  | { response: NextResponse };
 
-    if (!lineUserId) {
-      return NextResponse.json(
+async function getAuthenticatedUser(
+  request: NextRequest
+): Promise<AuthResult> {
+  const authorization = request.headers.get("authorization");
+  const match = authorization?.match(/^Bearer\s+(.+)$/i);
+  const idToken = match?.[1]?.trim();
+
+  if (!idToken) {
+    return {
+      response: NextResponse.json(
         {
-          error: "LINEユーザーIDが指定されていません",
+          error:
+            "LINEの本人確認情報がありません。再ログインしてください。",
         },
-        { status: 400 }
-      );
-    }
+        { status: 401 }
+      ),
+    };
+  }
 
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+  const verified = await verifyLineIdToken(idToken);
 
-    if (userError || !user) {
-      return NextResponse.json(
+  if (!verified) {
+    return {
+      response: NextResponse.json(
         {
-          error: "ユーザーが見つかりません",
+          error:
+            "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      ),
+    };
+  }
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id, user_type")
+    .eq("line_user_id", verified.userId)
+    .eq("account_status", "active")
+    .maybeSingle();
+
+  if (userError) {
+    console.error(
+      "お気に入りAPIのユーザー取得エラー:",
+      userError.message
+    );
+
+    return {
+      response: NextResponse.json(
+        { error: "ユーザー情報の取得に失敗しました" },
+        { status: 500 }
+      ),
+    };
+  }
+
+  if (!user) {
+    return {
+      response: NextResponse.json(
+        {
+          error:
+            "ユーザーが見つかりません。先にユーザー登録を行ってください。",
         },
         { status: 404 }
-      );
+      ),
+    };
+  }
+
+  return { userId: user.id, userType: user.user_type };
+}
+
+function getTargetEntityId(body: unknown, userType: string): string | null {
+  const field = userType === "facility"
+    ? "targetPerformerId"
+    : userType === "performer"
+      ? "targetFacilityId"
+      : null;
+
+  if (!field || typeof body !== "object" || body === null || !(field in body)) {
+    return null;
+  }
+
+  const value = (body as Record<string, unknown>)[field];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await getAuthenticatedUser(request);
+
+    if ("response" in auth) {
+      return auth.response;
     }
 
-    // まず、お気に入り情報だけを取得する
     const {
       data: favoriteRows,
       error: favoritesError,
     } = await supabase
       .from("favorites")
-      .select(
-        `
-        id,
-        target_user_id,
-        created_at
-        `
-      )
-      .eq("user_id", user.id)
-      .order("created_at", {
-        ascending: false,
-      });
+      .select("id, target_user_id, created_at")
+      .eq("user_id", auth.userId)
+      .order("created_at", { ascending: false });
 
     if (favoritesError) {
       console.error(
         "お気に入り取得エラー:",
-        favoritesError
+        favoritesError.message
       );
 
       return NextResponse.json(
-        {
-          error: "お気に入りの取得に失敗しました",
-        },
+        { error: "お気に入りの取得に失敗しました" },
         { status: 500 }
       );
     }
 
     if (!favoriteRows || favoriteRows.length === 0) {
-      return NextResponse.json({
-        favorites: [],
-      });
+      return NextResponse.json({ favorites: [] });
     }
 
     const targetUserIds = favoriteRows.map(
       (favorite) => favorite.target_user_id
     );
 
-    // お気に入り対象のユーザー情報を取得する
     const {
       data: targetUsers,
       error: targetUsersError,
     } = await supabase
       .from("users")
       .select(
-        `
-        id,
-        display_name,
-        picture_url,
-        user_type
-        `
+        "id, display_name, picture_url, user_type, avatar_type, avatar_emoji"
       )
-      .in("id", targetUserIds);
+      .in("id", targetUserIds)
+      .eq("account_status", "active");
 
     if (targetUsersError) {
       console.error(
         "お気に入り対象ユーザー取得エラー:",
-        targetUsersError
+        targetUsersError.message
       );
 
       return NextResponse.json(
@@ -109,29 +158,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 演奏者情報を user_id から直接取得する
     const {
       data: performers,
       error: performersError,
     } = await supabase
       .from("performers")
-      .select(
-        `
-        id,
-        user_id,
-        name,
-        area,
-        instruments,
-        genres,
-        bio
-        `
-      )
+      .select("id, user_id, name, area, instruments, genres, bio")
       .in("user_id", targetUserIds);
 
     if (performersError) {
       console.error(
         "お気に入り演奏者取得エラー:",
-        performersError
+        performersError.message
       );
 
       return NextResponse.json(
@@ -143,28 +181,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 施設情報も同様に user_id から直接取得する
     const {
       data: facilities,
       error: facilitiesError,
     } = await supabase
       .from("facilities")
       .select(
-        `
-        id,
-        user_id,
-        name,
-        facility_type,
-        address,
-        description
-        `
+        "id, user_id, name, facility_type, description"
       )
       .in("user_id", targetUserIds);
 
     if (facilitiesError) {
       console.error(
         "お気に入り施設取得エラー:",
-        facilitiesError
+        facilitiesError.message
       );
 
       return NextResponse.json(
@@ -176,59 +206,72 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 取得した情報をフロントエンドが扱いやすい形にまとめる
-    const favorites = favoriteRows.map(
-      (favorite) => {
-        const targetUser =
-          targetUsers?.find(
-            (target) =>
-              target.id === favorite.target_user_id
-          ) ?? null;
+    if (auth.userType !== "facility" && auth.userType !== "performer") {
+      return NextResponse.json(
+        { error: "このアカウントではお気に入りを利用できません" },
+        { status: 403 }
+      );
+    }
 
-        const performer =
-          performers?.find(
-            (item) =>
-              item.user_id ===
-              favorite.target_user_id
-          ) ?? null;
-
-        const facility =
-          facilities?.find(
-            (item) =>
-              item.user_id ===
-              favorite.target_user_id
-          ) ?? null;
-
-        return {
-          id: favorite.id,
-          target_user_id:
-            favorite.target_user_id,
-          created_at: favorite.created_at,
-          users: targetUser
-            ? {
-                id: targetUser.id,
-                display_name:
-                  targetUser.display_name,
-                picture_url:
-                  targetUser.picture_url,
-                user_type:
-                  targetUser.user_type,
-                performers: performer,
-                facilities: facility,
-              }
-            : null,
-        };
-      }
+    const activeTargetUserIds = new Set(
+      (targetUsers ?? []).map((target) => target.id)
+    );
+    const visibleFavoriteRows = favoriteRows.filter((favorite) =>
+      activeTargetUserIds.has(favorite.target_user_id)
     );
 
-    return NextResponse.json({
-      favorites,
+    const favorites = visibleFavoriteRows.map((favorite) => {
+      const targetUser =
+        targetUsers?.find((target) => target.id === favorite.target_user_id) ?? null;
+      const performer =
+        performers?.find((item) => item.user_id === favorite.target_user_id) ?? null;
+      const facility =
+        facilities?.find((item) => item.user_id === favorite.target_user_id) ?? null;
+
+      const publicUser = targetUser
+        ? {
+            display_name: targetUser.display_name,
+            picture_url: targetUser.picture_url,
+            user_type: targetUser.user_type,
+            avatar_type: targetUser.avatar_type,
+            avatar_emoji: targetUser.avatar_emoji,
+            performers: auth.userType === "facility" && performer
+              ? {
+                  id: performer.id,
+                  name: performer.name,
+                  area: performer.area,
+                  instruments: performer.instruments,
+                  genres: performer.genres,
+                  bio: performer.bio,
+                }
+              : null,
+            facilities: auth.userType === "performer" && facility
+              ? {
+                  id: facility.id,
+                  name: facility.name,
+                  facility_type: facility.facility_type,
+                  description: facility.description,
+                }
+              : null,
+          }
+        : null;
+
+      return {
+        id: favorite.id,
+        ...(auth.userType === "facility"
+          ? { target_performer_id: performer?.id ?? null }
+          : { target_facility_id: facility?.id ?? null }),
+        created_at: favorite.created_at,
+        users: publicUser,
+      };
     });
-  } catch (error) {
-    console.error(
-      "お気に入りAPIエラー:",
-      error
+
+    return NextResponse.json(
+      { favorites },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
     );
+  } catch (error) {
+    console.error("お気に入りAPIエラー:", error);
 
     return NextResponse.json(
       {
@@ -242,75 +285,70 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const auth = await getAuthenticatedUser(request);
 
-    if (!lineUserId) {
+    if ("response" in auth) {
+      return auth.response;
+    }
+
+    const body: unknown = await request.json();
+    const targetEntityId = getTargetEntityId(body, auth.userType);
+
+    if (!targetEntityId) {
       return NextResponse.json(
-        {
-          error: "LINEユーザーIDが指定されていません",
-        },
+        { error: "お気に入り対象のプロフィールIDが指定されていません" },
         { status: 400 }
       );
     }
 
-    const body = await request.json();
+    if (auth.userType !== "facility" && auth.userType !== "performer") {
+      return NextResponse.json(
+        { error: "このアカウントではお気に入りを利用できません" },
+        { status: 403 }
+      );
+    }
 
-    const targetUserId =
-      body.targetUserId;
+    let targetUserId: string | null = null;
+    let targetProfileError: { message: string } | null = null;
+
+    if (auth.userType === "facility") {
+      const { data, error } = await supabase
+        .from("performers")
+        .select("user_id, users!inner(id)")
+        .eq("id", targetEntityId)
+        .eq("users.account_status", "active")
+        .maybeSingle();
+      targetUserId = data?.user_id ?? null;
+      targetProfileError = error;
+    } else {
+      const { data, error } = await supabase
+        .from("facilities")
+        .select("user_id, users!inner(id)")
+        .eq("id", targetEntityId)
+        .eq("users.account_status", "active")
+        .maybeSingle();
+      targetUserId = data?.user_id ?? null;
+      targetProfileError = error;
+    }
+
+    if (targetProfileError) {
+      console.error("お気に入り対象ユーザー確認エラー:", targetProfileError.message);
+      return NextResponse.json(
+        { error: "お気に入り対象ユーザーの確認に失敗しました" },
+        { status: 500 }
+      );
+    }
 
     if (!targetUserId) {
       return NextResponse.json(
-        {
-          error:
-            "お気に入り対象のユーザーIDが指定されていません",
-        },
-        { status: 400 }
-      );
-    }
-
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        {
-          error: "ユーザーが見つかりません",
-        },
+        { error: "お気に入り対象のプロフィールが見つかりません" },
         { status: 404 }
       );
     }
-
-    if (user.id === targetUserId) {
+    if (auth.userId === targetUserId) {
       return NextResponse.json(
-        {
-          error:
-            "自分自身をお気に入りには登録できません",
-        },
+        { error: "自分自身をお気に入りには登録できません" },
         { status: 400 }
-      );
-    }
-
-    const {
-      data: targetUser,
-      error: targetUserError,
-    } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", targetUserId)
-      .single();
-
-    if (targetUserError || !targetUser) {
-      return NextResponse.json(
-        {
-          error:
-            "お気に入り対象のユーザーが見つかりません",
-        },
-        { status: 404 }
       );
     }
 
@@ -320,16 +358,10 @@ export async function POST(request: NextRequest) {
     } = await supabase
       .from("favorites")
       .insert({
-        user_id: user.id,
+        user_id: auth.userId,
         target_user_id: targetUserId,
       })
-      .select(
-        `
-        id,
-        target_user_id,
-        created_at
-        `
-      )
+      .select("id, created_at")
       .single();
 
     if (favoriteError) {
@@ -345,25 +377,26 @@ export async function POST(request: NextRequest) {
 
       console.error(
         "お気に入り登録エラー:",
-        favoriteError
+        favoriteError.message
       );
 
       return NextResponse.json(
-        {
-          error: "お気に入り登録に失敗しました",
-        },
+        { error: "お気に入り登録に失敗しました" },
         { status: 500 }
       );
     }
 
     return NextResponse.json({
-      favorite,
+      favorite: {
+        id: favorite.id,
+        ...(auth.userType === "facility"
+          ? { target_performer_id: targetEntityId }
+          : { target_facility_id: targetEntityId }),
+        created_at: favorite.created_at,
+      },
     });
   } catch (error) {
-    console.error(
-      "お気に入り登録APIエラー:",
-      error
-    );
+    console.error("お気に入り登録APIエラー:", error);
 
     return NextResponse.json(
       {
@@ -377,78 +410,86 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const auth = await getAuthenticatedUser(request);
 
-    if (!lineUserId) {
+    if ("response" in auth) {
+      return auth.response;
+    }
+
+    const body: unknown = await request.json();
+    const targetEntityId = getTargetEntityId(body, auth.userType);
+
+    if (!targetEntityId) {
       return NextResponse.json(
-        {
-          error: "LINEユーザーIDが指定されていません",
-        },
+        { error: "お気に入り対象のプロフィールIDが指定されていません" },
         { status: 400 }
       );
     }
 
-    const body = await request.json();
-
-    const targetUserId =
-      body.targetUserId;
-
-    if (!targetUserId) {
+    if (auth.userType !== "facility" && auth.userType !== "performer") {
       return NextResponse.json(
-        {
-          error:
-            "お気に入り対象のユーザーIDが指定されていません",
-        },
-        { status: 400 }
+        { error: "このアカウントではお気に入りを利用できません" },
+        { status: 403 }
       );
     }
 
-    const { data: user, error: userError } =
-      await supabase
-        .from("users")
-        .select("id")
-        .eq("line_user_id", lineUserId)
-        .single();
+    let targetUserId: string | null = null;
+    let targetProfileError: { message: string } | null = null;
 
-    if (userError || !user) {
-      return NextResponse.json(
-        {
-          error: "ユーザーが見つかりません",
-        },
-        { status: 404 }
-      );
+    if (auth.userType === "facility") {
+      const { data, error } = await supabase
+        .from("performers")
+        .select("user_id")
+        .eq("id", targetEntityId)
+        .maybeSingle();
+      targetUserId = data?.user_id ?? null;
+      targetProfileError = error;
+    } else {
+      const { data, error } = await supabase
+        .from("facilities")
+        .select("user_id")
+        .eq("id", targetEntityId)
+        .maybeSingle();
+      targetUserId = data?.user_id ?? null;
+      targetProfileError = error;
     }
 
-    const { error: deleteError } =
-      await supabase
-        .from("favorites")
-        .delete()
-        .eq("user_id", user.id)
-        .eq("target_user_id", targetUserId);
-
-    if (deleteError) {
-      console.error(
-        "お気に入り解除エラー:",
-        deleteError
-      );
-
+    if (targetProfileError) {
+      console.error("お気に入り対象プロフィール取得エラー:", targetProfileError.message);
       return NextResponse.json(
-        {
-          error: "お気に入り解除に失敗しました",
-        },
+        { error: "お気に入り対象の確認に失敗しました" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-    });
+    if (!targetUserId) {
+      return NextResponse.json(
+        { error: "お気に入り対象のプロフィールが見つかりません" },
+        { status: 404 }
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("favorites")
+      .delete()
+      .eq("user_id", auth.userId)
+      .eq("target_user_id", targetUserId);
+
+    if (deleteError) {
+      console.error(
+        "お気に入り解除エラー:",
+        deleteError.message
+      );
+
+      return NextResponse.json(
+        { error: "お気に入り解除に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error(
-      "お気に入り解除APIエラー:",
-      error
-    );
+    console.error("お気に入り解除APIエラー:", error);
 
     return NextResponse.json(
       {

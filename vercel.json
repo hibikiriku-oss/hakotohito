@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/auto-complete",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/expire-applications",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/line-notification-outbox",
+      "schedule": "5 2 * * *"
     }
   ]
 }

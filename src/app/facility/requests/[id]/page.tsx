@@ -13,6 +13,7 @@ type PerformanceRequest = {
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address?: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -45,8 +46,6 @@ export default function FacilityRequestDetailPage() {
   const [error, setError] =
     useState("");
 
-  const [lineUserId, setLineUserId] = useState("");
-
   const [cancelling, setCancelling] = useState(false);
 
   const [cancelMessage, setCancelMessage] = useState("");
@@ -76,18 +75,24 @@ export default function FacilityRequestDetailPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const idToken = liff.getIDToken();
 
-        setLineUserId(profile.userId);
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         // 案件情報を取得
-        const response = await fetch(
-          `/api/performance-requests/${requestId}`,
-          {
-            cache: "no-store",
-          }
-        );
+const response = await fetch(
+  `/api/performance-requests/${requestId}`,
+  {
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+    },
+    cache: "no-store",
+  }
+);
 
         const data =
           await response.json();
@@ -110,17 +115,18 @@ export default function FacilityRequestDetailPage() {
           loadedRequest.status ===
           "matched"
         ) {
+
           const matchResponse =
             await fetch(
               "/api/facility/matches",
               {
                 headers: {
-                  "x-line-user-id":
-                    profile.userId,
+                  Authorization: `Bearer ${idToken}`,
                 },
                 cache: "no-store",
               }
             );
+
 
           if (matchResponse.ok) {
             const matchData =
@@ -164,7 +170,7 @@ export default function FacilityRequestDetailPage() {
   }, [requestId]);
 
 async function handleCancelEvent() {
-  if (!request || !lineUserId || cancelling) {
+  if (!request || cancelling) {
     return;
   }
 
@@ -182,12 +188,20 @@ async function handleCancelEvent() {
     setCancelling(true);
     setCancelMessage("");
 
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      throw new Error(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
+      );
+    }
+
     const response = await fetch(
       `/api/facility/requests/${request.id}/cancel`,
       {
         method: "POST",
         headers: {
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
       }
     );
@@ -458,16 +472,23 @@ async function handleCancelEvent() {
               </p>
             </div>
 
-            {/* エリア */}
-            {request.area && (
+            {/* 開催場所 */}
+            {(request.area || request.venue_address) && (
               <div>
                 <p className="text-xs font-medium text-gray-400">
-                  活動エリア
+                  開催場所
                 </p>
 
-                <p className="mt-1 font-medium text-gray-900">
-                  📍 {request.area}
-                </p>
+                {request.area && (
+                  <p className="mt-1 font-medium text-gray-900">
+                    📍 {request.area}
+                  </p>
+                )}
+                {request.venue_address && (
+                  <p className="mt-2 text-sm leading-6 text-gray-700">
+                    {request.venue_address}
+                  </p>
+                )}
               </div>
             )}
 
@@ -669,7 +690,7 @@ async function handleCancelEvent() {
       <button
         type="button"
         onClick={handleCancelEvent}
-        disabled={cancelling || !lineUserId}
+        disabled={cancelling}
         className="w-full mt-4 bg-red-600 text-white rounded-xl py-3.5 font-bold disabled:opacity-50"
       >
         {cancelling

@@ -13,6 +13,16 @@ type CandidateMatch = {
   completion_disputed_at: string | null;
 };
 
+type CompletionResult = {
+  success?: boolean;
+  alreadyCompleted?: boolean;
+  feeCharged?: boolean;
+  feeAmount?: number;
+  error?: string;
+  errorMessage?: string;
+  message?: string;
+};
+
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function GET(request: NextRequest) {
@@ -28,8 +38,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (
-      request.headers.get("authorization") !==
-      `Bearer ${cronSecret}`
+      request.headers.get("authorization") !== `Bearer ${cronSecret}`
     ) {
       return NextResponse.json(
         { error: "認証に失敗しました" },
@@ -48,10 +57,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(
-      supabaseUrl,
-      serviceRoleKey
-    );
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     const now = new Date();
     const nowIso = now.toISOString();
@@ -60,7 +66,7 @@ export async function GET(request: NextRequest) {
     ).toISOString();
     const cutoffTime = new Date(cutoff).getTime();
 
-    // 7日以上前の完了報告がある、有効な未完了案件を取得
+    // 7日以上前の完了報告がある、有効な未完了案件を取得する。
     const { data: matches, error: fetchError } = await supabase
       .from("matches")
       .select(
@@ -77,7 +83,7 @@ export async function GET(request: NextRequest) {
       .eq("performance_status", "scheduled")
       .is("completion_disputed_at", null)
       .or(
-        `performer_completion_reported_at.lte.${cutoff},facility_completion_reported_at.lte.${cutoff}`
+        `and(performer_completion_reported_at.not.is.null,facility_completion_reported_at.not.is.null),performer_completion_reported_at.lte.${cutoff},facility_completion_reported_at.lte.${cutoff}`
       );
 
     if (fetchError) {
@@ -92,14 +98,17 @@ export async function GET(request: NextRequest) {
 
     let completedCount = 0;
     let skippedCount = 0;
+    let errorCount = 0;
+    let feeChargedCount = 0;
+    let feeTotal = 0;
 
     for (const match of candidates) {
-      // どちらか一方だけが報告済みであることを確認
       const performerReported =
         match.performer_completion_reported_at;
       const facilityReported =
         match.facility_completion_reported_at;
 
+      const bothReported = !!performerReported && !!facilityReported;
       const performerExpired =
         !!performerReported &&
         new Date(performerReported).getTime() <= cutoffTime &&
@@ -110,61 +119,71 @@ export async function GET(request: NextRequest) {
         new Date(facilityReported).getTime() <= cutoffTime &&
         !performerReported;
 
-      if (!performerExpired && !facilityExpired) {
+      // 双方報告済みは、API側の一時的なRPC失敗を回復するため相互完了を再試行。
+      // 片側のみの場合は従来どおり7日経過後に自動完了する。
+      if (!bothReported && !performerExpired && !facilityExpired) {
         skippedCount++;
         continue;
       }
 
-      // 更新時にも条件を再確認し、同時操作との競合を防ぐ
-      let updateQuery = supabase
-        .from("matches")
-        .update({
-          performance_status: "completed",
-          completed_at: nowIso,
-          completion_method: "auto_completion",
-        })
-        .eq("id", match.id)
-        .eq("status", "active")
-        .eq("performance_status", "scheduled")
-        .is("completion_disputed_at", null);
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "complete_match_with_fee",
+        {
+          p_match_id: match.id,
+          p_completion_mode: bothReported ? "mutual" : "auto",
+        }
+      );
 
-      if (performerExpired && performerReported) {
-        updateQuery = updateQuery
-          .lte("performer_completion_reported_at", cutoff)
-          .is("facility_completion_reported_at", null);
-      } else if (facilityExpired && facilityReported) {
-        updateQuery = updateQuery
-          .lte("facility_completion_reported_at", cutoff)
-          .is("performer_completion_reported_at", null);
-      } else {
-        skippedCount++;
-        continue;
-      }
-
-      const { data: updatedRows, error: updateError } =
-        await updateQuery.select("id");
-
-      if (updateError) {
+      if (rpcError) {
+        errorCount++;
         console.error(
-          `自動完了更新エラー (${match.id}):`,
-          updateError
+          `自動完了RPCエラー (${match.id}):`,
+          rpcError
         );
-
-        return NextResponse.json(
-          {
-            error: "自動完了の更新に失敗しました",
-            completedCount,
-          },
-          { status: 500 }
-        );
+        continue;
       }
 
-      if (updatedRows && updatedRows.length > 0) {
-        completedCount++;
-      } else {
-        // 取得後に相手の報告・異議申し立て・キャンセル等が
-        // 発生した場合は更新されない
+      const result = rpcData as CompletionResult | null;
+
+
+      if (!result?.success) {
+        const errorMessage =
+          result?.errorMessage ||
+          result?.error ||
+          "自動完了処理に失敗しました";
+
+        // 実行前の検索後に状態が変わった場合は、想定内のスキップとして扱う
+        const isExpectedSkip = [
+          "自動完了の条件を満たしていません",
+          "このマッチングは完了できる状態ではありません",
+          "完了について異議申し立て中のため確定できません",
+        ].includes(errorMessage);
+
+        if (isExpectedSkip) {
+          skippedCount++;
+          console.warn(
+            `[auto-complete] Skipped match ${match.id}: ${errorMessage}`
+          );
+        } else {
+          errorCount++;
+          console.error(
+            `[auto-complete] Failed match ${match.id}: ${errorMessage}`
+          );
+        }
+
+        continue;
+      }
+
+      if (result.alreadyCompleted) {
         skippedCount++;
+        continue;
+      }
+
+      completedCount++;
+
+      if (result.feeCharged) {
+        feeChargedCount++;
+        feeTotal += result.feeAmount ?? 0;
       }
     }
 
@@ -173,14 +192,20 @@ export async function GET(request: NextRequest) {
       candidateCount: candidates.length,
       completedCount,
       skippedCount,
+      errorCount,
+      feeChargedCount,
+      feeTotal,
     });
 
     return NextResponse.json({
-      success: true,
+      success: errorCount === 0,
       checkedAt: nowIso,
       candidateCount: candidates.length,
       completedCount,
       skippedCount,
+      errorCount,
+      feeChargedCount,
+      feeTotal,
       message: `${completedCount}件を自動完了しました`,
     });
   } catch (error) {

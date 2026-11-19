@@ -3,6 +3,16 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
+import AnnouncementTicker from "@/components/AnnouncementTicker";
+
+type UserProfile = {
+  display_name: string | null;
+  picture_url: string | null;
+  avatar_type: "line" | "emoji";
+  avatar_emoji: string | null;
+  user_type: "performer" | "facility";
+  account_status: "active" | "pending_approval";
+};
 
 export default function FacilityHomePage() {
   const router = useRouter();
@@ -13,12 +23,29 @@ export default function FacilityHomePage() {
   const [coinLoading, setCoinLoading] =
     useState(true);
 
+  const [profile, setProfile] =
+    useState<UserProfile | null>(null);
+
+  const [authLoading, setAuthLoading] =
+    useState(true);
+
+  const [authError, setAuthError] =
+    useState<string | null>(null);
+
   useEffect(() => {
-    async function loadCoinBalance() {
+    let cancelled = false;
+
+    async function loadUserData() {
       try {
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+
+        if (!liffId) {
+          throw new Error("LINEログインの設定がありません");
+        }
+
         await liff.init({
-          liffId:
-            process.env.NEXT_PUBLIC_LIFF_ID!,
+          liffId,
+          withLoginOnExternalBrowser: true,
         });
 
         if (!liff.isLoggedIn()) {
@@ -26,49 +53,168 @@ export default function FacilityHomePage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const idToken = liff.getIDToken();
 
-        const response = await fetch(
-          "/api/coins/balance",
-          {
-            headers: {
-              "x-line-user-id":
-                profile.userId,
-            },
-            cache: "no-store",
-          }
-        );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
+        if (!idToken) {
           throw new Error(
-            data.error ||
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
+
+        const headers = {
+          Authorization: `Bearer ${idToken}`,
+        };
+
+        // まず有効なユーザーアカウントを確認
+        const profileResponse = await fetch("/api/users", {
+          headers,
+          cache: "no-store",
+        });
+
+        if (
+          profileResponse.status === 401 ||
+          profileResponse.status === 404
+        ) {
+          window.location.replace("/");
+          return;
+        }
+
+        const profileData = await profileResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!profileResponse.ok || !profileData.user) {
+          throw new Error(
+            profileData.error ||
+              "プロフィール情報の取得に失敗しました"
+          );
+        }
+
+        const user = profileData.user as UserProfile;
+
+        if (user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
+        }
+
+        if (user.user_type !== "facility") {
+          if (user.user_type === "performer") {
+            window.location.replace("/performer");
+            return;
+          }
+
+          throw new Error("アカウント種別を確認できません");
+        }
+
+        if (!cancelled) {
+          setProfile({
+            display_name: user.display_name ?? null,
+            picture_url: user.picture_url ?? null,
+            avatar_type: user.avatar_type ?? "line",
+            avatar_emoji: user.avatar_emoji ?? null,
+            user_type: user.user_type,
+            account_status: user.account_status,
+          });
+        }
+
+        // 有効な施設アカウントを確認した後に残高を取得
+        const coinResponse = await fetch("/api/coins/balance", {
+          headers,
+          cache: "no-store",
+        });
+
+        if (
+          coinResponse.status === 401 ||
+          coinResponse.status === 404
+        ) {
+          window.location.replace("/");
+          return;
+        }
+
+        const coinData = await coinResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!coinResponse.ok) {
+          throw new Error(
+            coinData.error ||
               "コイン残高の取得に失敗しました"
           );
         }
 
-        setCoinBalance(
-          data.coinBalance ?? 0
-        );
+        if (!cancelled) {
+          setCoinBalance(coinData.coinBalance ?? 0);
+        }
       } catch (error) {
-        console.error(
-          "コイン残高取得エラー:",
-          error
-        );
+        console.error("施設ホーム情報取得エラー:", error);
+
+        if (!cancelled) {
+          setAuthError(
+            error instanceof Error
+              ? error.message
+              : "アカウント情報を確認できませんでした"
+          );
+        }
       } finally {
-        setCoinLoading(false);
+        if (!cancelled) {
+          setCoinLoading(false);
+          setAuthLoading(false);
+        }
       }
     }
 
-    loadCoinBalance();
+    loadUserData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const avatarEmoji =
+    profile?.avatar_type === "emoji" &&
+    profile.avatar_emoji
+      ? profile.avatar_emoji
+      : "🏢";
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <p className="text-sm text-gray-500">
+          アカウントを確認しています...
+        </p>
+      </main>
+    );
+  }
+
+  if (authError || !profile) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-lg font-bold text-gray-900">
+            アカウントを確認できません
+          </p>
+
+          <p className="mt-3 text-sm leading-6 text-gray-600">
+            {authError ||
+              "有効な施設アカウントが見つかりません。"}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => window.location.replace("/")}
+            className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white active:bg-blue-700"
+          >
+            トップページへ戻る
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-50">
       <div className="max-w-md mx-auto min-h-screen px-4 py-6">
+        <AnnouncementTicker />
 
         {/* ヘッダー */}
         <header className="pt-2 pb-6">
@@ -79,21 +225,52 @@ export default function FacilityHomePage() {
               </p>
 
               <h1 className="text-2xl font-bold text-gray-900 mt-1">
-                🏢 施設ホーム
+                施設ホーム
               </h1>
+
+              {profile.display_name && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {profile.display_name}
+                </p>
+              )}
             </div>
 
-            <button
-              onClick={() => router.push("/coins/history")}
-              className="shrink-0 rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
-              aria-label="コイン履歴を開く"
-            >
-              🪙{" "}
-              {coinLoading
-                ? "..."
-                : (coinBalance ?? 0).toLocaleString()}
-              コイン
-            </button>
+            <div className="flex flex-col items-center gap-2 shrink-0">
+              <div className="w-14 h-14 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center overflow-hidden">
+                {profile.avatar_type === "line" &&
+                profile.picture_url ? (
+                  <img
+                    src={profile.picture_url}
+                    alt="プロフィール画像"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-3xl">
+                    {avatarEmoji}
+                  </span>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => router.push("/coins/purchase")}
+                className="rounded-lg border px-3 py-2 text-sm font-bold"
+              >
+                コイン購入
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/coins/history")}
+                className="rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
+                aria-label="コイン履歴を開く"
+              >
+                🪙{" "}
+                {coinLoading
+                  ? "..."
+                  : (coinBalance ?? 0).toLocaleString()}
+                コイン
+              </button>
+            </div>
           </div>
 
           <p className="text-sm text-gray-600 mt-3 leading-relaxed">
@@ -108,8 +285,8 @@ export default function FacilityHomePage() {
           </p>
 
           <div className="space-y-3">
-
             <button
+              type="button"
               onClick={() =>
                 router.push("/facility/performers")
               }
@@ -133,6 +310,7 @@ export default function FacilityHomePage() {
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 router.push("/facility/request")
               }
@@ -154,7 +332,6 @@ export default function FacilityHomePage() {
                 </span>
               </div>
             </button>
-
           </div>
         </section>
 
@@ -165,8 +342,9 @@ export default function FacilityHomePage() {
           </p>
 
           <div className="grid grid-cols-2 gap-3">
-
+            {/* 自分の依頼 */}
             <button
+              type="button"
               onClick={() =>
                 router.push("/facility/requests")
               }
@@ -185,7 +363,9 @@ export default function FacilityHomePage() {
               </p>
             </button>
 
+            {/* マッチング */}
             <button
+              type="button"
               onClick={() =>
                 router.push("/facility/matches")
               }
@@ -204,7 +384,9 @@ export default function FacilityHomePage() {
               </p>
             </button>
 
+            {/* お気に入り */}
             <button
+              type="button"
               onClick={() =>
                 router.push("/facility/favorites")
               }
@@ -223,7 +405,56 @@ export default function FacilityHomePage() {
               </p>
             </button>
 
+            {/* 施設プロフィール編集 */}
+            <button
+              type="button"
+              onClick={() =>
+                router.push("/facility/profile/edit")
+              }
+              className="bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-sm active:scale-[0.99] transition"
+            >
+              <div className="text-2xl">
+                🏢
+              </div>
+
+              <div className="font-bold text-gray-900 mt-3">
+                施設プロフィール編集
+              </div>
+
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                施設情報やアイコンを変更
+              </p>
+            </button>
           </div>
+        </section>
+
+        {/* お問い合わせ：一番下 */}
+        <section className="mt-4">
+          <button
+            type="button"
+            onClick={() => router.push("/inquiry")}
+            className="w-full bg-white border border-gray-200 rounded-2xl p-4 text-left shadow-sm active:scale-[0.99] transition"
+          >
+            <div className="flex items-center gap-3">
+              <div className="text-2xl">
+                💬
+              </div>
+
+              <div>
+                <div className="font-bold text-gray-900">
+                  お問い合わせ
+                </div>
+
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  ご質問・不具合の報告
+                </p>
+              </div>
+
+              <span className="ml-auto text-gray-400">
+                →
+              </span>
+            </div>
+          </button>
         </section>
 
         {/* フッター */}
@@ -232,7 +463,6 @@ export default function FacilityHomePage() {
             演奏者と施設をつなぐ、演奏マッチング
           </p>
         </footer>
-
       </div>
     </main>
   );

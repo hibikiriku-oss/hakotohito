@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import Holidays from "date-holidays";
 import { areaMatches } from "@/lib/area-matching";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -113,13 +114,30 @@ function matchesTimeRange(
 
 /**
  * LINEログイン中の演奏者の活動エリアを取得します。
- * areas が未設定の旧データは、従来の area を使用します。
+ * areas に有効な値があれば areas を優先し、
+ * 空の場合のみ従来の area を使用します。
  */
+async function isPerformerUser(lineUserId: string): Promise<boolean> {
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("user_type")
+    .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("閲覧ユーザーの確認に失敗しました");
+  }
+
+  return user?.user_type === "performer";
+}
+
 async function getPerformerAreas(lineUserId: string): Promise<string[]> {
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
@@ -142,18 +160,22 @@ async function getPerformerAreas(lineUserId: string): Promise<string[]> {
 
   const savedAreas = Array.isArray(performer.areas)
     ? performer.areas
-    : [];
-
-  return Array.from(
-    new Set(
-      [...savedAreas, performer.area]
         .filter(
           (value): value is string =>
             typeof value === "string" && value.trim().length > 0
         )
         .map((value) => value.trim())
-    )
-  );
+    : [];
+
+  // areas に有効な値があれば、新形式の areas だけを使用
+  if (savedAreas.length > 0) {
+    return Array.from(new Set(savedAreas));
+  }
+
+  // areas が空の場合のみ、旧形式の area を使用
+  return typeof performer.area === "string" && performer.area.trim()
+    ? [performer.area.trim()]
+    : [];
 }
 
 // 演奏依頼一覧取得
@@ -263,9 +285,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // LINEユーザーIDが送信された場合は、活動エリアを自動適用します。
-    const lineUserId = request.headers.get("x-line-user-id");
-    const performerAreas = lineUserId
+    // IDトークンが送信された場合は本人確認し、活動エリアを自動適用します。
+    // 未ログインの案件検索は引き続き許可します。
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+
+    let lineUserId: string | null = null;
+
+    if (idToken) {
+      const verified = await verifyLineIdToken(idToken);
+
+      if (!verified) {
+        return NextResponse.json(
+          {
+            error: "LINEの本人確認に失敗しました。再ログインしてください。",
+          },
+          { status: 401 }
+        );
+      }
+
+      lineUserId = verified.userId;
+    }
+
+    const canViewPerformerDetails = lineUserId
+      ? await isPerformerUser(lineUserId)
+      : false;
+
+    const performerAreas = canViewPerformerDetails && lineUserId
       ? await getPerformerAreas(lineUserId)
       : null;
 
@@ -284,6 +332,7 @@ export async function GET(request: NextRequest) {
           start_time,
           end_time,
           area,
+          venue_address,
           instruments,
           genres,
           reward,
@@ -294,14 +343,14 @@ export async function GET(request: NextRequest) {
           target_levels,
           status,
           created_at,
-          facilities (
+          facilities!inner (
             name,
             facility_type,
-            address
+            users!inner(id)
           )
         `)
+        .eq("facilities.users.account_status", "active")
         .eq("status", "open")
-        // 応募期限当日は表示。日本時間で翌日になったら除外。
         .gte("application_deadline", today);
 
       if (requestType === "performance") {
@@ -358,8 +407,8 @@ export async function GET(request: NextRequest) {
       if (error) {
         console.error("演奏依頼一覧取得エラー:", error);
         return NextResponse.json(
-          { error: error.message },
-          { status: 500 }
+          { error: "演奏依頼一覧の取得に失敗しました" },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
         );
       }
 
@@ -434,10 +483,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
-
     const total = filteredRequests.length;
     const from = (page - 1) * limit;
-    const requests = filteredRequests.slice(from, from + limit);
+    const selectedRequests = filteredRequests.slice(
+      from,
+      from + limit
+    );
+
+    // 未ログイン利用者には施設プロフィール情報を返さない。
+    // selectedRequests の型を維持したまま施設情報だけを null にする。
+    const requests: typeof selectedRequests = selectedRequests.map((item) => {
+      const facility = item.facilities;
+      const safeFacility = facility && typeof facility === "object"
+        ? (() => {
+            const { users: _ownerJoin, ...publicFacility } = facility as any;
+            return publicFacility;
+          })()
+        : facility;
+
+      return canViewPerformerDetails
+        ? { ...item, facilities: safeFacility }
+        : {
+            ...item,
+            venue_address: null,
+            facilities: null,
+          };
+    });
 
     // ログイン中の演奏者の応募状況を取得
     let requestsWithApplicationStatus = requests.map((item) => ({
@@ -445,11 +516,12 @@ export async function GET(request: NextRequest) {
       application_status: null as string | null,
     }));
 
-    if (lineUserId && requests.length > 0) {
+    if (canViewPerformerDetails && lineUserId && requests.length > 0) {
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("id")
         .eq("line_user_id", lineUserId)
+        .eq("account_status", "active")
         .maybeSingle();
 
       if (userError) {
@@ -501,14 +573,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-
-    return NextResponse.json({
-      requests: requestsWithApplicationStatus,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    });
+    return NextResponse.json(
+      {
+        requests: requestsWithApplicationStatus,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("演奏依頼一覧APIエラー:", error);
 
@@ -540,7 +614,25 @@ export async function POST(request: NextRequest) {
       maxParticipants,
       participationFee,
       rentalFee,
+      venue_address,
     } = body;
+
+    const venueAddress =
+      typeof venue_address === "string" ? venue_address.trim() : "";
+
+    if (venue_address != null && typeof venue_address !== "string") {
+      return NextResponse.json(
+        { error: "開催場所住所の形式が正しくありません" },
+        { status: 400 }
+      );
+    }
+
+    if (venueAddress.length > 500) {
+      return NextResponse.json(
+        { error: "開催場所住所は500文字以内で入力してください" },
+        { status: 400 }
+      );
+    }
 
     if (
       !title ||
@@ -717,19 +809,38 @@ export async function POST(request: NextRequest) {
       new Set<TargetLevel>(targetLevels)
     );
 
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -765,6 +876,7 @@ export async function POST(request: NextRequest) {
         start_time: startTime,
         end_time: endTime,
         area: area || null,
+        venue_address: venueAddress || null,
         instruments: Array.isArray(instruments) ? instruments : [],
         genres: Array.isArray(genres) ? genres : [],
         reward:
@@ -785,8 +897,8 @@ export async function POST(request: NextRequest) {
           rentalFee !== "" &&
           rentalFee != null
             ? Number(rentalFee)
-            : null,        
-            target_levels: normalizedTargetLevels,
+            : null,
+        target_levels: normalizedTargetLevels,
         status: "open",
       })
       .select()
@@ -795,8 +907,8 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("演奏依頼登録エラー:", error);
       return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
+        { error: "演奏依頼の登録に失敗しました" },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
 

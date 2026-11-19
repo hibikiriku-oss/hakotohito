@@ -1,76 +1,98 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
+
+export const dynamic = "force-dynamic";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET(
-  request: NextRequest
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
 ) {
+  return NextResponse.json(body, {
+    status,
+    headers: NO_STORE_HEADERS,
+  });
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const lineUserId =
-      request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const match = authorization?.match(/^Bearer\s+(.+)$/i);
+    const idToken = match?.[1]?.trim() ?? "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
+    if (!idToken) {
+      return jsonResponse(
         {
           error:
-            "LINEユーザー情報がありません",
+            "LINEの本人確認情報がありません。再ログインしてください。",
         },
-        { status: 400 }
+        401
       );
     }
 
-    const {
-      data: user,
-      error: userError,
-    } = await supabase
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return jsonResponse(
+        {
+          error:
+            "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        401
+      );
+    }
+
+    const { data: user, error: userError } = await supabase
       .from("users")
-      .select(
-        "id, user_type, coin_balance"
-      )
-      .eq(
-        "line_user_id",
-        lineUserId
-      )
-      .single();
+      .select("id, user_type, coin_balance")
+      .eq("line_user_id", verified.userId)
+      .eq("account_status", "active")
+      .maybeSingle();
 
-    if (userError || !user) {
+    if (userError) {
       console.error(
-        "コイン残高取得ユーザーエラー:",
-        userError
+        "コイン残高取得エラー:",
+        userError.code ?? "UNKNOWN"
       );
 
-      return NextResponse.json(
-        {
-          error:
-            "ユーザー情報が見つかりません",
-        },
-        { status: 404 }
+      return jsonResponse(
+        { error: "コイン残高の取得に失敗しました。" },
+        500
       );
     }
 
-    return NextResponse.json({
+    if (!user) {
+      return jsonResponse(
+        { error: "ユーザーが見つかりません。" },
+        404
+      );
+    }
+
+    return jsonResponse({
       success: true,
-      coinBalance:
-        user.coin_balance ?? 0,
-      userType:
-        user.user_type,
+      coinBalance: user.coin_balance ?? 0,
+      userType: user.user_type,
     });
   } catch (error) {
     console.error(
-      "コイン残高取得APIエラー:",
-      error
+      "コイン残高APIエラー:",
+      error instanceof Error ? error.name : "UNKNOWN"
     );
 
-    return NextResponse.json(
-      {
-        error:
-          "コイン残高の取得に失敗しました",
-      },
-      { status: 500 }
+    return jsonResponse(
+      { error: "コイン残高の取得に失敗しました。" },
+      500
     );
   }
 }

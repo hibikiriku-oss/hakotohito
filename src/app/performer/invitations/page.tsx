@@ -20,6 +20,7 @@ type Invitation = {
     start_time: string;
     end_time: string;
     area: string | null;
+    venue_address: string | null;
     reward: number | null;
     status: string;
   } | null;
@@ -27,7 +28,6 @@ type Invitation = {
     id: string;
     name: string | null;
     facility_type: string | null;
-    address: string | null;
     description: string | null;
   } | null;
 };
@@ -55,10 +55,18 @@ export default function PerformerInvitationsPage() {
           return;
         }
 
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
+
         const profile = await liff.getProfile();
 
         setLineUserId(profile.userId);
-        await loadInvitations(profile.userId);
+        await loadInvitations(idToken);
       } catch (err) {
         console.error(err);
         setError("依頼情報の取得に失敗しました");
@@ -69,14 +77,14 @@ export default function PerformerInvitationsPage() {
     init();
   }, []);
 
-  const loadInvitations = async (userId: string) => {
+  const loadInvitations = async (idToken: string) => {
     try {
       setLoading(true);
       setError("");
 
       const response = await fetch("/api/performer/invitations", {
         headers: {
-          "x-line-user-id": userId,
+          Authorization: `Bearer ${idToken}`,
         },
       });
 
@@ -212,7 +220,7 @@ export default function PerformerInvitationsPage() {
             onClick={() => router.push("/performer/home")}
             className="inline-flex items-center text-sm text-gray-500 hover:text-gray-900 transition"
           >
-            ← 演奏者ホーム
+            ← ホームに戻る
           </button>
 
           <div className="mt-5">
@@ -352,6 +360,11 @@ export default function PerformerInvitationsPage() {
                       <p className="text-sm font-medium text-gray-900 mt-1">
                         {invitation.request?.area || "未設定"}
                       </p>
+                      {invitation.request?.venue_address && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          開催場所：{invitation.request.venue_address}
+                        </p>
+                      )}
                     </div>
 
                     {invitation.request?.reward !== null &&
@@ -430,7 +443,7 @@ export default function PerformerInvitationsPage() {
             onClick={() => router.push("/performer/home")}
             className="w-full mt-6 border border-gray-200 bg-white text-gray-700 rounded-xl py-3.5 font-medium hover:bg-gray-50 transition"
           >
-            演奏者ホームへ戻る
+            ← ホームに戻る
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,20 +12,36 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: matchId } = await params;
-    const lineUserId = request.headers.get("x-line-user-id");
+        const { id: matchId } = await params;
 
-    if (!lineUserId) {
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+
+    if (!idToken) {
       return NextResponse.json(
-        { error: "LINEユーザーIDがありません" },
+        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
         { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -47,18 +64,62 @@ export async function POST(
       );
     }
 
+    // マッチングを取得し、個人かバンドかを確認する
     const { data: match, error: matchError } = await supabase
       .from("matches")
-      .select("id")
+      .select("id, performer_id, band_id")
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
-      .single();
+      .maybeSingle();
 
-    if (matchError || !match) {
+    if (matchError) {
+      console.error("取り下げ同意対象の取得エラー:", matchError);
+
+      return NextResponse.json(
+        { error: "マッチング情報の取得に失敗しました" },
+        { status: 500 }
+      );
+    }
+
+    if (!match) {
       return NextResponse.json(
         { error: "マッチングが見つからないか、操作する権限がありません" },
         { status: 404 }
       );
+    }
+
+    if (match.band_id) {
+      // バンドマッチングは、現在のアクティブなリーダーだけが同意可能
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンド取り下げ同意権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドの取り下げ同意はリーダーのみ行えます" },
+          { status: 403 }
+        );
+      }
+    } else {
+      // 個人マッチングは従来どおり本人だけが同意可能
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、操作する権限がありません" },
+          { status: 404 }
+        );
+      }
     }
 
     const { data, error } = await supabase.rpc(

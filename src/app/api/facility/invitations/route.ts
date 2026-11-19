@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
+import { verifyLineIdToken } from "@/lib/line-auth";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,14 +10,32 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+        const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     const body = await request.json();
 
@@ -42,6 +61,7 @@ export async function POST(request: NextRequest) {
       .from("users")
       .select("id, display_name")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -153,8 +173,8 @@ export async function POST(request: NextRequest) {
     }
 
     // --------------------------------
-    // 直接依頼の登録と100コイン消費
-    // データベース関数でまとめて処理
+    // 直接依頼を登録し、設定された料金分の残高を確認する。
+    // 実際の徴収は承諾・マッチング成立と同じDBトランザクションで行う。
     // --------------------------------
 
     const {
@@ -207,108 +227,10 @@ export async function POST(request: NextRequest) {
       source: "facility_invite",
     };
 
-    // --------------------------------
-    // LINE通知
-    // --------------------------------
-
-    let notificationSent = false;
-
-    try {
-      const facilityName =
-        facility.name || user.display_name || "施設";
-
-      const detailUrl =
-        "https://miniapp.line.me/2011785379-l5XCTbIf/performer/invitations";
-
-      const messages = [
-        {
-          type: "flex",
-          altText: "施設からオファーが届きました",
-          contents: {
-            type: "bubble",
-            body: {
-              type: "box",
-              layout: "vertical",
-              contents: [
-                {
-                  type: "text",
-                  text: "🎵 オファーが届きました",
-                  weight: "bold",
-                  size: "xl",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text: `${facilityName}からオファーが届いています。`,
-                  margin: "md",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text: `案件：${performanceRequest.title}`,
-                  margin: "md",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text:
-                    `演奏日：${performanceRequest.performance_date}\n` +
-                    `時間：${performanceRequest.start_time} ～ ${performanceRequest.end_time}\n` +
-                    `場所：${performanceRequest.area || "未設定"}`,
-                  margin: "md",
-                  wrap: true,
-                },
-                ...(message
-                  ? [
-                      {
-                        type: "text",
-                        text: `施設からのメッセージ\n${message}`,
-                        margin: "md",
-                        wrap: true,
-                      },
-                    ]
-                  : []),
-              ],
-            },
-            footer: {
-              type: "box",
-              layout: "vertical",
-              contents: [
-                {
-                  type: "button",
-                  style: "primary",
-                  action: {
-                    type: "uri",
-                    label: "依頼を確認する",
-                    uri: detailUrl,
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ];
-
-      const lineResult = await sendLinePushMessage(
-        performerUser.line_user_id,
-        messages
-      );
-
-      if (lineResult.success) {
-        notificationSent = true;
-        console.log("演奏者へのLINE通知に成功しました");
-      } else {
-        console.error(
-          "演奏者へのLINE通知失敗:",
-          lineResult.error
-        );
-      }
-    } catch (notificationError) {
-      console.error(
-        "LINE通知処理エラー:",
-        notificationError
-      );
-    }
+    // 通知はapplication_attemptsのDBトリガーで同一トランザクション内にOutbox登録済み。
+    // ここでは即時配信を試みるだけで、失敗分はOutboxの再試行対象として残す。
+    const delivery = await drainLineNotificationOutbox(supabase, 20);
+    const notificationSent = delivery.sent > 0;
 
     // --------------------------------
     // 完了

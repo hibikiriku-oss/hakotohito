@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 
 type User = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
 };
 
 type Performer = {
-  id: string;
   name: string | null;
   instruments: string[];
   genres: string[];
@@ -21,13 +21,13 @@ type Performer = {
 };
 
 type PerformanceRequest = {
-  id: string;
   title: string;
   description: string | null;
   performance_date: string;
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -36,8 +36,6 @@ type PerformanceRequest = {
 
 type Match = {
   id: string;
-  request_id: string;
-  performer_id: string;
   matched_at: string;
   status: string;
   performance_status: string;
@@ -80,6 +78,38 @@ function getMatchDateTime(match: Match) {
   return request ? `${request.performance_date}T${request.start_time}` : "";
 }
 
+function renderAvatar(user: User | null) {
+  if (
+    user?.avatar_type === "emoji" &&
+    user.avatar_emoji
+  ) {
+    return (
+      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center text-2xl shrink-0">
+        {user.avatar_emoji}
+      </div>
+    );
+  }
+
+  if (
+    user?.avatar_type !== "emoji" &&
+    user?.picture_url
+  ) {
+    return (
+      <img
+        src={user.picture_url}
+        alt=""
+        className="w-12 h-12 rounded-full object-cover shrink-0"
+      />
+    );
+  }
+
+  return (
+    <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-2xl shrink-0">
+      🎸
+    </div>
+  );
+}
+
 export default function FacilityMatchesPage() {
   const router = useRouter();
 
@@ -110,9 +140,18 @@ export default function FacilityMatchesPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
+
         const response = await fetch("/api/facility/matches", {
-          headers: { "x-line-user-id": profile.userId },
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
           cache: "no-store",
         });
 
@@ -257,17 +296,7 @@ export default function FacilityMatchesPage() {
         <div className="mt-4">
           <p className="text-sm text-gray-500">演奏者</p>
           <div className="flex items-center gap-3 mt-2">
-            {user?.picture_url ? (
-              <img
-                src={user.picture_url}
-                alt=""
-                className="w-12 h-12 rounded-full object-cover"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                🎸
-              </div>
-            )}
+            {renderAvatar(user)}
 
             <div className="min-w-0">
               <p className="font-bold truncate">
@@ -294,10 +323,13 @@ export default function FacilityMatchesPage() {
           </p>
         </div>
 
-        {request.area && (
+        {(request.area || request.venue_address) && (
           <div className="mt-4">
-            <p className="text-sm text-gray-500">場所</p>
-            <p className="mt-1">📍 {request.area}</p>
+            <p className="text-sm text-gray-500">開催場所</p>
+            {request.area && <p className="mt-1">📍 {request.area}</p>}
+            {request.venue_address && (
+              <p className="mt-1 text-sm text-gray-600">{request.venue_address}</p>
+            )}
           </div>
         )}
 

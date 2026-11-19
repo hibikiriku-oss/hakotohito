@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendLinePushMessage } from "@/lib/line";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(
   request: NextRequest,
@@ -16,29 +20,41 @@ export async function POST(
   }
 ) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken =
+      authorization?.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+        { error: "LINEの本人確認情報がありません。再ログインしてください。" },
+        { status: 401 }
       );
     }
 
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return NextResponse.json(
+        { error: "LINEの本人確認に失敗しました。再ログインしてください。" },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
     const { id: matchId } = await context.params;
 
-    if (!matchId) {
+    if (!UUID_PATTERN.test(matchId)) {
       return NextResponse.json(
-        { error: "マッチングIDが指定されていません" },
+        { error: "マッチングIDが不正です" },
         { status: 400 }
       );
     }
 
-    // LINEユーザーを取得
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id, line_user_id, display_name")
+      .select("id, account_status, line_user_id, display_name")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
@@ -50,7 +66,6 @@ export async function POST(
       );
     }
 
-    // 演奏者プロフィールを取得
     const { data: performer, error: performerError } =
       await supabase
         .from("performers")
@@ -67,15 +82,17 @@ export async function POST(
       );
     }
 
-    // 自分のマッチングか確認し、通知に必要な情報を取得
     const { data: match, error: matchError } = await supabase
       .from("matches")
       .select(`
         id,
         request_id,
         performer_id,
+        band_id,
         status,
         performance_status,
+        completed_at,
+        completion_disputed_at,
         performance_requests (
           id,
           title,
@@ -96,7 +113,6 @@ export async function POST(
         )
       `)
       .eq("id", matchId)
-      .eq("performer_id", performer.id)
       .single();
 
     if (matchError || !match) {
@@ -111,6 +127,49 @@ export async function POST(
       );
     }
 
+    if (match.band_id) {
+      const { data: membership, error: membershipError } = await supabase
+        .from("band_members")
+        .select("role")
+        .eq("band_id", match.band_id)
+        .eq("performer_id", performer.id)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (membershipError) {
+        console.error("バンドキャンセル権限の確認エラー:", membershipError);
+
+        return NextResponse.json(
+          { error: "操作権限を確認できませんでした" },
+          { status: 500 }
+        );
+      }
+
+      if (!membership || membership.role !== "leader") {
+        return NextResponse.json(
+          { error: "バンドのマッチングをキャンセルできるのはリーダーのみです" },
+          { status: 403 }
+        );
+      }
+    } else {
+      if (match.performer_id !== performer.id) {
+        return NextResponse.json(
+          { error: "マッチングが見つからないか、操作する権限がありません" },
+          { status: 404 }
+        );
+      }
+    }
+
+    if (match.completion_disputed_at) {
+      return NextResponse.json(
+        {
+          error:
+            "異議申し立ての対応が完了するまでキャンセルできません",
+        },
+        { status: 409 }
+      );
+    }
+
     if (
       match.status === "cancelled" ||
       match.performance_status === "cancelled"
@@ -121,7 +180,7 @@ export async function POST(
       );
     }
 
-    if (match.performance_status === "completed") {
+    if (match.performance_status === "completed" || match.completed_at) {
       return NextResponse.json(
         { error: "演奏完了後のマッチングはキャンセルできません" },
         { status: 400 }
@@ -163,13 +222,14 @@ export async function POST(
       );
     }
 
-    // DB関数でキャンセル・案件再募集・直接依頼の返金をまとめて処理
     const { data: cancelResult, error: cancelError } =
       await supabase.rpc(
-        "cancel_match_with_direct_invite_refund",
+        "cancel_match_with_notification_outbox",
         {
           p_match_id: matchId,
           p_facility_id: facility.id,
+          p_actor_user_id: user.id,
+          p_actor_role: "performer",
         }
       );
 
@@ -191,124 +251,30 @@ export async function POST(
     } | null;
 
     if (!result?.success) {
+      const errorMessage =
+        result?.errorMessage ||
+        "マッチングをキャンセルできませんでした";
+
+      const status = errorMessage.includes("異議申し立て")
+        ? 409
+        : 400;
+
       return NextResponse.json(
-        {
-          error:
-            result?.errorMessage ||
-            "マッチングをキャンセルできませんでした",
-        },
-        { status: 400 }
+        { error: errorMessage },
+        { status }
       );
     }
 
-    let notificationSent = false;
-
-    // 施設のLINEユーザーIDを取得
-    const facilityUser = facility.users
-      ? Array.isArray(facility.users)
-        ? facility.users[0]
-        : facility.users
-      : null;
-
-    const facilityLineUserId = facilityUser?.line_user_id;
-
-    // 施設へLINE通知
-    // 通知に失敗してもキャンセル処理自体は成功とする
-    if (facilityLineUserId) {
-      const miniAppBaseUrl =
-        "https://miniapp.line.me/2011785379-l5XCTbIf";
-
-      const matchUrl = `${miniAppBaseUrl}/facility/matches/${matchId}`;
-
-      const messages = [
-        {
-          type: "flex",
-          altText: "マッチングがキャンセルされました",
-          contents: {
-            type: "bubble",
-            body: {
-              type: "box",
-              layout: "vertical",
-              spacing: "md",
-              contents: [
-                {
-                  type: "text",
-                  text: "⚠️ マッチングキャンセル",
-                  weight: "bold",
-                  size: "xl",
-                },
-                {
-                  type: "text",
-                  text: "演奏者が今回のマッチングをキャンセルしました。",
-                  wrap: true,
-                },
-                {
-                  type: "separator",
-                  margin: "md",
-                },
-                {
-                  type: "text",
-                  text: performanceRequest.title,
-                  weight: "bold",
-                  size: "lg",
-                  wrap: true,
-                },
-                {
-                  type: "text",
-                  text: `演奏者：${
-                    performer.name || user.display_name || "演奏者"
-                  }`,
-                  wrap: true,
-                },
-              ],
-            },
-            footer: {
-              type: "box",
-              layout: "vertical",
-              spacing: "sm",
-              contents: [
-                {
-                  type: "button",
-                  style: "primary",
-                  action: {
-                    type: "uri",
-                    label: "マッチングを確認する",
-                    uri: matchUrl,
-                  },
-                },
-              ],
-            },
-          },
-        },
-      ];
-
-      try {
-        const lineResult = await sendLinePushMessage(
-          facilityLineUserId,
-          messages
-        );
-
-        if (lineResult.success) {
-          notificationSent = true;
-        } else {
-          console.error(
-            "施設へのLINE通知エラー:",
-            lineResult.error
-          );
-        }
-      } catch (lineError) {
-        console.error("施設へのLINE通知例外:", lineError);
-      }
-    } else {
-      console.error("施設のLINEユーザーIDが取得できません");
-    }
+    // Cancellation and Outbox insertion have already committed atomically in the RPC.
+    const notificationDelivery = await drainLineNotificationOutbox(supabase, 20);
+    const notificationSent = notificationDelivery.sent > 0;
 
     return NextResponse.json({
       success: true,
       message:
-        result.refundAmount === 100
-          ? "マッチングをキャンセルし、案件を再募集状態に戻しました。直接依頼の手数料100コインを返金しました。"
-          : "マッチングをキャンセルし、案件を再募集状態に戻しました。",
+        (result.refundAmount ?? 0) > 0
+          ? `マッチングをキャンセルし、案件を再募集状態に戻しました。手数料を${result.refundAmount}コイン返金しました。`
+          : "マッチングをキャンセルし、案件を再募集状態に戻しました。返金対象の手数料はありません。",
       match: {
         id: matchId,
         status: "cancelled",

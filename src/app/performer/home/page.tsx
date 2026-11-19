@@ -1,20 +1,189 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
+import AnnouncementTicker from "@/components/AnnouncementTicker";
+
+type MenuKey = "home" | "offers" | "matches" | "lesson" | "bands" | "other";
+
+type MenuItem = {
+  icon: string;
+  title: string;
+  description: string;
+  path: string;
+};
+
+type UserProfile = {
+  display_name: string | null;
+  picture_url: string | null;
+  avatar_type: "line" | "emoji";
+  avatar_emoji: string | null;
+  user_type: "performer" | "facility";
+  account_status: "active" | "pending_approval";
+};
+
+const menuConfig: Record<
+  Exclude<MenuKey, "home">,
+  {
+    icon: string;
+    title: string;
+    description: string;
+    items: MenuItem[];
+  }
+> = {
+  offers: {
+    icon: "🔎",
+    title: "オファー",
+    description: "演奏案件を探し、施設からの招待を確認できます。",
+    items: [
+      {
+        icon: "🎵",
+        title: "案件を探す",
+        description: "演奏・イベント参加・レンタルの募集",
+        path: "/performer/requests",
+      },
+      {
+        icon: "🗺️",
+        title: "地図から探す",
+        description: "演奏案件を地図で探す",
+        path: "/performer/map",
+      },
+      {
+        icon: "✉️",
+        title: "招待案件を確認する",
+        description: "施設から届いた出演の招待",
+        path: "/performer/invitations",
+      },
+    ],
+  },
+  matches: {
+    icon: "🎉",
+    title: "マッチング",
+    description: "成立した出演の予定と進行状況を確認できます。",
+    items: [
+      {
+        icon: "📅",
+        title: "マッチングを確認する",
+        description: "演奏予定・演奏完了・キャンセル済み",
+        path: "/performer/matches",
+      },
+    ],
+  },
+  lesson: {
+    icon: "🎹",
+    title: "レッスン",
+    description: "レッスンを受ける・教える相手を募集します。",
+    items: [
+      {
+        icon: "🔍",
+        title: "募集条件で探す",
+        description: "レッスンの募集内容を確認する",
+        path: "/performer/lesson",
+      },
+      {
+        icon: "🗺️",
+        title: "地図から探す",
+        description: "地図から演奏案件やレッスンを探す",
+        path: "/performer/map",
+      },
+      {
+        icon: "👨‍🏫",
+        title: "生徒を募集する",
+        description: "レッスン条件を登録して生徒を募集する",
+        path: "/performer/lesson/new",
+      },
+    ],
+  },
+  bands: {
+    icon: "🎸",
+    title: "バンド",
+    description: "バンド・メンバー・チャット・コインを管理します。",
+    items: [
+      {
+        icon: "👥",
+        title: "自分のバンドを管理する",
+        description: "バンド作成・メンバー招待・チャット・コイン送金",
+        path: "/performer/bands",
+      },
+    ],
+  },
+  other: {
+    icon: "⚙️",
+    title: "その他の機能",
+    description: "プロフィールの編集やお問い合わせはこちら。",
+    items: [
+      {
+        icon: "👤",
+        title: "演奏者情報を編集",
+        description: "プロフィールを編集する",
+        path: "/performer/profile/edit",
+      },
+      {
+        icon: "💬",
+        title: "お問い合わせ",
+        description: "質問・不具合を報告する",
+        path: "/inquiry",
+      },
+    ],
+  },
+};
+
+const mainMenus: Array<{
+  key: Exclude<MenuKey, "home" | "other">;
+  icon: string;
+  title: string;
+  description: string;
+  style: string;
+}> = [
+  {
+    key: "offers",
+    icon: "🔎",
+    title: "オファー",
+    description: "案件を探す・招待を確認する",
+    style: "border-blue-200 bg-blue-50 active:bg-blue-100",
+  },
+  {
+    key: "matches",
+    icon: "🎉",
+    title: "マッチング",
+    description: "演奏予定・進行状況を確認する",
+    style: "border-emerald-200 bg-emerald-50 active:bg-emerald-100",
+  },
+  {
+    key: "bands",
+    icon: "🎸",
+    title: "バンド",
+    description: "バンド・メンバー・コインを管理する",
+    style: "border-amber-200 bg-amber-50 active:bg-amber-100",
+  },
+];
 
 export default function PerformerHomePage() {
   const router = useRouter();
 
+  const [menu, setMenu] = useState<MenuKey>("home");
   const [coinBalance, setCoinBalance] = useState<number | null>(null);
   const [coinLoading, setCoinLoading] = useState(true);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadCoinBalance() {
+    let cancelled = false;
+
+    async function loadUserData() {
       try {
+        const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+
+        if (!liffId) {
+          throw new Error("LINEログインの設定がありません");
+        }
+
         await liff.init({
-          liffId: process.env.NEXT_PUBLIC_LIFF_ID!,
+          liffId,
+          withLoginOnExternalBrowser: true,
         });
 
         if (!liff.isLoggedIn()) {
@@ -22,51 +191,226 @@ export default function PerformerHomePage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
 
-        const response = await fetch("/api/coins/balance", {
-          headers: {
-            "x-line-user-id": profile.userId,
-          },
-          cache: "no-store",
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
+        if (!idToken) {
           throw new Error(
-            data.error || "コイン残高の取得に失敗しました"
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
           );
         }
 
-        setCoinBalance(data.coinBalance ?? 0);
+        const headers = {
+          Authorization: `Bearer ${idToken}`,
+        };
+
+        // まず有効なユーザーアカウントを確認
+        const profileResponse = await fetch("/api/users", {
+          headers,
+          cache: "no-store",
+        });
+
+        if (
+          profileResponse.status === 401 ||
+          profileResponse.status === 404
+        ) {
+          window.location.replace("/");
+          return;
+        }
+
+        const profileData = await profileResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!profileResponse.ok || !profileData.user) {
+          throw new Error(
+            profileData.error || "ユーザー情報を確認できません"
+          );
+        }
+
+        if (profileData.user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
+        }
+
+        if (profileData.user.user_type !== "performer") {
+          if (profileData.user.user_type === "facility") {
+            window.location.replace("/facility");
+            return;
+          }
+
+          throw new Error("アカウント種別を確認できません");
+        }
+
+        if (!cancelled) {
+          setProfile(profileData.user);
+        }
+
+        // 有効な演奏者アカウントを確認した後に残高を取得
+        const coinResponse = await fetch("/api/coins/balance", {
+          headers,
+          cache: "no-store",
+        });
+
+        if (
+          coinResponse.status === 401 ||
+          coinResponse.status === 404
+        ) {
+          window.location.replace("/");
+          return;
+        }
+
+        const coinData = await coinResponse
+          .json()
+          .catch(() => ({}));
+
+        if (!coinResponse.ok) {
+          throw new Error(
+            coinData.error || "コイン残高の取得に失敗しました"
+          );
+        }
+
+        if (!cancelled) {
+          setCoinBalance(coinData.coinBalance ?? 0);
+        }
       } catch (error) {
-        console.error("コイン残高取得エラー:", error);
+        console.error("ユーザー情報取得エラー:", error);
+
+        if (!cancelled) {
+          setAuthError(
+            error instanceof Error
+              ? error.message
+              : "アカウント情報を確認できませんでした"
+          );
+        }
       } finally {
-        setCoinLoading(false);
+        if (!cancelled) {
+          setCoinLoading(false);
+          setAuthLoading(false);
+        }
       }
     }
 
-    loadCoinBalance();
+    loadUserData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const openMenu = (
+    selected: Exclude<MenuKey, "home">
+  ) => {
+    setMenu(selected);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const avatarEmoji =
+    profile?.avatar_type === "emoji" && profile.avatar_emoji
+      ? profile.avatar_emoji
+      : null;
+
+  const avatarPicture =
+    profile?.avatar_type !== "emoji"
+      ? profile?.picture_url
+      : null;
+
+  if (authLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <p className="text-sm text-gray-500">
+          アカウントを確認しています...
+        </p>
+      </main>
+    );
+  }
+
+  if (authError || !profile) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-lg font-bold text-gray-900">
+            アカウントを確認できません
+          </p>
+          <p className="mt-3 text-sm leading-6 text-gray-600">
+            {authError || "有効な演奏者アカウントが見つかりません。"}
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.replace("/")}
+            className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 font-bold text-white active:bg-blue-700"
+          >
+            トップページへ戻る
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <div className="max-w-md mx-auto min-h-screen px-4 py-6">
-        {/* ヘッダー */}
+      <div className="mx-auto min-h-screen max-w-md px-4 py-6">
+        <AnnouncementTicker />
+
         <header className="pt-2">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
+              {menu !== "home" && (
+                <button
+                  type="button"
+                  onClick={() => setMenu("home")}
+                  className="mb-4 text-sm font-bold text-gray-500"
+                >
+                  ← ホームへ戻る
+                </button>
+              )}
+
               <p className="text-sm font-medium text-gray-500">
                 演奏マッチング
               </p>
 
-              <h1 className="mt-1 text-2xl font-bold text-gray-900">
-                🎸 演奏者ホーム
-              </h1>
+              <div className="mt-2 flex items-center gap-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white shadow-sm">
+                  {avatarEmoji ? (
+                    <span className="text-3xl" aria-label="プロフィールアイコン">
+                      {avatarEmoji}
+                    </span>
+                  ) : avatarPicture ? (
+                    <img
+                      src={avatarPicture}
+                      alt="プロフィール画像"
+                      className="h-full w-full object-cover"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <span className="text-3xl">🎸</span>
+                  )}
+                </div>
+
+                <h1 className="text-xl font-bold text-gray-900">
+                  {menu === "home"
+                    ? "演奏者ホーム"
+                    : `${menuConfig[menu].icon} ${menuConfig[menu].title}`}
+                </h1>
+              </div>
+
+              {profile.display_name && (
+                <p className="mt-2 text-sm text-gray-600">
+                  {profile.display_name} さん
+                </p>
+              )}
             </div>
 
             <button
+                type="button"
+                onClick={() => router.push("/coins/purchase")}
+                className="rounded-lg border px-3 py-2 text-sm font-bold"
+              >
+                コイン購入
+              </button>
+              <button
+              type="button"
               onClick={() => router.push("/coins/history")}
               className="shrink-0 rounded-full border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-amber-600 shadow-sm active:bg-amber-50"
               aria-label="コイン履歴を開く"
@@ -80,157 +424,136 @@ export default function PerformerHomePage() {
           </div>
 
           <p className="mt-3 text-sm leading-6 text-gray-600">
-            演奏案件やレッスンを探したり、施設からの招待案件を確認できます。
+            {menu === "home"
+              ? "利用したい機能を選んでください。"
+              : menuConfig[menu].description}
           </p>
         </header>
 
-        {/* メインメニュー */}
-        <section className="mt-7 space-y-3">
-          {/* オファーを探す */}
-          <button
-            onClick={() => router.push("/performer/requests")}
-            className="w-full rounded-2xl bg-black px-5 py-5 text-left text-white shadow-sm active:scale-[0.99]"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold">
-                  🔍 オファーを探す
-                </p>
+        {menu === "home" ? (
+          <>
+            <section className="mt-7 space-y-3">
+              {mainMenus.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    if (item.key === "matches") {
+                      router.push("/performer/matches");
+                    } else if (item.key === "bands") {
+                      router.push("/performer/bands");
+                    } else {
+                      openMenu(item.key);
+                    }
+                  }}
+                  className={`w-full rounded-2xl border px-5 py-5 text-left shadow-sm transition active:scale-[0.99] ${item.style}`}
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-2xl">
+                      {item.icon}
+                    </span>
 
-                <p className="mt-1 text-sm text-gray-300">
-                  演奏案件やイベントなど、自分に合った募集を探す
-                </p>
-              </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-lg font-bold text-gray-900">
+                        {item.title}
+                      </p>
 
-              <span className="text-2xl">→</span>
-            </div>
-          </button>
+                      <p className="mt-1 text-sm leading-5 text-gray-600">
+                        {item.description}
+                      </p>
+                    </div>
 
-          {/* マッチングを確認する */}
-          <button
-            onClick={() => router.push("/performer/matches")}
-            className="w-full rounded-2xl bg-white border border-gray-200 px-5 py-5 text-left shadow-sm active:bg-gray-50"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold text-gray-900">
-                  🎉 マッチングを確認する
-                </p>
+                    <span
+                      className="text-xl text-gray-400"
+                      aria-hidden="true"
+                    >
+                      →
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </section>
 
-                <p className="mt-1 text-sm text-gray-500">
-                  マッチングした施設との予定を確認
-                </p>
-              </div>
-
-              <span className="text-xl text-gray-400">→</span>
-            </div>
-          </button>
-
-          {/* 招待案件を確認する */}
-          <button
-            onClick={() => router.push("/performer/invitations")}
-            className="w-full rounded-2xl border border-blue-200 bg-blue-50 px-5 py-5 text-left shadow-sm active:bg-blue-100"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-bold text-gray-900">
-                  ✉️ 招待案件を確認する
-                </p>
-
-                <p className="mt-1 text-sm text-gray-600">
-                  施設から届いた招待案件を確認
-                </p>
-              </div>
-
-              <span className="text-2xl text-gray-400">→</span>
-            </div>
-          </button>
-
-          {/* レッスンを受ける・募集する */}
-          <button
-            onClick={() => router.push("/performer/lesson")}
-            className="w-full rounded-2xl border border-purple-200 bg-purple-50 px-5 py-5 text-left shadow-sm active:bg-purple-100"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-lg font-bold text-gray-900">
-                  🎹 レッスンを受ける・募集する
-                </p>
-
-                <p className="mt-1 text-sm text-gray-600">
-                  レッスンを受ける・生徒を募集する
-                </p>
-              </div>
-
-              <span className="text-2xl text-gray-400">→</span>
-            </div>
-          </button>
-        </section>
-
-        {/* 地図で案件を探す */}
-        <section className="mt-4">
-          <button
-            onClick={() => router.push("/performer/map")}
-            className="w-full rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-5 text-left shadow-sm active:bg-emerald-100"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-lg font-bold text-gray-900">
-                  🗺️ 地図で案件を探す
-                </p>
-
-                <p className="mt-1 text-sm text-gray-600">
-                  演奏案件やレッスンを地図から探す
-                </p>
-              </div>
-
-              <span className="text-2xl text-gray-400">→</span>
-            </div>
-          </button>
-        </section>
-
-        {/* その他のメニュー */}
-        <section className="mt-8">
-          <p className="mb-3 px-1 text-sm font-semibold text-gray-500">
-            その他
-          </p>
-
-          <div className="grid grid-cols-2 gap-3">
-            {/* お気に入り */}
             <button
+              type="button"
               onClick={() => router.push("/performer/favorites")}
-              className="rounded-2xl bg-white border border-gray-200 p-5 text-left shadow-sm active:bg-gray-50"
+              className="mt-5 w-full rounded-2xl border border-yellow-200 bg-yellow-50 px-5 py-4 text-left shadow-sm transition active:bg-yellow-100"
             >
-              <div className="text-2xl">⭐</div>
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white text-2xl">
+                  ⭐
+                </span>
 
-              <p className="mt-3 font-bold text-gray-900">
-                お気に入り
-              </p>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-gray-900">
+                    お気に入り
+                  </p>
+                  <p className="mt-1 text-sm text-gray-600">
+                    気になる施設を見る
+                  </p>
+                </div>
 
-              <p className="mt-1 text-xs leading-5 text-gray-500">
-                気になる施設を見る
-              </p>
+                <span
+                  className="text-xl text-gray-400"
+                  aria-hidden="true"
+                >
+                  →
+                </span>
+              </div>
             </button>
 
-            {/* プロフィール */}
             <button
-              onClick={() => router.push("/performer/profile/edit")}
-              className="rounded-2xl bg-white border border-gray-200 p-5 text-left shadow-sm active:bg-gray-50"
+              type="button"
+              onClick={() => openMenu("other")}
+              className="mt-3 w-full rounded-xl px-4 py-3 text-sm font-semibold text-gray-500 active:bg-gray-100"
             >
-              <div className="text-2xl">👤</div>
-
-              <p className="mt-3 font-bold text-gray-900">
-                演奏者情報を編集
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-gray-500">
-                プロフィールを編集
-              </p>
+              ⚙️ その他の機能（プロフィール・お問い合わせ） →
             </button>
-          </div>
-        </section>
+          </>
+        ) : (
+          <section className="mt-7 space-y-3">
+            {menuConfig[menu].items.map((item) => (
+              <button
+                key={`${item.title}-${item.path}`}
+                type="button"
+                onClick={() => router.push(item.path)}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-5 py-5 text-left shadow-sm transition active:bg-gray-50"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-100 text-xl">
+                    {item.icon}
+                  </span>
 
-        {/* フッター */}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-gray-900">
+                      {item.title}
+                    </p>
+
+                    <p className="mt-1 text-sm leading-5 text-gray-500">
+                      {item.description}
+                    </p>
+                  </div>
+
+                  <span
+                    className="text-xl text-gray-400"
+                    aria-hidden="true"
+                  >
+                    →
+                  </span>
+                </div>
+              </button>
+            ))}
+
+            <button
+              type="button"
+              onClick={() => setMenu("home")}
+              className="mt-3 w-full rounded-2xl border border-gray-200 bg-white px-5 py-4 text-sm font-bold text-gray-600 active:bg-gray-50"
+            >
+              ← ホームに戻る
+            </button>
+          </section>
+        )}
+
         <p className="mt-10 pb-4 text-center text-xs text-gray-400">
           あなたの演奏を、必要としている場所へ。
         </p>

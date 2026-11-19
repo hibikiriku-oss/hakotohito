@@ -9,14 +9,11 @@ const PAGE_SIZE = 10;
 type SortOrder = "newest" | "date";
 
 type User = {
-  id: string;
-  display_name: string | null;
   picture_url: string | null;
 };
 
 type Performer = {
   id: string;
-  user_id: string;
   name: string;
   instruments: string[];
   genres: string[];
@@ -51,7 +48,6 @@ export default function FacilityPerformerInvitePage() {
   const params = useParams();
   const performerId = params.id as string;
 
-  const [lineUserId, setLineUserId] = useState("");
   const [performer, setPerformer] = useState<Performer | null>(null);
   const [rating, setRating] = useState<number | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
@@ -81,19 +77,28 @@ export default function FacilityPerformerInvitePage() {
           return;
         }
 
-        const profile = await liff.getProfile();
-        setLineUserId(profile.userId);
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const [performerResponse, requestsResponse] =
           await Promise.all([
-            fetch(`/api/performers/${performerId}`),
+            fetch(`/api/performers/${performerId}`, {
+              headers: {
+                Authorization: `Bearer ${idToken}`,
+              },
+              cache: "no-store",
+            }),
             fetch("/api/facility/requests", {
               headers: {
-                "x-line-user-id": profile.userId,
+                Authorization: `Bearer ${idToken}`,
               },
             }),
           ]);
-
         const performerData = await performerResponse.json();
         const requestsData = await requestsResponse.json();
 
@@ -180,8 +185,12 @@ export default function FacilityPerformerInvitePage() {
   );
 
   const handleSubmit = async () => {
-    if (!lineUserId) {
-      setError("LINEユーザー情報を取得できませんでした");
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      setError(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
+      );
       return;
     }
 
@@ -199,7 +208,7 @@ export default function FacilityPerformerInvitePage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           request_id: selectedRequestId,
@@ -343,6 +352,9 @@ export default function FacilityPerformerInvitePage() {
           </h1>
           <p className="text-sm text-gray-500 mt-2 leading-relaxed">
             募集中の案件を選択して、この演奏者へ依頼を送れます。
+          </p>
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            直接依頼手数料はマッチング成立時に徴収されます。依頼送信時は残高確認のみ行い、コインは消費しません。
           </p>
         </header>
 

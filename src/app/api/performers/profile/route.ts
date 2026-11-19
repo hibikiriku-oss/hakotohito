@@ -1,36 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
+import { normalizeRequiredStringArray } from "@/lib/profile-input";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
+
 // ========================================
 // 演奏者プロフィール取得
 // ========================================
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+    if (!idToken) {
+      return privateJson(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return privateJson(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     // LINEユーザー取得
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
@@ -48,7 +75,7 @@ export async function GET(request: NextRequest) {
     if (performerError || !performer) {
       console.error("演奏者プロフィール取得エラー:", performerError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -62,7 +89,7 @@ export async function GET(request: NextRequest) {
           ? [performer.area]
           : [];
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       performer: {
         ...performer,
@@ -72,7 +99,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("プロフィール取得APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );
@@ -84,14 +111,32 @@ export async function GET(request: NextRequest) {
 // ========================================
 export async function PATCH(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+    if (!idToken) {
+      return privateJson(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return privateJson(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     const body = await request.json();
 
@@ -122,28 +167,17 @@ export async function PATCH(request: NextRequest) {
         ? body.statusLevel.trim()
         : "";
 
-    const instruments = Array.isArray(body.instruments)
-      ? body.instruments
-          .filter((item: unknown): item is string => typeof item === "string")
-          .map((item: string) => item.trim())
-          .filter(Boolean)
-      : [];
-
-    const genres = Array.isArray(body.genres)
-      ? body.genres
-          .filter((item: unknown): item is string => typeof item === "string")
-          .map((item: string) => item.trim())
-          .filter(Boolean)
-      : [];
+    const instruments = normalizeRequiredStringArray(body.instruments);
+    const genres = normalizeRequiredStringArray(body.genres);
 
     if (
       !name ||
       areas.length === 0 ||
-      instruments.length === 0 ||
-      genres.length === 0 ||
+      !instruments ||
+      !genres ||
       !statusLevel
     ) {
-      return NextResponse.json(
+      return privateJson(
         { error: "必須項目を入力してください" },
         { status: 400 }
       );
@@ -151,7 +185,7 @@ export async function PATCH(request: NextRequest) {
 
     // 演奏レベルの値を厳密にチェック
     if (!["beginner", "amateur", "pro"].includes(statusLevel)) {
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏レベルの指定が正しくありません" },
         { status: 400 }
       );
@@ -162,12 +196,13 @@ export async function PATCH(request: NextRequest) {
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
@@ -183,7 +218,7 @@ export async function PATCH(request: NextRequest) {
     if (performerError || !performer) {
       console.error("演奏者プロフィール取得エラー:", performerError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -210,20 +245,20 @@ export async function PATCH(request: NextRequest) {
     if (updateError) {
       console.error("プロフィール更新エラー:", updateError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "プロフィールの更新に失敗しました" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    return privateJson({
       success: true,
       performer: updatedPerformer,
     });
   } catch (error) {
     console.error("プロフィール更新APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

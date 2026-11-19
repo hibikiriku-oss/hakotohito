@@ -7,7 +7,6 @@ import liff from "@line/liff";
 type Facility = {
   name: string;
   facility_type: string;
-  address: string;
 };
 
 type RequestType = "performance" | "events";
@@ -20,6 +19,7 @@ type PerformanceRequest = {
   start_time: string;
   end_time: string;
   area: string | null;
+  venue_address: string | null;
   instruments: string[];
   genres: string[];
   reward: number | null;
@@ -200,10 +200,7 @@ export default function PerformerRequestsPage() {
         const response = await fetch(
           `/api/performance-requests?${params.toString()}`,
           {
-            headers: {
-              "x-line-user-id": lineUserId,
-            },
-          }
+}
         );
 
         const data = await response.json();
@@ -855,6 +852,11 @@ export default function PerformerRequestsPage() {
                         <div className="mt-1.5 flex items-center gap-2 text-sm text-gray-600">
                           <span>📍</span>
                           <span>{request.area}</span>
+                        </div>
+                      )}
+                      {request.venue_address && (
+                        <div className="mt-1.5 text-xs text-gray-500">
+                          開催場所：{request.venue_address}
                         </div>
                       )}
                     </div>

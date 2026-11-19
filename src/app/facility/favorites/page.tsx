@@ -6,7 +6,6 @@ import liff from "@line/liff";
 
 type Performer = {
   id: string;
-  user_id: string;
   name: string | null;
   area: string | null;
   instruments: string[] | null;
@@ -15,16 +14,17 @@ type Performer = {
 };
 
 type User = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
   user_type: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
   performers?: Performer | Performer[] | null;
 };
 
 type Favorite = {
   id: string;
-  target_user_id: string;
+  target_performer_id: string | null;
   created_at: string;
   users: User | User[] | null;
 };
@@ -58,11 +58,17 @@ export default function FacilityFavoritesPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch("/api/favorites", {
           headers: {
-            "x-line-user-id": profile.userId,
+            Authorization: `Bearer ${idToken}`,
           },
         });
 
@@ -149,21 +155,25 @@ export default function FacilityFavoritesPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         "/api/favorites",
         {
           method: "DELETE",
           headers: {
-            "Content-Type":
-              "application/json",
-            "x-line-user-id":
-              profile.userId,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            targetUserId:
-              favorite.target_user_id,
+            targetPerformerId:
+              favorite.target_performer_id,
           }),
         }
       );
@@ -190,6 +200,51 @@ export default function FacilityFavoritesPage() {
     } finally {
       setFavoriteLoading(false);
     }
+  };
+
+  // プロフィールアイコン
+  const renderAvatar = (
+    user: User,
+    size: "small" | "large"
+  ) => {
+    const sizeClass =
+      size === "large"
+        ? "h-16 w-16 text-3xl"
+        : "h-14 w-14 text-2xl";
+
+    if (
+      user.avatar_type === "emoji" &&
+      user.avatar_emoji
+    ) {
+      return (
+        <div
+          className={`flex shrink-0 items-center justify-center rounded-full bg-gray-100 ${sizeClass}`}
+        >
+          {user.avatar_emoji}
+        </div>
+      );
+    }
+
+    if (
+      user.avatar_type === "line" &&
+      user.picture_url
+    ) {
+      return (
+        <img
+          src={user.picture_url}
+          alt=""
+          className={`shrink-0 rounded-full object-cover ring-2 ring-gray-100 ${sizeClass}`}
+        />
+      );
+    }
+
+    return (
+      <div
+        className={`flex shrink-0 items-center justify-center rounded-full bg-gray-100 ${sizeClass}`}
+      >
+        🎸
+      </div>
+    );
   };
 
   if (loading) {
@@ -242,7 +297,7 @@ export default function FacilityFavoritesPage() {
             }
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-gray-900"
           >
-            ← 施設ホームへ戻る
+            ← ホームに戻る
           </button>
 
           <div className="mt-8 bg-white rounded-2xl border border-red-100 p-6 text-center shadow-sm">
@@ -284,7 +339,7 @@ export default function FacilityFavoritesPage() {
             }
             className="inline-flex items-center text-sm font-medium text-gray-500"
           >
-            ← 施設ホームへ戻る
+            ← ホームに戻る
           </button>
 
           <div className="mt-6">
@@ -369,17 +424,7 @@ export default function FacilityFavoritesPage() {
                     className="group w-full rounded-2xl border border-gray-100 bg-white p-4 text-left shadow-sm transition active:scale-[0.99]"
                   >
                     <div className="flex items-center gap-4">
-                      {user.picture_url ? (
-                        <img
-                          src={user.picture_url}
-                          alt=""
-                          className="h-14 w-14 shrink-0 rounded-full object-cover ring-2 ring-gray-100"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gray-100 text-2xl">
-                          🎹
-                        </div>
-                      )}
+                      {renderAvatar(user, "small")}
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
@@ -491,17 +536,7 @@ export default function FacilityFavoritesPage() {
                     {/* プロフィール */}
                     <div className="pt-6">
                       <div className="flex items-center gap-4">
-                        {user.picture_url ? (
-                          <img
-                            src={user.picture_url}
-                            alt=""
-                            className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-gray-100"
-                          />
-                        ) : (
-                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gray-100 text-3xl">
-                            🎹
-                          </div>
-                        )}
+                        {renderAvatar(user, "large")}
 
                         <div className="min-w-0">
                           <h3 className="text-xl font-bold text-gray-900">

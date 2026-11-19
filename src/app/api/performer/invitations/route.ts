@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
+
+function privateJson(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  return NextResponse.json(body, { ...init, headers });
+}
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,27 +15,46 @@ const supabase = createClient(
 
 export async function GET(request: NextRequest) {
   try {
-    // LINEユーザーIDを取得
-    const lineUserId = request.headers.get("x-line-user-id");
+    // LINE IDトークンを検証
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "LINEユーザー情報がありません" },
-        { status: 400 }
+    if (!idToken) {
+      return privateJson(
+        {
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
+        },
+        { status: 401 }
       );
     }
+
+    const verified = await verifyLineIdToken(idToken);
+
+    if (!verified) {
+      return privateJson(
+        {
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
+    }
+
+    const lineUserId = verified.userId;
 
     // ユーザーを取得
     const { data: user, error: userError } = await supabase
       .from("users")
       .select("id")
       .eq("line_user_id", lineUserId)
+      .eq("account_status", "active")
       .single();
 
     if (userError || !user) {
       console.error("ユーザー取得エラー:", userError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "ユーザー情報が見つかりません" },
         { status: 404 }
       );
@@ -44,7 +70,7 @@ export async function GET(request: NextRequest) {
     if (performerError || !performer) {
       console.error("演奏者取得エラー:", performerError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏者プロフィールが見つかりません" },
         { status: 404 }
       );
@@ -74,7 +100,7 @@ export async function GET(request: NextRequest) {
     if (applicationsError) {
       console.error("依頼取得エラー:", applicationsError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "演奏依頼の取得に失敗しました" },
         { status: 500 }
       );
@@ -82,7 +108,7 @@ export async function GET(request: NextRequest) {
 
     // 依頼がなければ、ここで終了
     if (!applications || applications.length === 0) {
-      return NextResponse.json({ invitations: [] });
+      return privateJson({ invitations: [] });
     }
 
     // 案件IDを重複なく取得
@@ -95,7 +121,7 @@ export async function GET(request: NextRequest) {
     ];
 
     if (requestIds.length === 0) {
-      return NextResponse.json({ invitations: [] });
+      return privateJson({ invitations: [] });
     }
 
     // 案件情報をまとめて取得
@@ -105,14 +131,14 @@ export async function GET(request: NextRequest) {
     } = await supabase
       .from("performance_requests")
       .select(
-        "id, facility_id, title, description, performance_date, start_time, end_time, area, reward, status"
+        "id, facility_id, title, description, performance_date, start_time, end_time, area, venue_address, reward, status"
       )
       .in("id", requestIds);
 
     if (requestsError) {
       console.error("案件取得エラー:", requestsError);
 
-      return NextResponse.json(
+      return privateJson(
         { error: "案件情報の取得に失敗しました" },
         { status: 500 }
       );
@@ -141,13 +167,13 @@ export async function GET(request: NextRequest) {
         error: facilitiesError,
       } = await supabase
         .from("facilities")
-        .select("id, name, facility_type, address, description")
+        .select("id, name, facility_type, description")
         .in("id", facilityIds);
 
       if (facilitiesError) {
         console.error("施設取得エラー:", facilitiesError);
 
-        return NextResponse.json(
+        return privateJson(
           { error: "施設情報の取得に失敗しました" },
           { status: 500 }
         );
@@ -195,11 +221,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ invitations });
+    return privateJson({ invitations });
   } catch (error) {
     console.error("演奏依頼取得APIエラー:", error);
 
-    return NextResponse.json(
+    return privateJson(
       { error: "サーバーエラーが発生しました" },
       { status: 500 }
     );

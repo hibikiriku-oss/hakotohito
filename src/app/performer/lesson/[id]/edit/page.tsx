@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { LESSON_FEATURE_ENABLED } from "@/lib/feature-flags";
+import LessonFeatureNotice from "@/components/LessonFeatureNotice";
 import liff from "@line/liff";
 
 const prefectures = [
@@ -113,14 +115,77 @@ export default function EditLessonOfferPage() {
   const [endTime, setEndTime] = useState("");
   const [lessonFee, setLessonFee] = useState("0");
   const [capacity, setCapacity] = useState("5");
+  const [coinRates, setCoinRates] = useState({
+    free_lesson_match_fee_coins: 5,
+    paid_lesson_fee_percent: 1,
+  });
 
-  const loadOffer = useCallback(
-    async (userId: string) => {
-      const response = await fetch(`/api/lesson-offers/${offerId}`, {
-        method: "GET",
-        headers: { "x-line-user-id": userId },
-        cache: "no-store",
-      });
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoinRates() {
+      try {
+        const response = await fetch("/api/coin-rates", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("料金設定を取得できませんでした");
+        }
+
+        const data = (await response.json()) as {
+          free_lesson_match_fee_coins?: number;
+          paid_lesson_fee_percent?: number;
+        };
+
+        const freeLessonFee = Number(data.free_lesson_match_fee_coins);
+        const paidLessonPercent = Number(data.paid_lesson_fee_percent);
+
+        if (
+          !Number.isSafeInteger(freeLessonFee) ||
+          freeLessonFee < 0 ||
+          !Number.isFinite(paidLessonPercent) ||
+          paidLessonPercent < 0 ||
+          paidLessonPercent > 100
+        ) {
+          throw new Error("料金設定の値が不正です");
+        }
+
+        if (!cancelled) {
+          setCoinRates({
+            free_lesson_match_fee_coins: freeLessonFee,
+            paid_lesson_fee_percent: paidLessonPercent,
+          });
+        }
+      } catch (error) {
+        console.error("料金設定の読み込みに失敗しました:", error);
+      }
+    }
+
+    void loadCoinRates();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+const loadOffer = useCallback(
+  async () => {
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
+      throw new Error(
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
+      );
+    }
+
+    const response = await fetch(`/api/lesson-offers/${offerId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+      cache: "no-store",
+    });
 
       const data = await response.json();
 
@@ -177,12 +242,12 @@ export default function EditLessonOfferPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+const profile = await liff.getProfile();
 
-        if (cancelled) return;
+if (cancelled) return;
 
-        setLineUserId(profile.userId);
-        await loadOffer(profile.userId);
+setLineUserId(profile.userId);
+await loadOffer();
 
         if (!cancelled) setLoaded(true);
       } catch (error) {
@@ -278,12 +343,21 @@ export default function EditLessonOfferPage() {
     setLoading(true);
 
     try {
-      const response = await fetch(`/api/lesson-offers/${offerId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
-        },
+const idToken = liff.getIDToken();
+
+if (!idToken) {
+  setErrorMessage(
+    "LINEの本人確認情報を取得できません。再ログインしてください。"
+  );
+  return;
+}
+
+const response = await fetch(`/api/lesson-offers/${offerId}`, {
+  method: "PUT",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${idToken}`,
+  },
         body: JSON.stringify({
           title: title.trim(),
           description,
@@ -308,7 +382,7 @@ export default function EditLessonOfferPage() {
       }
 
       alert(
-        `募集内容を更新しました。\n仮押さえコイン：${data.reserved_coins ?? 0}枚`
+        `募集内容を更新しました。\n定員分の必要コイン目安：${data.required_coins ?? 0}枚\nコインはマッチング成立時に徴収されます。`
       );
 
       router.push(`/performer/lesson/${offerId}`);
@@ -322,6 +396,8 @@ export default function EditLessonOfferPage() {
       setLoading(false);
     }
   }
+
+  if (!LESSON_FEATURE_ENABLED) return <LessonFeatureNotice />;
 
   if (errorMessage && !loaded) {
     return (
@@ -603,9 +679,12 @@ export default function EditLessonOfferPage() {
               <p style={{ marginTop: 12, color: "#555" }}>
                 参考：1人あたりの成立手数料は
                 {Number(lessonFee) === 0
-                  ? "5"
-                  : String(Math.ceil(Number(lessonFee) / 100))}
-                枚です。変更後の仮押さえ額は保存時に再計算されます。
+                  ? String(coinRates.free_lesson_match_fee_coins)
+                  : String(
+                      Math.ceil(
+                        (Number(lessonFee) * coinRates.paid_lesson_fee_percent) / 100
+                      )
+                    )}                枚です。変更後の必要コイン目安は保存時に再計算されます。
               </p>
             )}
         </section>

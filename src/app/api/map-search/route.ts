@@ -1,11 +1,42 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+function removeJoinedUsers<T extends { users: unknown }>(
+  relation: T | T[] | null | undefined
+): Omit<T, "users"> | Omit<T, "users">[] | null | undefined {
+  const removeUsers = ({ users: _users, ...rest }: T): Omit<T, "users"> =>
+    rest;
+
+  if (Array.isArray(relation)) {
+    return relation.map(removeUsers);
+  }
+
+  return relation ? removeUsers(relation) : relation;
+}
+
+const OTHER_VALUE = "__OTHER__";
+
+const STANDARD_INSTRUMENTS = [
+  "ピアノ",
+  "ギター",
+  "ベース",
+  "ドラム",
+  "サックス",
+  "バイオリン",
+];
+
+const STANDARD_GENRES = [
+  "ポップス",
+  "ロック",
+  "ジャズ",
+  "クラシック",
+];
 
 function getJapanToday(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -23,9 +54,7 @@ function getJapanToday(): string {
 }
 
 function isValidDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
 
   const parsed = new Date(`${value}T00:00:00Z`);
 
@@ -35,11 +64,65 @@ function isValidDate(value: string): boolean {
   );
 }
 
+function isValidTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function parseList(value: string | null): string[] {
+  if (!value) return [];
+
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+function matchesCategory(
+  itemValues: string[] | null | undefined,
+  selectedValues: string[],
+  standardValues: string[]
+): boolean {
+  if (selectedValues.length === 0) return true;
+
+  const values = Array.isArray(itemValues)
+    ? itemValues.filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0
+      )
+    : [];
+
+  if (values.length === 0) return false;
+
+  // 「その他」と「__OTHER__」の両方に対応
+  const normalSelections = selectedValues.filter(
+    (value) => value !== OTHER_VALUE && value !== "その他"
+  );
+
+  const includeOther =
+    selectedValues.includes(OTHER_VALUE) ||
+    selectedValues.includes("その他");
+
+  const matchesNormal =
+    normalSelections.length > 0 &&
+    values.some((value) => normalSelections.includes(value));
+
+  const matchesOther =
+    includeOther &&
+    values.some((value) => !standardValues.includes(value));
+
+  return matchesNormal || matchesOther;
+}
+
 async function getCurrentPerformerId(lineUserId: string) {
   const { data: user, error: userError } = await supabase
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) throw userError;
@@ -58,36 +141,96 @@ async function getCurrentPerformerId(lineUserId: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+    const idToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
 
-    if (!lineUserId) {
+    if (!idToken) {
       return NextResponse.json(
         {
           success: false,
-          error: "LINEユーザー情報を取得できません。",
+          error: "LINEの本人確認情報がありません。再ログインしてください。",
         },
         { status: 401 }
       );
     }
 
-    const requestedDate = request.nextUrl.searchParams.get("date");
-    let selectedDate = getJapanToday();
+    const verified = await verifyLineIdToken(idToken);
 
-    if (requestedDate !== null) {
-      if (!isValidDate(requestedDate)) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "対象日が正しくありません。",
-          },
-          { status: 400 }
-        );
-      }
-
-      selectedDate = requestedDate;
+    if (!verified) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "LINEの本人確認に失敗しました。再ログインしてください。",
+        },
+        { status: 401 }
+      );
     }
 
-    const performerId = await getCurrentPerformerId(lineUserId);
+    const params = request.nextUrl.searchParams;
+
+    let startDate = params.get("startDate");
+    const endDate = params.get("endDate");
+
+    if (startDate && !isValidDate(startDate)) {
+      return NextResponse.json(
+        { success: false, error: "開始日が正しくありません。" },
+        { status: 400 }
+      );
+    }
+
+    if (endDate && !isValidDate(endDate)) {
+      return NextResponse.json(
+        { success: false, error: "終了日が正しくありません。" },
+        { status: 400 }
+      );
+    }
+
+    if (startDate && endDate && startDate > endDate) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "終了日は開始日以降の日付を指定してください。",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 開始日・終了日とも未指定なら今日以降を対象にする
+    if (!startDate && !endDate) {
+      startDate = getJapanToday();
+    }
+
+    const startTime = params.get("startTime");
+    const endTime = params.get("endTime");
+
+    if (
+      (startTime && !isValidTime(startTime)) ||
+      (endTime && !isValidTime(endTime))
+    ) {
+      return NextResponse.json(
+        { success: false, error: "時間帯の指定が正しくありません。" },
+        { status: 400 }
+      );
+    }
+
+    if (startTime && endTime && startTime >= endTime) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "終了時間は開始時間より後にしてください。",
+        },
+        { status: 400 }
+      );
+    }
+
+    const useTimeFilter = Boolean(startTime && endTime);
+
+    const instruments = parseList(params.get("instruments"));
+    const genres = parseList(params.get("genres"));
+
+    const performerId = await getCurrentPerformerId(verified.userId);
 
     if (!performerId) {
       return NextResponse.json(
@@ -117,32 +260,60 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 選択した日付の演奏案件を取得
-    const { data: performanceRequests, error: requestsError } =
-      await supabase
-        .from("performance_requests")
-        .select(`
+    // 演奏案件を取得
+    let performanceQuery = supabase
+      .from("performance_requests")
+      .select(`
+        id,
+        title,
+        description,
+        performance_date,
+        start_time,
+        end_time,
+        area,
+        venue_address,
+        instruments,
+        genres,
+        reward,
+        request_type,
+        status,
+        facilities!inner (
           id,
-          title,
-          description,
-          performance_date,
-          start_time,
-          end_time,
-          area,
-          instruments,
-          genres,
-          reward,
-          request_type,
-          status,
-          facilities (
-            id,
-            name,
-            facility_type,
-            address
-          )
-        `)
-        .eq("performance_date", selectedDate)
-        .order("performance_date", { ascending: true });
+          name,
+          facility_type,
+          users!inner(id)
+        )
+      `)
+      .eq("facilities.users.account_status", "active");
+
+    if (startDate) {
+      performanceQuery = performanceQuery.gte(
+        "performance_date",
+        startDate
+      );
+    }
+
+    if (endDate) {
+      performanceQuery = performanceQuery.lte(
+        "performance_date",
+        endDate
+      );
+    }
+
+    if (useTimeFilter) {
+      performanceQuery = performanceQuery
+        .not("start_time", "is", null)
+        .not("end_time", "is", null)
+        .lt("start_time", endTime!)
+        .gt("end_time", startTime!);
+    }
+
+    const {
+      data: performanceRequests,
+      error: requestsError,
+    } = await performanceQuery.order("performance_date", {
+      ascending: true,
+    });
 
     if (requestsError) throw requestsError;
 
@@ -152,21 +323,30 @@ export async function GET(request: NextRequest) {
           item.status === "open" ||
           applicationStatusByRequestId.has(item.id)
       )
-      .map((item) => {
-        const facilityData: any = item.facilities;
-        const facility = Array.isArray(facilityData)
-          ? facilityData[0]
-          : facilityData;
+      .filter((item) => {
+        const instrumentMatch = matchesCategory(
+          item.instruments,
+          instruments,
+          STANDARD_INSTRUMENTS
+        );
 
-        return {
-          ...item,
-          map_type: "performance",
-          is_applied: applicationStatusByRequestId.has(item.id),
-          application_status:
-            applicationStatusByRequestId.get(item.id) ?? null,
-          map_address: facility?.address ?? null,
-        };
-      });
+        const genreMatch = matchesCategory(
+          item.genres,
+          genres,
+          STANDARD_GENRES
+        );
+
+        return instrumentMatch && genreMatch;
+      })
+      .map((item) => ({
+        ...item,
+        facilities: removeJoinedUsers(item.facilities),
+        map_type: "performance",
+        is_applied: applicationStatusByRequestId.has(item.id),
+        application_status:
+          applicationStatusByRequestId.get(item.id) ?? null,
+        map_address: item.venue_address || null,
+      }));
 
     // 自分が応募したレッスン募集を取得
     const {
@@ -188,39 +368,65 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 選択した日付のレッスン募集と、日付未設定の募集を取得
-    const { data: lessonOffers, error: lessonOffersError } =
-      await supabase
-        .from("lesson_offers")
-        .select(`
+    // レッスン募集を取得（日付未設定の募集も対象）
+    let lessonQuery = supabase
+      .from("lesson_offers")
+      .select(`
+        id,
+        performer_id,
+        title,
+        description,
+        instruments,
+        genres,
+        area,
+        lesson_date,
+        start_time,
+        end_time,
+        lesson_fee,
+        capacity,
+        target_levels,
+        status,
+        performers!inner (
           id,
-          performer_id,
-          title,
-          description,
-          instruments,
-          genres,
+          name,
           area,
-          lesson_date,
-          start_time,
-          end_time,
-          lesson_fee,
-          capacity,
-          target_levels,
-          status,
-          performers (
-            id,
-            name,
-            area,
-            areas
-          )
-        `)
-        .or(
-          `lesson_date.eq.${selectedDate},lesson_date.is.null`
+          areas,
+          users!inner(id)
         )
-        .order("lesson_date", {
-          ascending: true,
-          nullsFirst: false,
-        });
+      `)
+      .eq("performers.users.account_status", "active");
+
+    if (startDate && endDate && startDate === endDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.eq.${startDate},lesson_date.is.null`
+      );
+    } else if (startDate && endDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.is.null,and(lesson_date.gte.${startDate},lesson_date.lte.${endDate})`
+      );
+    } else if (startDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.is.null,lesson_date.gte.${startDate}`
+      );
+    } else if (endDate) {
+      lessonQuery = lessonQuery.or(
+        `lesson_date.is.null,lesson_date.lte.${endDate}`
+      );
+    }
+
+    if (useTimeFilter) {
+      lessonQuery = lessonQuery
+        .not("start_time", "is", null)
+        .not("end_time", "is", null)
+        .lt("start_time", endTime!)
+        .gt("end_time", startTime!);
+    }
+
+    const { data: lessonOffers, error: lessonOffersError } =
+      await lessonQuery.order("lesson_date", {
+        ascending: true,
+        nullsFirst: false,
+      });
 
     if (lessonOffersError) throw lessonOffersError;
 
@@ -230,8 +436,24 @@ export async function GET(request: NextRequest) {
           item.status === "open" ||
           lessonApplicationStatusByOfferId.has(item.id)
       )
+      .filter((item) => {
+        const instrumentMatch = matchesCategory(
+          item.instruments,
+          instruments,
+          STANDARD_INSTRUMENTS
+        );
+
+        const genreMatch = matchesCategory(
+          item.genres,
+          genres,
+          STANDARD_GENRES
+        );
+
+        return instrumentMatch && genreMatch;
+      })
       .map((item) => ({
         ...item,
+        performers: removeJoinedUsers(item.performers),
         map_type: "lesson",
         is_applied: lessonApplicationStatusByOfferId.has(item.id),
         application_status:
@@ -239,15 +461,20 @@ export async function GET(request: NextRequest) {
         map_address: null,
       }));
 
-    return NextResponse.json({
-      success: true,
-      date: selectedDate,
-      performances: visiblePerformanceRequests,
-      lessons: visibleLessonOffers,
-      total:
-        visiblePerformanceRequests.length +
-        visibleLessonOffers.length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        date: startDate === endDate ? startDate : null,
+        startDate,
+        endDate,
+        performances: visiblePerformanceRequests,
+        lessons: visibleLessonOffers,
+        total:
+          visiblePerformanceRequests.length +
+          visibleLessonOffers.length,
+      },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("地図検索APIエラー:", error);
 

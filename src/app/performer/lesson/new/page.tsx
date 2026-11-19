@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
+import { LESSON_FEATURE_ENABLED } from "@/lib/feature-flags";
+import LessonFeatureNotice from "@/components/LessonFeatureNotice";
 
 const instrumentOptions = [
   "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ",
@@ -52,7 +54,7 @@ export default function NewLessonOfferPage() {
 
   const [prefecture, setPrefecture] = useState("愛知県");
   const [municipality, setMunicipality] = useState("");
-
+  const [address, setAddress] = useState("");
   const [instruments, setInstruments] = useState<string[]>([]);
   const [otherInstrument, setOtherInstrument] = useState("");
   const [genres, setGenres] = useState<string[]>([]);
@@ -72,7 +74,7 @@ export default function NewLessonOfferPage() {
   const [capacity, setCapacity] = useState("5");
   const [loading, setLoading] = useState(false);
 
-  // 仮押さえコインの見積もり
+  // 定員分の必要コイン見積もり（残高は仮押さえしない）
   const feeNumber = Number(lessonFee);
   const capacityNumber = Number(capacity);
 
@@ -87,10 +89,21 @@ export default function NewLessonOfferPage() {
     capacityNumber >= 1 &&
     capacityNumber <= 100;
 
-  const coinsPerPerson =
-    validFee ? (feeNumber === 0 ? 5 : Math.ceil(feeNumber * 0.01)) : 0;
+  const [coinRates, setCoinRates] = useState({
+    free_lesson_match_fee_coins: 5,
+    paid_lesson_fee_percent: 1,
+  });
 
-  const estimatedReservedCoins =
+  const coinsPerPerson =
+    validFee
+      ? feeNumber === 0
+        ? coinRates.free_lesson_match_fee_coins
+        : Math.ceil(
+            (feeNumber * coinRates.paid_lesson_fee_percent) / 100
+          )
+      : 0;
+
+  const estimatedRequiredCoins =
     validFee && validCapacity
       ? coinsPerPerson * capacityNumber
       : null;
@@ -123,6 +136,55 @@ export default function NewLessonOfferPage() {
     }
 
     initLiff();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCoinRates() {
+      try {
+        const response = await fetch("/api/coin-rates", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("料金設定の取得に失敗しました");
+        }
+
+        const data = (await response.json()) as {
+          free_lesson_match_fee_coins?: number;
+          paid_lesson_fee_percent?: number;
+        };
+
+        const freeLessonFee = Number(data.free_lesson_match_fee_coins);
+        const paidLessonPercent = Number(data.paid_lesson_fee_percent);
+
+        if (
+          !Number.isSafeInteger(freeLessonFee) ||
+          freeLessonFee < 0 ||
+          !Number.isFinite(paidLessonPercent) ||
+          paidLessonPercent < 0 ||
+          paidLessonPercent > 100
+        ) {
+          throw new Error("料金設定の値が不正です");
+        }
+
+        if (!cancelled) {
+          setCoinRates({
+            free_lesson_match_fee_coins: freeLessonFee,
+            paid_lesson_fee_percent: paidLessonPercent,
+          });
+        }
+      } catch (error) {
+        console.error("料金設定の読み込みに失敗しました:", error);
+      }
+    }
+
+    void loadCoinRates();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const toggleChoice = (
@@ -175,9 +237,11 @@ export default function NewLessonOfferPage() {
       return;
     }
 
-    if (!lineUserId) {
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
       alert(
-        "LINEユーザー情報を取得中です。少し待ってから再度お試しください。"
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
       );
       return;
     }
@@ -201,7 +265,7 @@ export default function NewLessonOfferPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           title: title.trim(),
@@ -210,8 +274,8 @@ export default function NewLessonOfferPage() {
           genres: finalGenres,
           targetLevels,
           area,
-          lessonDate: lessonDate || null,
-          startTime: startTime || null,
+          address: address.trim(),
+          lessonDate: lessonDate || null,          startTime: startTime || null,
           endTime: endTime || null,
           lessonFee: feeNumber,
           capacity: capacityNumber,
@@ -241,11 +305,11 @@ export default function NewLessonOfferPage() {
         return;
       }
 
-      const reservedCoins = Number(data.reserved_coins);
+      const requiredCoins = Number(data.required_coins);
 
       alert(
-        Number.isFinite(reservedCoins)
-          ? `レッスン募集を登録しました！\n${reservedCoins.toLocaleString()}コインを仮押さえしました。`
+        Number.isFinite(requiredCoins)
+          ? `レッスン募集を登録しました！\n定員分の必要コイン目安は${requiredCoins.toLocaleString()}コインです。\nコインはマッチング成立時に徴収されます。`
           : "レッスン募集を登録しました！"
       );
 
@@ -257,6 +321,8 @@ export default function NewLessonOfferPage() {
       setLoading(false);
     }
   };
+
+  if (!LESSON_FEATURE_ENABLED) return <LessonFeatureNotice />;
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -367,6 +433,20 @@ export default function NewLessonOfferPage() {
                 onChange={(e) => setMunicipality(e.target.value)}
                 placeholder="例：名古屋市千種区、豊田市"
                 className={`${inputClass} mt-3`}
+              />
+              <label className="font-bold text-sm text-gray-800 mt-4 mb-2 block">
+                詳しい開催住所（任意）
+              </label>
+              <p className="text-xs text-amber-700 leading-relaxed mb-2">
+                入力した住所は、アプリ内のログイン済み利用者に公開されます。公開してよい住所だけを入力してください。
+              </p>
+              <input
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                maxLength={500}
+                placeholder="例：○○市○○町1-2-3、○○音楽教室"
+                className={inputClass}
               />
               <p className="text-xs text-gray-400 mt-2">
                 オンラインレッスンの場合は、エリアを空欄にしても登録できます。
@@ -528,17 +608,17 @@ export default function NewLessonOfferPage() {
 
           <section className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
             <h2 className="font-bold text-gray-900 mb-2">
-              仮押さえされるコイン
+              定員分の必要コイン目安
             </h2>
 
-            {estimatedReservedCoins === null ? (
+            {estimatedRequiredCoins === null ? (
               <p className="text-sm text-red-600">
                 レッスン料は0円以上の整数、定員は1〜100人で入力してください。
               </p>
             ) : (
               <>
                 <p className="text-3xl font-bold text-gray-900">
-                  {estimatedReservedCoins.toLocaleString()}
+                  {estimatedRequiredCoins.toLocaleString()}
                   <span className="text-base ml-1">コイン</span>
                 </p>
                 <p className="text-sm text-gray-600 mt-2">
@@ -547,9 +627,9 @@ export default function NewLessonOfferPage() {
                 </p>
                 <p className="text-xs text-gray-500 mt-3 leading-relaxed">
                   {feeNumber === 0
-                    ? "無料レッスンは、成立1人あたり5コインです。"
-                    : "有料レッスンは、レッスン料の1%（1コイン未満切り上げ）が成立1人あたりの手数料です。"}
-                  募集登録時に、定員分のコインが仮押さえされます。実際の仮押さえ額はサーバー側で確定します。
+                    ? `無料レッスンは、成立1人あたり${coinRates.free_lesson_match_fee_coins}コインです。`
+                    : `有料レッスンは、レッスン料の${coinRates.paid_lesson_fee_percent}%（1コイン未満切り上げ）が成立1人あたりの手数料です。`}
+                  これは定員分の必要コインの目安です。募集登録時にコインは差し引かれず、マッチング成立時に1人分ずつ徴収されます。
                 </p>
               </>
             )}

@@ -3,6 +3,12 @@
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
 
+const avatarEmojis = [
+  "🎸", "🎹", "🎤", "🥁", "🎷",
+  "🎺", "🎻", "🎼", "🎵", "🎶",
+  "🌟", "😊", "🌸", "🐱", "🐶",
+];
+
 export default function FacilityPage() {
   const [lineUserId, setLineUserId] = useState("");
 
@@ -10,6 +16,9 @@ export default function FacilityPage() {
   const [facilityType, setFacilityType] = useState("");
   const [address, setAddress] = useState("");
   const [description, setDescription] = useState("");
+
+  const [avatarType, setAvatarType] = useState<"line" | "emoji">("line");
+  const [avatarEmoji, setAvatarEmoji] = useState("🏢");
 
   const [loading, setLoading] = useState(false);
 
@@ -37,13 +46,33 @@ export default function FacilityPage() {
           return;
         }
 
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error("LINEの本人確認情報を取得できません。再ログインしてください。");
+        const accountResponse = await fetch("/api/users", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          cache: "no-store",
+        });
+        if (accountResponse.status === 404) {
+          window.location.replace("/");
+          return;
+        }
+        const accountData = await accountResponse.json().catch(() => ({}));
+        if (!accountResponse.ok || !accountData.user) {
+          throw new Error(accountData.error || "アカウント状態を確認できません。");
+        }
+        if (accountData.user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
+        }
+        if (accountData.user.user_type === "performer") {
+          window.location.replace("/performer");
+          return;
+        }
         const profile = await liff.getProfile();
-
-        console.log("LINEプロフィール:", profile);
 
         setLineUserId(profile.userId);
       } catch (error) {
-        console.error("LIFF ERROR:", error);
+        console.error("LIFF初期化エラー");
         alert("LINE情報の取得に失敗しました");
       }
     }
@@ -64,9 +93,11 @@ export default function FacilityPage() {
       return;
     }
 
-    if (!lineUserId) {
+    const idToken = liff.getIDToken();
+
+    if (!idToken) {
       alert(
-        "LINEユーザー情報を取得中です。少し待ってから再度お試しください。"
+        "LINEの本人確認情報を取得できません。再ログインしてください。"
       );
       return;
     }
@@ -74,27 +105,23 @@ export default function FacilityPage() {
     try {
       setLoading(true);
 
-      console.log("施設プロフィール登録開始");
-
       const response = await fetch("/api/facilities", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
           name,
           facilityType,
           address,
           description,
+          avatarType,
+          avatarEmoji: avatarType === "emoji" ? avatarEmoji : null,
         }),
       });
 
-      console.log("APIステータス:", response.status);
-
       const data = await response.json();
-
-      console.log("API結果:", data);
 
       if (!response.ok) {
         alert(data.error || "登録に失敗しました");
@@ -105,7 +132,7 @@ export default function FacilityPage() {
 
       window.location.href = "/facility/home";
     } catch (error) {
-      console.error("登録エラー:", error);
+      console.error("施設プロフィール登録エラー:", error instanceof Error ? error.name : "UnknownError");
       alert("通信エラーが発生しました");
     } finally {
       setLoading(false);
@@ -182,6 +209,70 @@ export default function FacilityPage() {
                     placeholder="例：○○老人ホーム"
                     className="w-full border border-gray-200 rounded-2xl px-4 py-3.5 bg-gray-50 text-gray-900 placeholder:text-gray-400 outline-none transition focus:bg-white focus:border-black focus:ring-2 focus:ring-gray-100"
                   />
+                </div>
+
+                {/* プロフィールアイコン */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-800 mb-3">
+                    プロフィールアイコン
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAvatarType("line")}
+                      className={`rounded-xl border p-3 text-sm font-bold ${
+                        avatarType === "line"
+                          ? "border-black bg-gray-100"
+                          : "border-gray-200"
+                      }`}
+                    >
+                      LINEプロフィール画像
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setAvatarType("emoji")}
+                      className={`rounded-xl border p-3 text-sm font-bold ${
+                        avatarType === "emoji"
+                          ? "border-black bg-gray-100"
+                          : "border-gray-200"
+                      }`}
+                    >
+                      絵文字アイコン
+                    </button>
+                  </div>
+
+                  {avatarType === "emoji" && (
+                    <div className="mt-4">
+                      <p className="text-xs text-gray-500 mb-3">
+                        使用する絵文字を1つ選択してください。
+                      </p>
+
+                      <div className="grid grid-cols-5 gap-2">
+                        {avatarEmojis.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => setAvatarEmoji(emoji)}
+                            aria-label={`アイコン ${emoji}`}
+                            aria-pressed={avatarEmoji === emoji}
+                            className={`aspect-square rounded-xl border text-2xl ${
+                              avatarEmoji === emoji
+                                ? "border-black bg-gray-100"
+                                : "border-gray-200 bg-white"
+                            }`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+
+                      <p className="text-center text-3xl mt-3">
+                        {avatarEmoji}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 {/* 施設種類 */}

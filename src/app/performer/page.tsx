@@ -1,51 +1,67 @@
+
 "use client";
 
+import { requireLineIdToken } from "@/lib/require-line-id-token";
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
 
-const prefectures = [
-  "北海道",
-  "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
-  "岐阜県", "静岡県", "愛知県", "三重県",
-  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
-  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-  "徳島県", "香川県", "愛媛県", "高知県",
-  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県",
-  "沖縄県",
-];
+type StatusLevel = "beginner" | "amateur" | "pro";
 
 const instrumentOptions = [
-  "ピアノ",
-  "ギター",
-  "ベース",
-  "ウクレレ",
-  "ドラム",
-  "バイオリン",
-  "ビオラ",
-  "チェロ",
-  "フルート",
-  "クラリネット",
-  "サックス",
-  "トランペット",
-  "トロンボーン",
-  "箏",
-  "和太鼓",
-  "声楽・歌",
+  "ピアノ", "ギター", "ベース", "ドラム", "ヴォーカル",
+  "サックス", "トランペット", "パーカッション", "DJ", "和楽器",
 ];
 
 const genreOptions = [
-  "クラシック",
-  "ポップス",
-  "ジャズ",
-  "ロック",
+  "クラシック", "ロック・ポップス", "ジャズ・フュージョン",
+  "ラテン・ボサノバ", "ヒップホップ・ラップ", "R&B",
+  "アカペラ", "DJ・エレクトロ", "ワールドミュージック",
   "演歌・歌謡曲",
-  "童謡・唱歌",
-  "アニメ・ゲーム音楽",
-  "映画音楽",
-  "邦楽",
-  "民謡",
+];
+
+const statusLevelOptions: {
+  value: StatusLevel;
+  label: string;
+  shortLabel: string;
+  description: string;
+  colorClass: string;
+  borderClass: string;
+  textClass: string;
+}[] = [
+  {
+    value: "beginner",
+    label: "初心者",
+    shortLabel: "BEGINNER",
+    description: "人前での演奏経験がほぼ0",
+    colorClass: "bg-green-50",
+    borderClass: "border-green-200",
+    textClass: "text-green-700",
+  },
+  {
+    value: "amateur",
+    label: "アマチュア",
+    shortLabel: "AMATEUR",
+    description:
+      "人前での演奏は度々こなしているが、有料チケットを購入してもらえるほどの腕前ではない",
+    colorClass: "bg-blue-50",
+    borderClass: "border-blue-200",
+    textClass: "text-blue-700",
+  },
+  {
+    value: "pro",
+    label: "プロ",
+    shortLabel: "PRO",
+    description: "演奏料やレッスン代金を生活の糧にしている",
+    colorClass: "bg-violet-200",
+    borderClass: "border-violet-400",
+    textClass: "text-violet-900",
+  },
+];
+
+const avatarEmojis = [
+  "🎸", "🎹", "🎤", "🥁", "🎷",
+  "🎺", "🎻", "🎼", "🎵", "🎶",
+  "🌟", "😊", "🌸", "🐱", "🐶",
 ];
 
 const inputClass =
@@ -55,15 +71,19 @@ export default function PerformerPage() {
   const [lineUserId, setLineUserId] = useState("");
   const [name, setName] = useState("");
 
-  const [prefecture, setPrefecture] = useState("愛知県");
-  const [municipality, setMunicipality] = useState("");
+  const [avatarType, setAvatarType] = useState<"line" | "emoji">("line");
+  const [avatarEmoji, setAvatarEmoji] = useState("🎸");
+
   const [areas, setAreas] = useState<string[]>([]);
+  const [areaInput, setAreaInput] = useState("");
 
   const [instruments, setInstruments] = useState<string[]>([]);
   const [otherInstrument, setOtherInstrument] = useState("");
 
   const [genres, setGenres] = useState<string[]>([]);
   const [otherGenre, setOtherGenre] = useState("");
+
+  const [statusLevel, setStatusLevel] = useState<StatusLevel | "">("");
 
   const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,6 +107,28 @@ export default function PerformerPage() {
           return;
         }
 
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error("LINEの本人確認情報を取得できません。再ログインしてください。");
+        const accountResponse = await fetch("/api/users", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          cache: "no-store",
+        });
+        if (accountResponse.status === 404) {
+          window.location.replace("/");
+          return;
+        }
+        const accountData = await accountResponse.json().catch(() => ({}));
+        if (!accountResponse.ok || !accountData.user) {
+          throw new Error(accountData.error || "アカウント状態を確認できません。");
+        }
+        if (accountData.user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
+        }
+        if (accountData.user.user_type === "facility") {
+          window.location.replace("/facility");
+          return;
+        }
         const profile = await liff.getProfile();
         setLineUserId(profile.userId);
       } catch (error) {
@@ -111,28 +153,42 @@ export default function PerformerPage() {
   };
 
   const addArea = () => {
-    const city = municipality.trim();
+    const area = areaInput.trim().replace(/\s+/g, " ");
 
-    if (!city) {
-      alert("市区町村名を入力してください");
+    if (!area) {
+      alert("活動エリアを入力してください。");
       return;
     }
 
-    const fullArea = `${prefecture}${city}`;
-
-    if (areas.includes(fullArea)) {
-      alert("この活動エリアはすでに追加されています");
+    if (
+      areas.some(
+        (item) => item.toLocaleLowerCase() === area.toLocaleLowerCase()
+      )
+    ) {
+      alert("この活動エリアはすでに追加されています。");
       return;
     }
 
-    setAreas((current) => [...current, fullArea]);
-    setMunicipality("");
+    setAreas((current) => [...current, area]);
+    setAreaInput("");
   };
 
   const handleSubmit = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
+
+    const inputArea = areaInput.trim().replace(/\s+/g, " ");
+    const finalAreas = [...areas];
+
+    if (
+      inputArea &&
+      !finalAreas.some(
+        (item) => item.toLocaleLowerCase() === inputArea.toLocaleLowerCase()
+      )
+    ) {
+      finalAreas.push(inputArea);
+    }
 
     const finalInstruments = [
       ...instruments,
@@ -148,48 +204,43 @@ export default function PerformerPage() {
         : []),
     ];
 
-const missingFields = {
-  name: !name.trim(),
-  areas: areas.length === 0,
-  instruments: finalInstruments.length === 0,
-  genres: finalGenres.length === 0,
-};
+    const missingFields = {
+      name: !name.trim(),
+      areas: finalAreas.length === 0,
+      instruments: finalInstruments.length === 0,
+      genres: finalGenres.length === 0,
+      statusLevel: !statusLevel,
+    };
 
-console.log("演奏者登録の入力チェック:", {
-  name,
-  areas,
-  instruments,
-  otherInstrument,
-  finalInstruments,
-  genres,
-  otherGenre,
-  finalGenres,
-  missingFields,
-});
-
-if (
-  missingFields.name ||
-  missingFields.areas ||
-  missingFields.instruments ||
-  missingFields.genres
-) {
-  alert(
-    `入力不足の項目：${
-      [
-        missingFields.name && "名前",
-        missingFields.areas && "活動エリア",
-        missingFields.instruments && "楽器",
-        missingFields.genres && "音楽ジャンル",
-      ]
-        .filter(Boolean)
-        .join("・")
-    }`
-  );
-  return;
-}
+    if (
+      missingFields.name ||
+      missingFields.areas ||
+      missingFields.instruments ||
+      missingFields.genres ||
+      missingFields.statusLevel
+    ) {
+      alert(
+        `入力不足の項目：${
+          [
+            missingFields.name && "名前",
+            missingFields.areas && "活動エリア",
+            missingFields.instruments && "楽器",
+            missingFields.genres && "音楽ジャンル",
+            missingFields.statusLevel && "演奏レベル",
+          ]
+            .filter(Boolean)
+            .join("・")
+        }`
+      );
+      return;
+    }
 
     if (!lineUserId) {
       alert("LINEユーザー情報を取得中です。少し待ってから再度お試しください。");
+      return;
+    }
+
+    if (!statusLevel) {
       return;
     }
 
@@ -200,16 +251,18 @@ if (
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": lineUserId,
+          Authorization: `Bearer ${requireLineIdToken(liff.getIDToken())}`,
         },
         body: JSON.stringify({
           name: name.trim(),
-          areas,
-          // 既存機能との互換性のため、代表エリアも送信
-          area: areas[0],
+          areas: finalAreas,
+          area: finalAreas[0],
           instruments: [...new Set(finalInstruments)],
           genres: [...new Set(finalGenres)],
+          status_level: statusLevel,
           bio,
+          avatarType,
+          avatarEmoji: avatarType === "emoji" ? avatarEmoji : null,
         }),
       });
 
@@ -268,29 +321,81 @@ if (
               />
 
               <div className="mt-5">
-                <label className="block text-sm font-bold text-gray-800 mb-2">
-                  活動エリア（市区町村単位） <span className="text-red-500">*</span>
+                <label className="block text-sm font-bold text-gray-800 mb-3">
+                  プロフィールアイコン
                 </label>
-                <p className="text-xs text-gray-500 mb-3">
-                  活動できる市区町村を複数追加できます。
-                </p>
 
-                <select
-                  value={prefecture}
-                  onChange={(e) => setPrefecture(e.target.value)}
-                  className={inputClass}
-                >
-                  {prefectures.map((item) => (
-                    <option key={item} value={item}>{item}</option>
-                  ))}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAvatarType("line")}
+                    className={`rounded-xl border p-3 text-sm font-bold ${
+                      avatarType === "line"
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    LINEプロフィール画像
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAvatarType("emoji")}
+                    className={`rounded-xl border p-3 text-sm font-bold ${
+                      avatarType === "emoji"
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    絵文字アイコン
+                  </button>
+                </div>
+
+                {avatarType === "emoji" && (
+                  <div className="mt-4">
+                    <p className="text-xs text-gray-500 mb-3">
+                      使用する絵文字を1つ選択してください。
+                    </p>
+                    <div className="grid grid-cols-5 gap-2">
+                      {avatarEmojis.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setAvatarEmoji(emoji)}
+                          aria-label={`アイコン ${emoji}`}
+                          aria-pressed={avatarEmoji === emoji}
+                          className={`aspect-square rounded-xl border text-2xl ${
+                            avatarEmoji === emoji
+                              ? "border-black bg-gray-100"
+                              : "border-gray-200 bg-white"
+                          }`}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-center text-3xl mt-3">
+                      {avatarEmoji}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-5">
+                <label className="block text-sm font-bold text-gray-800 mb-2">
+                  活動エリア <span className="text-red-500">*</span>
+                </label>
+
+                <p className="text-xs text-gray-500 mb-3">
+                  活動できる地域を自由に入力し、複数追加できます。
+                </p>
 
                 <div className="flex gap-2 mt-3">
                   <input
-                    value={municipality}
-                    onChange={(e) => setMunicipality(e.target.value)}
-                    placeholder="例：名古屋市千種区"
+                    value={areaInput}
+                    onChange={(e) => setAreaInput(e.target.value)}
+                    placeholder="例：名古屋市、東三河、愛知県全域"
                     className={inputClass}
+                    maxLength={100}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -298,6 +403,7 @@ if (
                       }
                     }}
                   />
+
                   <button
                     type="button"
                     onClick={addArea}
@@ -308,7 +414,7 @@ if (
                 </div>
 
                 <p className="text-xs text-gray-400 mt-2">
-                  例：愛知県を選び「名古屋市千種区」と入力して追加します。
+                  市区町村、複数の市、地域名などを入力できます。
                 </p>
 
                 {areas.length > 0 && (
@@ -319,6 +425,7 @@ if (
                         className="flex items-center justify-between gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2"
                       >
                         <span className="text-sm text-gray-800">{item}</span>
+
                         <button
                           type="button"
                           onClick={() =>
@@ -327,7 +434,7 @@ if (
                             )
                           }
                           className="text-sm text-red-600 font-bold"
-                          aria-label={`${item}を削除`}
+                          aria-label="活動エリアを削除"
                         >
                           削除
                         </button>
@@ -419,6 +526,69 @@ if (
                 placeholder="例：ボサノバ、タンゴ"
                 className={inputClass}
               />
+              <p className="text-xs text-gray-400 mt-2">
+                複数ある場合は「,」または「、」で区切れます。
+              </p>
+            </section>
+
+            <div className="border-t border-gray-100" />
+
+            <section>
+              <h2 className="font-bold text-gray-900 mb-2">
+                🎖️ 演奏レベル <span className="text-red-500">*</span>
+              </h2>
+              <p className="text-xs text-gray-500 leading-5 mb-4">
+                ご自身の判断で近いものを選択してください。このレベルは自己申告であり、運営による認定ではありません。
+              </p>
+
+              <div className="space-y-3">
+                {statusLevelOptions.map((option) => {
+                  const selected = statusLevel === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setStatusLevel(option.value)}
+                      disabled={loading}
+                      aria-pressed={selected}
+                      className={`w-full text-left rounded-2xl border p-4 ${
+                        selected
+                          ? "border-black ring-2 ring-black/10"
+                          : "border-gray-200"
+                      } bg-white disabled:opacity-50`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div
+                          className={`shrink-0 w-[86px] h-[64px] flex flex-col items-center justify-center border-2 shadow-sm ${option.colorClass} ${option.borderClass} ${option.textClass}`}
+                          style={{
+                            clipPath:
+                              "polygon(8% 0%, 92% 0%, 100% 12%, 100% 82%, 82% 82%, 50% 100%, 18% 82%, 0% 82%, 0% 12%)",
+                          }}
+                        >
+                          <span className="text-[10px] font-black">
+                            {option.shortLabel}
+                          </span>
+                          <span className="text-sm font-black mt-1">
+                            {option.label}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-bold">{option.label}</p>
+                          <p className="text-xs text-gray-500 leading-5 mt-1">
+                            {option.description}
+                          </p>
+                          {selected && (
+                            <span className="inline-block mt-2 text-[10px] bg-black text-white px-2 py-1 rounded-full">
+                              選択中
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </section>
 
             <div className="border-t border-gray-100" />
@@ -438,7 +608,7 @@ if (
           <div className="bg-gray-50 border-t border-gray-100 p-5">
             <div className="bg-white border border-gray-100 rounded-2xl p-4 mb-4">
               <p className="text-xs text-gray-500 leading-5">
-                活動エリア・楽器・音楽ジャンルは、施設が演奏者を探す際の条件として利用できるようにします。
+                活動エリア・楽器・音楽ジャンル・演奏レベルは、施設が演奏者を探す際の条件として利用できるようにします。
               </p>
             </div>
             <button

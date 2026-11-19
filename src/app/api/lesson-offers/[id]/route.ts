@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyLineIdToken } from "@/lib/line-auth";
+import { drainLineNotificationOutbox } from "@/lib/line-notification-outbox";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,6 +22,7 @@ async function getCurrentPerformer(lineUserId: string) {
     .from("users")
     .select("id")
     .eq("line_user_id", lineUserId)
+    .eq("account_status", "active")
     .maybeSingle();
 
   if (userError) {
@@ -82,13 +85,37 @@ export async function GET(
       );
     }
 
-    const lineUserId = request.headers.get("x-line-user-id");
     let currentPerformerId: string | null = null;
 
-    if (lineUserId) {
-      const performer = await getCurrentPerformer(lineUserId);
-      currentPerformerId = performer?.id ?? null;
-    }
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
+
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "ログインが必要です。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+if (idToken) {
+  const verified = await verifyLineIdToken(idToken);
+
+  if (!verified) {
+    return NextResponse.json(
+      {
+        error: "LINEの本人確認に失敗しました。再ログインしてください。",
+      },
+      { status: 401 }
+    );
+  }
+
+  const performer = await getCurrentPerformer(verified.userId);
+  currentPerformerId = performer?.id ?? null;
+}
 
     const { data: offer, error } = await supabase
       .from("lesson_offers")
@@ -100,6 +127,7 @@ export async function GET(
         instruments,
         genres,
         area,
+        address,
         lesson_date,
         start_time,
         end_time,
@@ -108,8 +136,7 @@ export async function GET(
         target_levels,
         status,
         created_at,
-        reserved_coins,
-        performers (
+        performers!inner (
           id,
           user_id,
           name,
@@ -119,12 +146,13 @@ export async function GET(
           genres,
           bio,
           status_level,
-          users (
+          users!inner (
             display_name,
             picture_url
           )
         )
       `)
+      .eq("performers.users.account_status", "active")
       .eq("id", id)
       .maybeSingle();
 
@@ -143,16 +171,36 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      offer: {
-        ...offer,
-        is_mine: Boolean(
-          currentPerformerId &&
-            offer.performer_id === currentPerformerId
-        ),
+    return NextResponse.json(
+      {
+        success: true,
+        offer: {
+          ...offer,
+          performers: Array.isArray(offer.performers)
+            ? offer.performers.map((performer) => {
+                const user = Array.isArray(performer.users)
+                  ? performer.users[0]
+                  : performer.users;
+
+                return {
+                  ...performer,
+                  users: user
+                    ? {
+                        display_name: user.display_name,
+                        picture_url: user.picture_url,
+                      }
+                    : null,
+                };
+              })
+            : null,
+          is_mine: Boolean(
+            currentPerformerId &&
+              offer.performer_id === currentPerformerId
+          ),
+        },
       },
-    });
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (error) {
     console.error("レッスン募集詳細APIエラー:", error);
 
@@ -168,6 +216,7 @@ export async function PUT(
   request: NextRequest,
   context: RouteContext
 ) {
+
   try {
     const { id } = await context.params;
 
@@ -178,16 +227,32 @@ export async function PUT(
       );
     }
 
-    const lineUserId = request.headers.get("x-line-user-id");
+    const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!lineUserId) {
-      return NextResponse.json(
-        { error: "ログイン情報を確認できません。再度お試しください。" },
-        { status: 401 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const performer = await getCurrentPerformer(lineUserId);
+const verified = await verifyLineIdToken(idToken);
+
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
+
+const performer = await getCurrentPerformer(verified.userId);
 
     if (!performer) {
       return NextResponse.json(
@@ -369,10 +434,13 @@ export async function PUT(
       );
     }
 
+    // lesson_offers UPDATEトリガーが同一transaction内で成立済み参加者への通知をOutbox登録済み。
+    await drainLineNotificationOutbox(supabase, 20);
+
     return NextResponse.json({
       success: true,
       message: data.message || "募集内容を更新しました",
-      reserved_coins: data.reserved_coins,
+      required_coins: data.required_coins,
     });
   } catch (error) {
     console.error("レッスン募集更新APIエラー:", error);

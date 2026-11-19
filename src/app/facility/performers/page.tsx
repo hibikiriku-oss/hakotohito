@@ -8,11 +8,12 @@ type User = {
   id: string;
   display_name: string | null;
   picture_url: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
 };
 
 type Performer = {
   id: string;
-  user_id: string;
   name: string;
   instruments: string[];
   genres: string[];
@@ -28,7 +29,7 @@ type Performer = {
 
 type Favorite = {
   id: string;
-  target_user_id: string;
+  target_performer_id: string | null;
 };
 
 export default function FacilityPerformersPage() {
@@ -68,13 +69,26 @@ export default function FacilityPerformersPage() {
           return;
         }
 
-        const profile = await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const [performersResponse, favoritesResponse] =
           await Promise.all([
-            fetch("/api/performers"),
+            fetch("/api/performers", {
+              headers: {
+                Authorization: `Bearer ${idToken}`,
+              },
+              cache: "no-store",
+            }),
             fetch("/api/favorites", {
-              headers: { "x-line-user-id": profile.userId },
+              headers: {
+                Authorization: `Bearer ${idToken}`,
+              },
             }),
           ]);
 
@@ -99,7 +113,7 @@ export default function FacilityPerformersPage() {
           (favoritesData.favorites || []).map(
             (favorite: Favorite) => ({
               id: favorite.id,
-              target_user_id: favorite.target_user_id,
+              target_performer_id: favorite.target_performer_id,
             })
           )
         );
@@ -338,7 +352,7 @@ export default function FacilityPerformersPage() {
 
   const isFavorite = (performer: Performer) =>
     favorites.some(
-      (favorite) => favorite.target_user_id === performer.user_id
+      (favorite) => favorite.target_performer_id === performer.id
     );
 
   const handleFavoriteToggle = async (performer: Performer) => {
@@ -356,17 +370,24 @@ export default function FacilityPerformersPage() {
         return;
       }
 
-      const profile = await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
+
       const currentlyFavorite = isFavorite(performer);
 
       const response = await fetch("/api/favorites", {
         method: currentlyFavorite ? "DELETE" : "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-line-user-id": profile.userId,
+          Authorization: `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          targetUserId: performer.user_id,
+          targetPerformerId: performer.id,
         }),
       });
 
@@ -382,15 +403,15 @@ export default function FacilityPerformersPage() {
         setFavorites((current) =>
           current.filter(
             (favorite) =>
-              favorite.target_user_id !== performer.user_id
+              favorite.target_performer_id !== performer.id
           )
         );
       } else {
         setFavorites((current) => [
           ...current,
           {
-            id: data.favorite?.id || `temporary-${performer.user_id}`,
-            target_user_id: performer.user_id,
+            id: data.favorite?.id || `temporary-${performer.id}`,
+            target_performer_id: performer.id,
           },
         ]);
       }
@@ -456,7 +477,7 @@ export default function FacilityPerformersPage() {
             onClick={() => router.push("/facility/home")}
             className="w-full mt-5 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-700"
           >
-            ← 施設ホームへ戻る
+            ← ホームに戻る
           </button>
         </div>
       </main>
@@ -472,7 +493,7 @@ export default function FacilityPerformersPage() {
             onClick={() => router.push("/facility/home")}
             className="text-sm text-gray-500 mb-4"
           >
-            ← 施設ホーム
+            ← ホームに戻る
           </button>
 
           <p className="text-sm font-medium text-gray-500">演奏者検索</p>
@@ -690,7 +711,11 @@ export default function FacilityPerformersPage() {
                   className="w-full text-left bg-white border border-gray-200 rounded-2xl p-5 shadow-sm active:scale-[0.99] transition"
                 >
                   <div className="flex items-start gap-4">
-                    {user?.picture_url ? (
+                    {user?.avatar_type === "emoji" && user.avatar_emoji ? (
+                      <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl shrink-0">
+                        {user.avatar_emoji}
+                      </div>
+                    ) : user?.avatar_type === "line" && user.picture_url ? (
                       <img
                         src={user.picture_url}
                         alt=""
@@ -698,7 +723,7 @@ export default function FacilityPerformersPage() {
                       />
                     ) : (
                       <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center text-2xl shrink-0">
-                        🎹
+                        🎸
                       </div>
                     )}
 
@@ -803,7 +828,7 @@ export default function FacilityPerformersPage() {
           onClick={() => router.push("/facility/home")}
           className="w-full mt-6 bg-white border border-gray-200 rounded-2xl p-4 font-bold text-gray-600"
         >
-          ← 施設ホームへ戻る
+          ← ホームに戻る
         </button>
 
         <p className="text-center text-xs text-gray-400 mt-6 pb-4">
@@ -837,7 +862,13 @@ export default function FacilityPerformersPage() {
 
               <div className="p-5">
                 <div className="flex items-center gap-4">
-                  {getUser(selectedPerformer)?.picture_url ? (
+                  {getUser(selectedPerformer)?.avatar_type === "emoji" &&
+                  getUser(selectedPerformer)?.avatar_emoji ? (
+                    <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">
+                      {getUser(selectedPerformer)?.avatar_emoji}
+                    </div>
+                  ) : getUser(selectedPerformer)?.avatar_type === "line" &&
+                    getUser(selectedPerformer)?.picture_url ? (
                     <img
                       src={getUser(selectedPerformer)?.picture_url || ""}
                       alt=""
@@ -845,7 +876,7 @@ export default function FacilityPerformersPage() {
                     />
                   ) : (
                     <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">
-                      🎹
+                      🎸
                     </div>
                   )}
 
@@ -941,9 +972,8 @@ export default function FacilityPerformersPage() {
                         className="text-sm bg-blue-50 text-blue-700 rounded-full px-3 py-1.5"
                       >
                         {genre}
-                        </span>
-                      )
-                    )}
+                      </span>
+                    ))}
                   </div>
                 </div>
 

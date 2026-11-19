@@ -8,15 +8,15 @@ type Facility = {
   id: string;
   name: string | null;
   facility_type: string | null;
-  address: string | null;
   description: string | null;
 };
 
 type FavoriteUser = {
-  id: string;
   display_name: string | null;
   picture_url: string | null;
   user_type: string | null;
+  avatar_type: "line" | "emoji" | null;
+  avatar_emoji: string | null;
   facilities:
     | Facility
     | Facility[]
@@ -25,13 +25,60 @@ type FavoriteUser = {
 
 type Favorite = {
   id: string;
-  target_user_id: string;
+  target_facility_id: string | null;
   created_at: string;
   users:
     | FavoriteUser
     | FavoriteUser[]
     | null;
 };
+
+function FacilityAvatar({
+  user,
+  size = "large",
+}: {
+  user: FavoriteUser | null;
+  size?: "large" | "small";
+}) {
+  const sizeClass =
+    size === "large"
+      ? "w-16 h-16 text-3xl rounded-2xl"
+      : "w-20 h-20 text-4xl rounded-2xl";
+
+  if (
+    user?.avatar_type === "emoji" &&
+    user.avatar_emoji
+  ) {
+    return (
+      <div
+        className={`${sizeClass} bg-gray-100 flex items-center justify-center shrink-0`}
+      >
+        {user.avatar_emoji}
+      </div>
+    );
+  }
+
+  if (
+    user?.avatar_type !== "emoji" &&
+    user?.picture_url
+  ) {
+    return (
+      <img
+        src={user.picture_url}
+        alt=""
+        className={`${sizeClass} object-cover shrink-0`}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={`${sizeClass} bg-gray-100 flex items-center justify-center shrink-0`}
+    >
+      🏢
+    </div>
+  );
+}
 
 export default function PerformerFavoritesPage() {
   const router = useRouter();
@@ -76,15 +123,19 @@ export default function PerformerFavoritesPage() {
           return;
         }
 
-        const profile =
-          await liff.getProfile();
+        const idToken = liff.getIDToken();
+
+        if (!idToken) {
+          throw new Error(
+            "LINEの本人確認情報を取得できません。再ログインしてください。"
+          );
+        }
 
         const response = await fetch(
           "/api/favorites",
           {
             headers: {
-              "x-line-user-id":
-                profile.userId,
+              Authorization: `Bearer ${idToken}`,
             },
           }
         );
@@ -216,22 +267,25 @@ export default function PerformerFavoritesPage() {
         return;
       }
 
-      const profile =
-        await liff.getProfile();
+      const idToken = liff.getIDToken();
+
+      if (!idToken) {
+        throw new Error(
+          "LINEの本人確認情報を取得できません。再ログインしてください。"
+        );
+      }
 
       const response = await fetch(
         "/api/favorites",
         {
           method: "DELETE",
           headers: {
-            "Content-Type":
-              "application/json",
-            "x-line-user-id":
-              profile.userId,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
           },
           body: JSON.stringify({
-            targetUserId:
-              favorite.target_user_id,
+            targetFacilityId:
+              favorite.target_facility_id,
           }),
         }
       );
@@ -461,17 +515,7 @@ export default function PerformerFavoritesPage() {
                 >
                   {/* 施設情報 */}
                   <div className="flex items-start gap-4">
-                    {user?.picture_url ? (
-                      <img
-                        src={user.picture_url}
-                        alt=""
-                        className="w-16 h-16 rounded-2xl object-cover shrink-0"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl shrink-0">
-                        🏢
-                      </div>
-                    )}
+                    <FacilityAvatar user={user} />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
@@ -491,11 +535,6 @@ export default function PerformerFavoritesPage() {
                         </span>
                       </div>
 
-                      {facility?.address && (
-                        <p className="text-sm text-gray-500 mt-3 line-clamp-2">
-                          📍 {facility.address}
-                        </p>
-                      )}
                     </div>
                   </div>
 
@@ -572,21 +611,10 @@ export default function PerformerFavoritesPage() {
               <div className="p-5">
                 {/* プロフィール */}
                 <div className="flex items-center gap-4">
-                  {selectedFacility.user
-                    .picture_url ? (
-                    <img
-                      src={
-                        selectedFacility.user
-                          .picture_url
-                      }
-                      alt=""
-                      className="w-20 h-20 rounded-2xl object-cover"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center text-4xl">
-                      🏢
-                    </div>
-                  )}
+                  <FacilityAvatar
+                    user={selectedFacility.user}
+                    size="small"
+                  />
 
                   <div className="min-w-0">
                     <h3 className="text-xl font-bold">
@@ -607,20 +635,9 @@ export default function PerformerFavoritesPage() {
 
                 <div className="mt-7 space-y-6">
 
-                  {/* 住所 */}
                   <section>
-                    <p className="text-xs font-bold text-gray-400">
-                      LOCATION
-                    </p>
-
-                    <h4 className="font-bold mt-1">
-                      📍 住所
-                    </h4>
-
-                    <p className="text-gray-700 mt-2 leading-6">
-                      {selectedFacility.facility
-                        .address ||
-                        "住所は登録されていません"}
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      施設登録住所は非公開です。開催場所は各募集の詳細で確認してください。
                     </p>
                   </section>
 
@@ -657,12 +674,12 @@ export default function PerformerFavoritesPage() {
                       handleRemoveFavorite(
                         favorites.find(
                           (favorite) =>
-                            favorite.target_user_id ===
-                            selectedFacility.user.id
+                            favorite.target_facility_id ===
+                            selectedFacility.facility.id
                         ) ?? {
                           id: "",
-                          target_user_id:
-                            selectedFacility.user.id,
+                          target_facility_id:
+                            selectedFacility.facility.id,
                           created_at: "",
                           users:
                             selectedFacility.user,
