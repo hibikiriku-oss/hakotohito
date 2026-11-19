@@ -154,7 +154,6 @@ if (idToken) {
         target_levels,
         status,
         created_at,
-        reserved_coins,
         performers!inner (
           id,
           user_id,
@@ -245,7 +244,7 @@ if (idToken) {
   }
 }
 
-// レッスン募集登録。対象ランクを保存し、定員分のコインを仮押さえします。
+// レッスン募集登録。対象ランクを保存し、定員分の必要残高を確認します（仮押さえなし）。
 export async function POST(request: NextRequest) {
   try {
     const authorization = request.headers.get("authorization");
@@ -417,7 +416,7 @@ const performer = await getCurrentPerformer(verified.userId);
       }
     }
 
-    // 対象ランク・住所の保存とコイン仮押さえをDB関数で処理
+    // 対象ランク・住所の保存と必要残高の確認をDB関数で処理
     const { data: result, error } = await supabase.rpc(
       "create_lesson_offer_with_levels_and_address",
       {
@@ -485,8 +484,7 @@ const performer = await getCurrentPerformer(verified.userId);
         capacity,
         target_levels,
         status,
-        created_at,
-        reserved_coins
+        created_at
       `)
       .eq("id", result.offer_id)
       .single();
@@ -502,9 +500,9 @@ const performer = await getCurrentPerformer(verified.userId);
           area: area || null,
           address: address || null,
           target_levels: targetLevels,
-          reserved_coins: result.reserved_coins,
+          required_coins: result.required_coins,
         },
-        reserved_coins: result.reserved_coins,
+        required_coins: result.required_coins,
         message: result.message,
       });
     }
@@ -512,7 +510,7 @@ const performer = await getCurrentPerformer(verified.userId);
     return NextResponse.json({
       success: true,
       offer,
-      reserved_coins: result.reserved_coins,
+      required_coins: result.required_coins,
       message: result.message,
     });
   } catch (error) {

@@ -21,6 +21,7 @@ type UserProfile = {
   avatar_type: "line" | "emoji";
   avatar_emoji: string | null;
   user_type: "performer" | "facility";
+  account_status: "active" | "pending_approval";
 };
 
 const menuConfig: Record<
@@ -224,6 +225,11 @@ export default function PerformerHomePage() {
           throw new Error(
             profileData.error || "ユーザー情報を確認できません"
           );
+        }
+
+        if (profileData.user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
         }
 
         if (profileData.user.user_type !== "performer") {

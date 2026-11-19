@@ -15,6 +15,7 @@ type UserType = "performer" | "facility";
 type RegisteredUser = {
   id: string;
   user_type: UserType;
+  account_status: "active" | "pending_approval";
 };
 
 export default function Home() {
@@ -80,6 +81,11 @@ export default function Home() {
         if (response.ok) {
           const data = await response.json();
           const user = data.user as RegisteredUser;
+
+          if (user.account_status === "pending_approval") {
+            window.location.replace("/lobby");
+            return;
+          }
 
           if (user.user_type === "performer") {
             window.location.replace("/performer");
@@ -175,19 +181,19 @@ export default function Home() {
         return;
       }
 
-      // APIが返した実際の登録種別を基準に移動
       const registeredUser = data.user as RegisteredUser;
-
+      if (registeredUser?.account_status === "pending_approval") {
+        window.location.replace("/lobby");
+        return;
+      }
       if (registeredUser?.user_type === "performer") {
         window.location.replace("/performer");
         return;
       }
-
       if (registeredUser?.user_type === "facility") {
         window.location.replace("/facility");
         return;
       }
-
       alert("登録情報を確認できませんでした。");
     } catch (err) {
       console.error("ユーザー登録エラー:", err);

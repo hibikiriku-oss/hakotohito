@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
@@ -7,6 +6,19 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
+
+function removeJoinedUsers<T extends { users: unknown }>(
+  relation: T | T[] | null | undefined
+): Omit<T, "users"> | Omit<T, "users">[] | null | undefined {
+  const removeUsers = ({ users: _users, ...rest }: T): Omit<T, "users"> =>
+    rest;
+
+  if (Array.isArray(relation)) {
+    return relation.map(removeUsers);
+  }
+
+  return relation ? removeUsers(relation) : relation;
+}
 
 const OTHER_VALUE = "__OTHER__";
 
@@ -103,23 +115,6 @@ function matchesCategory(
     values.some((value) => !standardValues.includes(value));
 
   return matchesNormal || matchesOther;
-}
-
-/**
- * Supabaseの関連データからusersだけを除外する。
- * 関連データが単一オブジェクト・配列のどちらでも構造を維持する。
- */
-function removeJoinedUsers<T extends { users: unknown }>(
-  relation: T | T[] | null | undefined
-): Omit<T, "users"> | Omit<T, "users">[] | null | undefined {
-  const removeUsers = ({ users: _users, ...rest }: T): Omit<T, "users"> =>
-    rest;
-
-  if (Array.isArray(relation)) {
-    return relation.map(removeUsers);
-  }
-
-  return relation ? removeUsers(relation) : relation;
 }
 
 async function getCurrentPerformerId(lineUserId: string) {

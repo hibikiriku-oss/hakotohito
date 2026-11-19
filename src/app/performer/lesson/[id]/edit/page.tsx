@@ -382,7 +382,7 @@ const response = await fetch(`/api/lesson-offers/${offerId}`, {
       }
 
       alert(
-        `募集内容を更新しました。\n仮押さえコイン：${data.reserved_coins ?? 0}枚`
+        `募集内容を更新しました。\n定員分の必要コイン目安：${data.required_coins ?? 0}枚\nコインはマッチング成立時に徴収されます。`
       );
 
       router.push(`/performer/lesson/${offerId}`);
@@ -684,7 +684,7 @@ const response = await fetch(`/api/lesson-offers/${offerId}`, {
                       Math.ceil(
                         (Number(lessonFee) * coinRates.paid_lesson_fee_percent) / 100
                       )
-                    )}                枚です。変更後の仮押さえ額は保存時に再計算されます。
+                    )}                枚です。変更後の必要コイン目安は保存時に再計算されます。
               </p>
             )}
         </section>

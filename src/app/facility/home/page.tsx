@@ -11,6 +11,7 @@ type UserProfile = {
   avatar_type: "line" | "emoji";
   avatar_emoji: string | null;
   user_type: "performer" | "facility";
+  account_status: "active" | "pending_approval";
 };
 
 export default function FacilityHomePage() {
@@ -91,6 +92,11 @@ export default function FacilityHomePage() {
 
         const user = profileData.user as UserProfile;
 
+        if (user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
+        }
+
         if (user.user_type !== "facility") {
           if (user.user_type === "performer") {
             window.location.replace("/performer");
@@ -107,6 +113,7 @@ export default function FacilityHomePage() {
             avatar_type: user.avatar_type ?? "line",
             avatar_emoji: user.avatar_emoji ?? null,
             user_type: user.user_type,
+            account_status: user.account_status,
           });
         }
 

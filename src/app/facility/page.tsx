@@ -46,6 +46,28 @@ export default function FacilityPage() {
           return;
         }
 
+        const idToken = liff.getIDToken();
+        if (!idToken) throw new Error("LINEの本人確認情報を取得できません。再ログインしてください。");
+        const accountResponse = await fetch("/api/users", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          cache: "no-store",
+        });
+        if (accountResponse.status === 404) {
+          window.location.replace("/");
+          return;
+        }
+        const accountData = await accountResponse.json().catch(() => ({}));
+        if (!accountResponse.ok || !accountData.user) {
+          throw new Error(accountData.error || "アカウント状態を確認できません。");
+        }
+        if (accountData.user.account_status === "pending_approval") {
+          window.location.replace("/lobby");
+          return;
+        }
+        if (accountData.user.user_type === "performer") {
+          window.location.replace("/performer");
+          return;
+        }
         const profile = await liff.getProfile();
 
         setLineUserId(profile.userId);

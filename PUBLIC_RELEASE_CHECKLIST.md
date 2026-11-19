@@ -1,9 +1,14 @@
 # 公開準備チェックリスト
 
-最終更新：2026-11-18（Phase 2 v36バッチ監査・応募期限切れ通知Outbox候補追加）
+最終更新：2026-11-19（Phase 2 v45候補・登録承認制／レッスン仮押さえ撤廃）
 
 
-> **2026-11-16時点の重要状態**：レッスン機能は有効のまま維持。Stripeコイン購入は`coin_purchase_enabled=false`のまま停止。matching coreの共通トランザクションロック、応募・直接依頼の成立時課金、応募試行ごとの7日期限、個別キャンセル後の再応募、直接依頼返金・退会連携を修正候補へ反映中。SQL候補`20261116_009`〜`023`と作業用srcは未適用・未デプロイ。Supabase、GitHub、Vercelは変更していない。build／lint／test／typecheck／ローカルチェックは実施しない。
+> **2026-11-19時点の重要状態**：レッスン機能は有効のまま維持。Stripeコイン購入は`coin_purchase_enabled=false`で停止（ユーザー適用報告）。V44候補のmigration適用状態は一括して未適用とは扱わず、`20261116_009`はユーザー適用報告あり、他migrationは個別確認が必要。`venue_address`、案件削除RPC、通知Flexリンク等の個別反映状況は別紙`docs/20261119_V45_CHANGE_AND_DATABASE_STATUS.md`に記録。V45の新規変更は未適用・未デプロイ。ローカルチェック／build／lint／test／typecheckは実施しない。
+
+> **2026-11-19時点の追記**：Vercel TypeScript修正7ファイル（`422ca04`の5ファイル、`2ba38e5`の2ファイル）はGitHubへPush済みとのユーザー報告。施設側実機でマッチング一覧取得失敗、案件登録失敗、直接依頼通知未着、直接依頼送信時の-100コイン、UI導線不足を確認。v44候補では実機所見とread-only診断SQLを追加したが、東京DBのmigration適用状態は未確認。直接依頼は成立時課金・不足時不成立が最新方針。返金撤廃の範囲は未確定。
+
+> **2026-11-19 v45候補追記**：V44を基準に、レッスン募集の仮押さえ撤廃（登録・編集時は定員分残高確認のみ、`reserved_coins=0`、即時マッチング成立時に最新料金で原子徴収）、バンド送金からレッスン予約残高控除を除去、新規登録を`pending_approval`でロビー待機させる管理者承認フローを候補ソース／migrationへ追加。既存の演奏応募・直接依頼の成立時課金設計は維持。v45候補は未適用・未デプロイ。既存DBのmigration適用状態はユーザー報告・個別SQL結果・ライブ関数確認に分けて別紙台帳で管理する。ローカルチェック／build／lint／test／typecheckは実施しない。
+
 
 ## 1. 基本前提・環境
 
@@ -66,7 +71,9 @@
 - [x] レッスン応募APIの本人確認
 - [x] レッスン応募時のコイン処理をDB関数で実行
 - [x] レッスン関連DB関数の実行権限をservice_roleに限定
-- [x] レッスン募集の予約コイン・残高確認
+- [x] レッスン募集作成・編集時は定員分の残高確認のみ（仮押さえなし、v45候補）
+- [x] レッスン成立時に最新料金を再確認し同一トランザクションで徴収（v45候補）
+- [x] 既存lesson_offers.reserved_coinsの仮想予約値を0に統一するmigrationを追加（v45候補）
 
 ### 地図検索
 
@@ -223,7 +230,17 @@
 - [x] コイン関連API・DB関数の最終横断レビュー
 - [ ] コイン履歴と残高の整合性を実データで確認
 
-## 7. 問い合わせ・お知らせ・管理者機能
+## 7. 新規登録・管理者承認（v45候補）
+
+- [x] 新規ユーザーは`pending_approval`で登録し、初回から通常機能へ遷移させない
+- [x] ロビー画面で承認待ち状態を案内し、利用者が承認状態を再確認できる
+- [x] 既存のactiveユーザーは従来どおり利用可能
+- [x] 承認待ちユーザーは既存のactive-account API／DBガードで通常機能を利用不可
+- [x] 管理者専用の承認待ち一覧・承認API・承認画面を追加
+- [x] 承認者・承認日時をusersへ記録
+- [ ] 管理者承認からLINEホーム利用開始までの実機確認
+
+## 8. 問い合わせ・お知らせ・管理者機能
 
 - [x] 管理者画面のアクセス制限
 - [x] 管理者によるコイン付与機能
@@ -245,7 +262,7 @@
 - [x] 管理者異議申し立て更新APIの不正JSON・本文形式対応
 - [ ] 管理者機能の最終動作確認
 
-## 8. その他のAPI・セキュリティ監査
+## 9. その他のAPI・セキュリティ監査
 
 ### 演奏完了・キャンセル・異議申し立て
 
@@ -321,7 +338,7 @@
 - [ ] 不要なバックアップファイル・スクリプトの整理
 - [ ] 不要な管理用・検証用コードの整理
 
-## 9. 最終リリース確認
+## 10. 最終リリース確認
 
 - [ ] 全API監査の完了
 - [ ] 全DB関数・権限監査の完了
@@ -346,7 +363,7 @@
 
 ---
 
-## 10. 進行履歴
+## 11. 進行履歴
 
 ### 2026-11-16 matching core 課金・応募期限・共通ロック修正候補（作業用コピーのみ）
 
@@ -483,7 +500,7 @@
 - UUID_PATTERNをモジュールスコープに配置し、GET・POSTの両方から参照できることを確認。
 - 個人応募APIの修正後レビューを完了。
 
-## 11. 次に行う作業
+## 12. 次に行う作業
 
 ### 最優先：統合ソース・DB契約の整合
 
@@ -1396,3 +1413,37 @@ Hakotohito独自のmigration history tableは存在しないため、Supabase SQ
 - [ ] lease_token付きclaim/complete/retryとLINE実機通知をテストアカウントで検証。
 
 **状態：** v43はOutbox通知喪失防止とworker RPCの段階的切替候補を収載。SQL未実行、PostgreSQL検証なし、Supabase/GitHub/Vercel未変更、アプリbuild/test/lint/typecheck/ローカルチェック未実施（ZIP整合性とroot/nestedファイル同期のみ確認）。公開判定BLOCKED。詳細は`docs/20261118_PHASE2_BATCH_AUDIT_V43.md`と`docs/20261118_PHASE2_V43_OUTBOX_ROLLOUT_RUNBOOK.md`。
+
+
+## 2026-11-19 施設側LINE実機テスト・Phase 2 v44追跡監査
+
+- [x] 施設プロフィール編集・保存の実機成功を記録。
+- [x] 演奏者検索・詳細・直接依頼画面への遷移、同一演奏者への重複直接依頼拒否を実機確認。
+- [x] 限定公開中のコイン購入停止表示は既定方針と一致することを確認。購入画面のホーム戻り導線は改善候補。
+- [x] 案件削除は応募履歴・マッチング履歴・応募試行履歴がある場合に拒否するfail-closed設計を再確認。実機でエラー表示と削除中状態解除の視認性を再確認する。
+- [ ] 施設マッチング一覧の取得失敗を調査。`performance_requests.venue_address`（migration 002）等のDB schemaとVercel error codeを照合。
+- [ ] 施設案件登録の失敗を調査。POSTが`venue_address`を含めて直接INSERTするため、migration 002未反映がNo.4と共通原因の可能性。
+- [ ] 直接依頼通知未着を調査。application_attempts通知trigger（migration 015）、Outbox migration 014/004、claim/ack RPC、worker実行結果を照合。
+- [ ] 直接依頼時に-100コインが記録された不一致を調査。migration 011/012/`20261118_012`の適用状態と現行DB関数定義をread-onlyで確認。
+- [ ] お気に入りプロフィールモーダルに直接依頼ボタンがないため、既存invite画面への導線を追加。
+- [ ] 問い合わせ履歴に取り下げ操作がなく、APIもGET/POSTのみ。取り下げ可能状態・管理者側の監査履歴を含む状態遷移を設計。
+- [ ] 直接依頼返金ロジックを簡素化する方針の適用範囲を確定。確認前にイベント/レンタル等の既存返金仕様を一括変更しない。
+- [x] Vercel TypeScript修正7ファイルを候補ソースのroot/nested双方へ反映。
+- [ ] read-only診断SQLで対象Tokyo DBのschema/function/trigger/Outbox/ledger状態を確認。
+
+**v44状態：** 施設側実機所見と静的コード照合を候補へ記録。`20261119_FACILITY_RUNTIME_READONLY_DIAGNOSTICS.sql`はSELECTのみで未実行。DB適用状態・Vercel runtime logs未確認。SQL実行、DB変更、build/lint/test/typecheck/ローカルチェック、Git操作、Push、Deployは未実施。公開判定BLOCKED。詳細は`docs/20261119_FACILITY_SMOKE_TEST_FOLLOWUP.md`。
+
+
+## 2026-11-19 Phase 2 v45 — レッスン仮押さえ廃止・新規登録承認制候補
+
+- [x] レッスン募集作成・編集時は必要額の残高確認のみとし、`reserved_coins=0`で保存する候補へ変更。
+- [x] レッスン応募は即時マッチングの既存仕様を維持し、成立時に講師・応募者のactive状態と講師残高を再確認して同一transactionで徴収する候補を追加。
+- [x] `spend_coins_legacy`とバンド送金RPCからレッスン仮押さえ控除を除去。既存仮押さえ値を0へ正規化するmigration候補を追加。
+- [x] 初回登録者を`pending_approval`で登録し、ロビー待機・管理者承認後に利用開始する候補を追加。既存activeユーザーは変更しない。
+- [x] 管理者承認API・承認一覧画面・通常画面からのロビー遷移を追加。
+- [ ] V45 read-only preflightで本番DBの関数定義・ACL・status制約・仮押さえ件数を確認。
+- [ ] migration `20261119_001`をSupabaseへ適用し、postflightで状態確認。
+- [ ] V45ソースをGitHubへ反映し、Vercel deployment Readyを確認。
+- [ ] LINE実機でロビー待機→管理者承認→利用開始、レッスン募集登録時残高不変、成立時徴収、残高不足時不成立を確認。
+
+**状態：** V45は未適用候補。Supabase/GitHub/Vercelへの変更、SQL実行、build/test/lint/typecheck/ローカルチェックは未実施。公開判定BLOCKED。詳細は`docs/20261119_V45_CHANGE_AND_DATABASE_STATUS.md`と`docs/20261119_PHASE2_V45_PACKAGE_MANIFEST.md`。

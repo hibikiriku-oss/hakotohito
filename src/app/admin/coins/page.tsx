@@ -456,6 +456,12 @@ export default function AdminCoinsPage() {
           <p className="mt-2 text-sm text-gray-600">
             コイン付与、問い合わせ、消費コイン設定、お知らせ、異議申し立てを管理できます。
           </p>
+          <a
+            href="/admin/approvals"
+            className="mt-4 inline-flex rounded-xl bg-black px-4 py-3 text-sm font-bold text-white"
+          >
+            新規登録の承認待ちを確認
+          </a>
         </header>
 
         <div

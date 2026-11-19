@@ -8,7 +8,7 @@ const supabase = createClient(
 );
 
 const USER_FIELDS =
-  "id, display_name, picture_url, avatar_type, avatar_emoji, user_type";
+  "id, display_name, picture_url, avatar_type, avatar_emoji, user_type, account_status";
 
 // ログイン中の本人の有効なユーザー情報を取得
 export async function GET(request: NextRequest) {
@@ -44,7 +44,6 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select(USER_FIELDS)
       .eq("line_user_id", verified.userId)
-      .eq("account_status", "active")
       .maybeSingle();
 
     if (error) {
@@ -59,7 +58,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!user) {
+    if (!user || !["active", "pending_approval"].includes(user.account_status)) {
       return NextResponse.json(
         { error: "有効なユーザー情報が見つかりません" },
         {
@@ -129,7 +128,6 @@ export async function POST(request: NextRequest) {
       .from("users")
       .select(USER_FIELDS)
       .eq("line_user_id", verified.userId)
-      .eq("account_status", "active")
       .maybeSingle();
 
     if (fetchError) {
@@ -141,10 +139,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (existingUser) {
+    if (existingUser && ["active", "pending_approval"].includes(existingUser.account_status)) {
       return NextResponse.json(
         { user: existingUser },
         { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    // 退会済みレコードは再利用せず、新しいアカウント登録へ進む。
+    // 退会時のLINE連携情報匿名化により、過去レコードとは別に登録できる。
+    if (existingUser && existingUser.account_status !== "withdrawn") {
+      return NextResponse.json(
+        { error: "このアカウントは現在利用できません。管理者にお問い合わせください。" },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -163,7 +170,7 @@ export async function POST(request: NextRequest) {
             ? pictureUrl
             : null,
         user_type: userType,
-        account_status: "active",
+        account_status: "pending_approval",
         coin_balance: 0,
       })
       .select(USER_FIELDS)
@@ -178,10 +185,9 @@ export async function POST(request: NextRequest) {
             .from("users")
             .select(USER_FIELDS)
             .eq("line_user_id", verified.userId)
-            .eq("account_status", "active")
             .maybeSingle();
 
-        if (!racedFetchError && racedUser) {
+        if (!racedFetchError && racedUser && ["active", "pending_approval"].includes(racedUser.account_status)) {
           return NextResponse.json(
             { user: racedUser },
             { headers: { "Cache-Control": "no-store" } }

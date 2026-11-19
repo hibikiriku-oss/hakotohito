@@ -87,33 +87,35 @@ export async function GET(
 
     let currentPerformerId: string | null = null;
 
-    const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+const authorization = request.headers.get("authorization");
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!idToken) {
-      return NextResponse.json(
-        {
-          error: "ログインが必要です。再ログインしてください。",
-        },
-        { status: 401 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "ログインが必要です。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const verified = await verifyLineIdToken(idToken);
+if (idToken) {
+  const verified = await verifyLineIdToken(idToken);
 
-    if (!verified) {
-      return NextResponse.json(
-        {
-          error: "LINEの本人確認に失敗しました。再ログインしてください。",
-        },
-        { status: 401 }
-      );
-    }
+  if (!verified) {
+    return NextResponse.json(
+      {
+        error: "LINEの本人確認に失敗しました。再ログインしてください。",
+      },
+      { status: 401 }
+    );
+  }
 
-    const performer = await getCurrentPerformer(verified.userId);
-    currentPerformerId = performer?.id ?? null;
+  const performer = await getCurrentPerformer(verified.userId);
+  currentPerformerId = performer?.id ?? null;
+}
 
     const { data: offer, error } = await supabase
       .from("lesson_offers")
@@ -134,7 +136,6 @@ export async function GET(
         target_levels,
         status,
         created_at,
-        reserved_coins,
         performers!inner (
           id,
           user_id,
@@ -170,30 +171,28 @@ export async function GET(
       );
     }
 
-    const normalizedPerformers = offer.performers
-      ? offer.performers.map((performer) => {
-          const user = Array.isArray(performer.users)
-            ? performer.users[0]
-            : performer.users;
-
-          return {
-            ...performer,
-            users: user
-              ? {
-                  display_name: user.display_name,
-                  picture_url: user.picture_url,
-                }
-              : null,
-          };
-        })
-      : null;
-
     return NextResponse.json(
       {
         success: true,
         offer: {
           ...offer,
-          performers: normalizedPerformers,
+          performers: Array.isArray(offer.performers)
+            ? offer.performers.map((performer) => {
+                const user = Array.isArray(performer.users)
+                  ? performer.users[0]
+                  : performer.users;
+
+                return {
+                  ...performer,
+                  users: user
+                    ? {
+                        display_name: user.display_name,
+                        picture_url: user.picture_url,
+                      }
+                    : null,
+                };
+              })
+            : null,
           is_mine: Boolean(
             currentPerformerId &&
               offer.performer_id === currentPerformerId
@@ -217,6 +216,7 @@ export async function PUT(
   request: NextRequest,
   context: RouteContext
 ) {
+
   try {
     const { id } = await context.params;
 
@@ -228,31 +228,31 @@ export async function PUT(
     }
 
     const authorization = request.headers.get("authorization");
-    const idToken = authorization?.startsWith("Bearer ")
-      ? authorization.slice("Bearer ".length)
-      : "";
+const idToken = authorization?.startsWith("Bearer ")
+  ? authorization.slice("Bearer ".length)
+  : "";
 
-    if (!idToken) {
-      return NextResponse.json(
-        {
-          error: "LINEの本人確認情報がありません。再ログインしてください。",
-        },
-        { status: 401 }
-      );
-    }
+if (!idToken) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認情報がありません。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const verified = await verifyLineIdToken(idToken);
+const verified = await verifyLineIdToken(idToken);
 
-    if (!verified) {
-      return NextResponse.json(
-        {
-          error: "LINEの本人確認に失敗しました。再ログインしてください。",
-        },
-        { status: 401 }
-      );
-    }
+if (!verified) {
+  return NextResponse.json(
+    {
+      error: "LINEの本人確認に失敗しました。再ログインしてください。",
+    },
+    { status: 401 }
+  );
+}
 
-    const performer = await getCurrentPerformer(verified.userId);
+const performer = await getCurrentPerformer(verified.userId);
 
     if (!performer) {
       return NextResponse.json(
@@ -418,10 +418,7 @@ export async function PUT(
       console.error("レッスン募集更新RPCエラー:", error);
 
       return NextResponse.json(
-        {
-          error:
-            "募集内容の保存に失敗しました。時間をおいて再度お試しください。",
-        },
+        { error: "募集内容の保存に失敗しました。時間をおいて再度お試しください。" },
         { status: 500 }
       );
     }
@@ -443,7 +440,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: data.message || "募集内容を更新しました",
-      reserved_coins: data.reserved_coins,
+      required_coins: data.required_coins,
     });
   } catch (error) {
     console.error("レッスン募集更新APIエラー:", error);

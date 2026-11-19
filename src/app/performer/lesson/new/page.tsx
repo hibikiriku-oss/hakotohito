@@ -74,7 +74,7 @@ export default function NewLessonOfferPage() {
   const [capacity, setCapacity] = useState("5");
   const [loading, setLoading] = useState(false);
 
-  // 仮押さえコインの見積もり
+  // 定員分の必要コイン見積もり（残高は仮押さえしない）
   const feeNumber = Number(lessonFee);
   const capacityNumber = Number(capacity);
 
@@ -103,7 +103,7 @@ export default function NewLessonOfferPage() {
           )
       : 0;
 
-  const estimatedReservedCoins =
+  const estimatedRequiredCoins =
     validFee && validCapacity
       ? coinsPerPerson * capacityNumber
       : null;
@@ -305,11 +305,11 @@ export default function NewLessonOfferPage() {
         return;
       }
 
-      const reservedCoins = Number(data.reserved_coins);
+      const requiredCoins = Number(data.required_coins);
 
       alert(
-        Number.isFinite(reservedCoins)
-          ? `レッスン募集を登録しました！\n${reservedCoins.toLocaleString()}コインを仮押さえしました。`
+        Number.isFinite(requiredCoins)
+          ? `レッスン募集を登録しました！\n定員分の必要コイン目安は${requiredCoins.toLocaleString()}コインです。\nコインはマッチング成立時に徴収されます。`
           : "レッスン募集を登録しました！"
       );
 
@@ -608,17 +608,17 @@ export default function NewLessonOfferPage() {
 
           <section className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
             <h2 className="font-bold text-gray-900 mb-2">
-              仮押さえされるコイン
+              定員分の必要コイン目安
             </h2>
 
-            {estimatedReservedCoins === null ? (
+            {estimatedRequiredCoins === null ? (
               <p className="text-sm text-red-600">
                 レッスン料は0円以上の整数、定員は1〜100人で入力してください。
               </p>
             ) : (
               <>
                 <p className="text-3xl font-bold text-gray-900">
-                  {estimatedReservedCoins.toLocaleString()}
+                  {estimatedRequiredCoins.toLocaleString()}
                   <span className="text-base ml-1">コイン</span>
                 </p>
                 <p className="text-sm text-gray-600 mt-2">
@@ -629,7 +629,7 @@ export default function NewLessonOfferPage() {
                   {feeNumber === 0
                     ? `無料レッスンは、成立1人あたり${coinRates.free_lesson_match_fee_coins}コインです。`
                     : `有料レッスンは、レッスン料の${coinRates.paid_lesson_fee_percent}%（1コイン未満切り上げ）が成立1人あたりの手数料です。`}
-                  募集登録時に、定員分のコインが仮押さえされます。実際の仮押さえ額はサーバー側で確定します。
+                  これは定員分の必要コインの目安です。募集登録時にコインは差し引かれず、マッチング成立時に1人分ずつ徴収されます。
                 </p>
               </>
             )}
