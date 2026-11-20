@@ -64,8 +64,14 @@ export default function FacilityPage() {
           window.location.replace("/lobby");
           return;
         }
+
+        if (accountData.user.user_type === "facility") {
+          window.location.replace("/facility/home");
+          return;
+        }
+
         if (accountData.user.user_type === "performer") {
-          window.location.replace("/performer");
+          window.location.replace("/performer/home");
           return;
         }
         const profile = await liff.getProfile();

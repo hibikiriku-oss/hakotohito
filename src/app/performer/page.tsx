@@ -125,8 +125,14 @@ export default function PerformerPage() {
           window.location.replace("/lobby");
           return;
         }
+
+        if (accountData.user.user_type === "performer") {
+          window.location.replace("/performer/home");
+          return;
+        }
+
         if (accountData.user.user_type === "facility") {
-          window.location.replace("/facility");
+          window.location.replace("/facility/home");
           return;
         }
         const profile = await liff.getProfile();
