@@ -97,9 +97,13 @@ export default function FacilityHomePage() {
           return;
         }
 
+        if (user.account_status !== "active") {
+          throw new Error("アカウントが有効な状態ではありません。");
+        }
+
         if (user.user_type !== "facility") {
           if (user.user_type === "performer") {
-            window.location.replace("/performer");
+            window.location.replace("/performer/home");
             return;
           }
 
