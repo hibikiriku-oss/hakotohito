@@ -232,10 +232,6 @@ export default function PerformerHomePage() {
           return;
         }
 
-        if (profileData.user.account_status !== "active") {
-          throw new Error("アカウントが有効な状態ではありません。");
-        }
-
         if (profileData.user.user_type !== "performer") {
           if (profileData.user.user_type === "facility") {
             window.location.replace("/facility/home");
@@ -244,6 +240,7 @@ export default function PerformerHomePage() {
 
           throw new Error("アカウント種別を確認できません");
         }
+
         if (!cancelled) {
           setProfile(profileData.user);
         }

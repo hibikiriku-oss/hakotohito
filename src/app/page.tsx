@@ -67,7 +67,7 @@ export default function Home() {
           );
         }
 
-        // 登録済みユーザーのアカウント状態を確認
+        // 登録済みの有効アカウントを確認
         const response = await fetch("/api/users", {
           method: "GET",
           headers: {
@@ -85,10 +85,6 @@ export default function Home() {
           if (user.account_status === "pending_approval") {
             window.location.replace("/lobby");
             return;
-          }
-
-          if (user.account_status !== "active") {
-            throw new Error("アカウントが有効な状態ではありません。");
           }
 
           if (user.user_type === "performer") {
@@ -186,24 +182,18 @@ export default function Home() {
       }
 
       const registeredUser = data.user as RegisteredUser;
-
       if (registeredUser?.account_status === "pending_approval") {
         window.location.replace("/lobby");
         return;
       }
-
-      if (registeredUser?.account_status === "active") {
-        if (registeredUser.user_type === "performer") {
-          window.location.replace("/performer/home");
-          return;
-        }
-
-        if (registeredUser.user_type === "facility") {
-          window.location.replace("/facility/home");
-          return;
-        }
+      if (registeredUser?.user_type === "performer") {
+        window.location.replace("/performer/home");
+        return;
       }
-
+      if (registeredUser?.user_type === "facility") {
+        window.location.replace("/facility/home");
+        return;
+      }
       alert("登録情報を確認できませんでした。");
     } catch (err) {
       console.error("ユーザー登録エラー:", err);

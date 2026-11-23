@@ -200,83 +200,65 @@ export async function GET(request: NextRequest) {
     }
 
     /*
-     * 案件ごとに最新のマッチングを1件だけ紐付ける。
-     *
-     * 最新マッチングが
-     * - active + scheduled   → matching
-     * - active + completed   → completed
-     * - cancelled            → cancelled
-     *
-     * 最新マッチングが存在しない場合は
-     * performance_requests.status をそのまま使用する。
+     * 案件ごとに全マッチングを集計する。
+     * イベント・レンタルなど複数の参加者を受け入れる案件では、
+     * 最新の1件がキャンセル済みでも、他に有効なマッチングが
+     * 残っていれば案件全体をキャンセル扱いにしない。
      */
-    const latestMatchByRequestId =
+    const matchesByRequestId =
       new Map<
         string,
-        (typeof matches)[number]
+        (typeof matches)[number][]
       >();
 
     for (const match of matches) {
-      if (
-        !latestMatchByRequestId.has(
-          match.request_id
-        )
-      ) {
-        latestMatchByRequestId.set(
-          match.request_id,
-          match
-        );
-      }
+      const requestMatches =
+        matchesByRequestId.get(match.request_id) || [];
+      requestMatches.push(match);
+      matchesByRequestId.set(
+        match.request_id,
+        requestMatches
+      );
     }
 
     const enrichedRequests =
       requestList.map(
         (item) => {
-          const latestMatch =
-            latestMatchByRequestId.get(
-              item.id
+          const requestMatches =
+            matchesByRequestId.get(item.id) || [];
+          const latestMatch = requestMatches[0];
+          const activeMatches =
+            requestMatches.filter(
+              (match) =>
+                match.status === "active" &&
+                match.performance_status !== "cancelled"
             );
 
-          let displayStatus =
-            item.status;
+          const allActiveMatchesCompleted =
+            activeMatches.length > 0 &&
+            activeMatches.every(
+              (match) =>
+                match.performance_status === "completed" ||
+                match.completed_at !== null
+            );
 
-          if (latestMatch) {
-            if (
-              latestMatch.status ===
-                "cancelled" ||
-              latestMatch.performance_status ===
-                "cancelled"
-            ) {
-              displayStatus =
-                "cancelled";
-            } else if (
-              latestMatch.performance_status ===
-              "completed"
-            ) {
-              displayStatus =
-                "completed";
-            } else if (
-              latestMatch.status ===
-              "active"
-            ) {
-              displayStatus =
-                "matched";
-            }
+          let displayStatus = item.status;
+
+          if (activeMatches.length > 0) {
+            displayStatus = allActiveMatchesCompleted
+              ? "completed"
+              : "matched";
           }
 
           return {
             ...item,
-            display_status:
-              displayStatus,
+            display_status: displayStatus,
             latest_match_status:
-              latestMatch?.status ||
-              null,
+              latestMatch?.status || null,
             latest_performance_status:
-              latestMatch?.performance_status ||
-              null,
+              latestMatch?.performance_status || null,
             latest_match_id:
-              latestMatch?.id ||
-              null,
+              latestMatch?.id || null,
           };
         }
       );

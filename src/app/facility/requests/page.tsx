@@ -37,7 +37,8 @@ type StatusFilter =
   | "open"
   | "matched"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "expired";
 
 type SortOption =
   | "date_asc"
@@ -68,6 +69,7 @@ const STATUS_OPTIONS: {
   { value: "matched", label: "マッチング済み" },
   { value: "completed", label: "演奏完了" },
   { value: "cancelled", label: "キャンセル" },
+  { value: "expired", label: "募集期限切れ" },
 ];
 
 const SORT_OPTIONS: {
@@ -90,35 +92,52 @@ function getRequestTypeLabel(requestType: RequestType | null) {
     : "演奏案件";
 }
 
+function getJapanToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
 function getEffectiveStatus(
   request: PerformanceRequest
 ): StatusFilter | "other" {
-  const values = [
-    request.display_status,
-    request.status,
-    request.latest_performance_status,
-    request.latest_match_status,
-  ]
-    .filter(Boolean)
-    .map((value) => String(value).toLowerCase());
+  // API側で全マッチングを集計した案件全体の状態を優先する。
+  // 個別の最新マッチングがキャンセル済みでも、他の有効な参加者が
+  // 残っている案件をキャンセル表示に上書きしない。
+  const value = String(
+    request.display_status || request.status || ""
+  ).toLowerCase();
 
-  if (
-    values.some(
-      (value) => value === "cancelled" || value === "canceled"
-    )
-  ) {
+  if (value === "cancelled" || value === "canceled") {
     return "cancelled";
   }
 
-  if (values.some((value) => value === "completed")) {
+  if (value === "completed") {
     return "completed";
   }
 
-  if (values.some((value) => value === "matched")) {
+  if (value === "matched") {
     return "matched";
   }
 
-  if (values.some((value) => value === "open")) {
+  if (value === "open") {
+    // 期限切れは表示・絞り込み上だけ区別し、DBのstatusは変更しない。
+    if (
+      request.application_deadline &&
+      request.application_deadline < getJapanToday()
+    ) {
+      return "expired";
+    }
+
     return "open";
   }
 
@@ -130,6 +149,7 @@ function getStatusLabel(status: string) {
   if (status === "matched") return "マッチング済み";
   if (status === "completed") return "演奏完了";
   if (status === "cancelled") return "キャンセル";
+  if (status === "expired") return "募集期限切れ";
   return "終了";
 }
 
@@ -148,6 +168,10 @@ function getStatusClass(status: string) {
 
   if (status === "cancelled") {
     return "bg-red-50 text-red-600 border-red-100";
+  }
+
+  if (status === "expired") {
+    return "bg-amber-50 text-amber-700 border-amber-100";
   }
 
   return "bg-gray-100 text-gray-500 border-gray-200";
@@ -371,7 +395,7 @@ export default function FacilityRequestsPage() {
   async function handleDelete(request: PerformanceRequest) {
     const status = getEffectiveStatus(request);
 
-    if (status !== "open") {
+    if (status !== "open" && status !== "expired") {
       setDeleteError("募集中の案件のみ削除できます。");
       return;
     }
@@ -722,7 +746,8 @@ export default function FacilityRequestsPage() {
             <div className="mt-3 space-y-3">
               {visibleRequests.map((request) => {
                 const status = getEffectiveStatus(request);
-                const canDelete = status === "open";
+                // 期限切れでもDB上は募集中のままなので、従来どおり削除操作を維持する。
+                const canDelete = status === "open" || status === "expired";
                 const isDeleting = deletingId === request.id;
 
                 return (

@@ -171,18 +171,39 @@ export async function GET(
       );
     }
 
-    // 応募メッセージを取得
-    const { data: application, error: applicationError } =
-      await supabase
-        .from("applications")
-        .select("message, status, created_at")
-        .eq("request_id", match.request_id)
-        .eq("performer_id", match.performer_id)
-        .maybeSingle();
+    // 応募メッセージは再応募で更新されるapplications行ではなく、
+    // このmatchに紐づくapplication_attemptsのスナップショットから取得する。
+    const { data: attempt, error: attemptError } = await supabase
+      .from("application_attempts")
+      .select("message_snapshot, message_snapshot_available, status, started_at, source")
+      .eq("match_id", match.id)
+      .maybeSingle();
 
-    if (applicationError) {
-      console.error("応募情報取得エラー:", applicationError);
+    if (attemptError) {
+      console.error("応募試行履歴取得エラー:", attemptError);
+      return privateJson(
+        { error: "応募履歴を取得できませんでした" },
+        { status: 500 }
+      );
     }
+
+    const application = attempt
+      ? {
+          message: attempt.message_snapshot_available
+            ? attempt.message_snapshot
+            : null,
+          status: attempt.status,
+          created_at: attempt.started_at,
+          source: attempt.source,
+          messageHistoryAvailable: attempt.message_snapshot_available,
+        }
+      : {
+          message: null,
+          status: null,
+          created_at: null,
+          source: null,
+          messageHistoryAvailable: false,
+        };
 
     const {
       request_id: _requestId,

@@ -1,7 +1,14 @@
 import "server-only";
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { verifyLineIdToken } from "@/lib/line-auth";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
 
 function privateError(message: string, status: number) {
   return NextResponse.json(
@@ -51,6 +58,30 @@ export async function requireAdmin(
     return {
       authorized: false,
       response: privateError("管理者権限がありません", 403),
+    };
+  }
+
+  // LINE IDの一致だけでなく、DB上の管理者アカウントが現在も
+  // activeであることを確認する。退会・停止後のトークン再利用を拒否。
+  const { data: adminUser, error: adminUserError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("line_user_id", verified.userId)
+    .eq("account_status", "active")
+    .maybeSingle();
+
+  if (adminUserError) {
+    console.error("管理者アカウント状態確認エラー:", adminUserError);
+    return {
+      authorized: false,
+      response: privateError("管理者アカウントを確認できません", 500),
+    };
+  }
+
+  if (!adminUser) {
+    return {
+      authorized: false,
+      response: privateError("有効な管理者アカウントがありません", 403),
     };
   }
 

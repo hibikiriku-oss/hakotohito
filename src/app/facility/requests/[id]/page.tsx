@@ -28,6 +28,29 @@ type Match = {
   performance_status?: string;
 };
 
+function getJapanToday(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+function isApplicationDeadlineExpired(request: PerformanceRequest): boolean {
+  return (
+    request.status === "open" &&
+    Boolean(request.application_deadline) &&
+    request.application_deadline < getJapanToday()
+  );
+}
+
 export default function FacilityRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -260,6 +283,10 @@ async function handleCancelEvent() {
       return "";
     }
 
+    if (isApplicationDeadlineExpired(request)) {
+      return "募集期限切れ";
+    }
+
     switch (request.status) {
       case "open":
         return "募集中";
@@ -278,6 +305,10 @@ async function handleCancelEvent() {
   function getStatusClass() {
     if (!request) {
       return "";
+    }
+
+    if (isApplicationDeadlineExpired(request)) {
+      return "bg-amber-100 text-amber-800";
     }
 
     switch (request.status) {

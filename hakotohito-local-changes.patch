@@ -1,0 +1,548 @@
+diff --git a/src/app/api/facility/matches/[id]/route.ts b/src/app/api/facility/matches/[id]/route.ts
+index 005cb80..5e49975 100644
+--- a/src/app/api/facility/matches/[id]/route.ts
++++ b/src/app/api/facility/matches/[id]/route.ts
+@@ -171,19 +171,40 @@ export async function GET(
+       );
+     }
+ 
+-    // 応募メッセージを取得
+-    const { data: application, error: applicationError } =
+-      await supabase
+-        .from("applications")
+-        .select("message, status, created_at")
+-        .eq("request_id", match.request_id)
+-        .eq("performer_id", match.performer_id)
+-        .maybeSingle();
+-
+-    if (applicationError) {
+-      console.error("応募情報取得エラー:", applicationError);
++    // 応募メッセージは再応募で更新されるapplications行ではなく、
++    // このmatchに紐づくapplication_attemptsのスナップショットから取得する。
++    const { data: attempt, error: attemptError } = await supabase
++      .from("application_attempts")
++      .select("message_snapshot, message_snapshot_available, status, started_at, source")
++      .eq("match_id", match.id)
++      .maybeSingle();
++
++    if (attemptError) {
++      console.error("応募試行履歴取得エラー:", attemptError);
++      return privateJson(
++        { error: "応募履歴を取得できませんでした" },
++        { status: 500 }
++      );
+     }
+ 
++    const application = attempt
++      ? {
++          message: attempt.message_snapshot_available
++            ? attempt.message_snapshot
++            : null,
++          status: attempt.status,
++          created_at: attempt.started_at,
++          source: attempt.source,
++          messageHistoryAvailable: attempt.message_snapshot_available,
++        }
++      : {
++          message: null,
++          status: null,
++          created_at: null,
++          source: null,
++          messageHistoryAvailable: false,
++        };
++
+     const {
+       request_id: _requestId,
+       performer_id: _performerId,
+diff --git a/src/app/api/facility/requests/route.ts b/src/app/api/facility/requests/route.ts
+index 1f96f48..072c52d 100644
+--- a/src/app/api/facility/requests/route.ts
++++ b/src/app/api/facility/requests/route.ts
+@@ -200,83 +200,65 @@ export async function GET(request: NextRequest) {
+     }
+ 
+     /*
+-     * 案件ごとに最新のマッチングを1件だけ紐付ける。
+-     *
+-     * 最新マッチングが
+-     * - active + scheduled   → matching
+-     * - active + completed   → completed
+-     * - cancelled            → cancelled
+-     *
+-     * 最新マッチングが存在しない場合は
+-     * performance_requests.status をそのまま使用する。
++     * 案件ごとに全マッチングを集計する。
++     * イベント・レンタルなど複数の参加者を受け入れる案件では、
++     * 最新の1件がキャンセル済みでも、他に有効なマッチングが
++     * 残っていれば案件全体をキャンセル扱いにしない。
+      */
+-    const latestMatchByRequestId =
++    const matchesByRequestId =
+       new Map<
+         string,
+-        (typeof matches)[number]
++        (typeof matches)[number][]
+       >();
+ 
+     for (const match of matches) {
+-      if (
+-        !latestMatchByRequestId.has(
+-          match.request_id
+-        )
+-      ) {
+-        latestMatchByRequestId.set(
+-          match.request_id,
+-          match
+-        );
+-      }
++      const requestMatches =
++        matchesByRequestId.get(match.request_id) || [];
++      requestMatches.push(match);
++      matchesByRequestId.set(
++        match.request_id,
++        requestMatches
++      );
+     }
+ 
+     const enrichedRequests =
+       requestList.map(
+         (item) => {
+-          const latestMatch =
+-            latestMatchByRequestId.get(
+-              item.id
++          const requestMatches =
++            matchesByRequestId.get(item.id) || [];
++          const latestMatch = requestMatches[0];
++          const activeMatches =
++            requestMatches.filter(
++              (match) =>
++                match.status === "active" &&
++                match.performance_status !== "cancelled"
++            );
++
++          const allActiveMatchesCompleted =
++            activeMatches.length > 0 &&
++            activeMatches.every(
++              (match) =>
++                match.performance_status === "completed" ||
++                match.completed_at !== null
+             );
+ 
+-          let displayStatus =
+-            item.status;
+-
+-          if (latestMatch) {
+-            if (
+-              latestMatch.status ===
+-                "cancelled" ||
+-              latestMatch.performance_status ===
+-                "cancelled"
+-            ) {
+-              displayStatus =
+-                "cancelled";
+-            } else if (
+-              latestMatch.performance_status ===
+-              "completed"
+-            ) {
+-              displayStatus =
+-                "completed";
+-            } else if (
+-              latestMatch.status ===
+-              "active"
+-            ) {
+-              displayStatus =
+-                "matched";
+-            }
++          let displayStatus = item.status;
++
++          if (activeMatches.length > 0) {
++            displayStatus = allActiveMatchesCompleted
++              ? "completed"
++              : "matched";
+           }
+ 
+           return {
+             ...item,
+-            display_status:
+-              displayStatus,
++            display_status: displayStatus,
+             latest_match_status:
+-              latestMatch?.status ||
+-              null,
++              latestMatch?.status || null,
+             latest_performance_status:
+-              latestMatch?.performance_status ||
+-              null,
++              latestMatch?.performance_status || null,
+             latest_match_id:
+-              latestMatch?.id ||
+-              null,
++              latestMatch?.id || null,
+           };
+         }
+       );
+diff --git a/src/app/facility/home/page.tsx b/src/app/facility/home/page.tsx
+index 72371dc..d58c09f 100644
+--- a/src/app/facility/home/page.tsx
++++ b/src/app/facility/home/page.tsx
+@@ -97,10 +97,6 @@ export default function FacilityHomePage() {
+           return;
+         }
+ 
+-        if (user.account_status !== "active") {
+-          throw new Error("アカウントが有効な状態ではありません。");
+-        }
+-
+         if (user.user_type !== "facility") {
+           if (user.user_type === "performer") {
+             window.location.replace("/performer/home");
+diff --git a/src/app/facility/page.tsx b/src/app/facility/page.tsx
+index 49de84c..eaa2857 100644
+--- a/src/app/facility/page.tsx
++++ b/src/app/facility/page.tsx
+@@ -64,12 +64,10 @@ export default function FacilityPage() {
+           window.location.replace("/lobby");
+           return;
+         }
+-
+         if (accountData.user.user_type === "facility") {
+           window.location.replace("/facility/home");
+           return;
+         }
+-
+         if (accountData.user.user_type === "performer") {
+           window.location.replace("/performer/home");
+           return;
+diff --git a/src/app/facility/requests/[id]/page.tsx b/src/app/facility/requests/[id]/page.tsx
+index 3a542c7..77c393e 100644
+--- a/src/app/facility/requests/[id]/page.tsx
++++ b/src/app/facility/requests/[id]/page.tsx
+@@ -28,6 +28,29 @@ type Match = {
+   performance_status?: string;
+ };
+ 
++function getJapanToday(): string {
++  const parts = new Intl.DateTimeFormat("en-CA", {
++    timeZone: "Asia/Tokyo",
++    year: "numeric",
++    month: "2-digit",
++    day: "2-digit",
++  }).formatToParts(new Date());
++
++  const year = parts.find((part) => part.type === "year")?.value;
++  const month = parts.find((part) => part.type === "month")?.value;
++  const day = parts.find((part) => part.type === "day")?.value;
++
++  return `${year}-${month}-${day}`;
++}
++
++function isApplicationDeadlineExpired(request: PerformanceRequest): boolean {
++  return (
++    request.status === "open" &&
++    Boolean(request.application_deadline) &&
++    request.application_deadline < getJapanToday()
++  );
++}
++
+ export default function FacilityRequestDetailPage() {
+   const params = useParams();
+   const router = useRouter();
+@@ -260,6 +283,10 @@ async function handleCancelEvent() {
+       return "";
+     }
+ 
++    if (isApplicationDeadlineExpired(request)) {
++      return "募集期限切れ";
++    }
++
+     switch (request.status) {
+       case "open":
+         return "募集中";
+@@ -280,6 +307,10 @@ async function handleCancelEvent() {
+       return "";
+     }
+ 
++    if (isApplicationDeadlineExpired(request)) {
++      return "bg-amber-100 text-amber-800";
++    }
++
+     switch (request.status) {
+       case "open":
+         return "bg-green-100 text-green-700";
+diff --git a/src/app/facility/requests/page.tsx b/src/app/facility/requests/page.tsx
+index 6bc0953..c28db58 100644
+--- a/src/app/facility/requests/page.tsx
++++ b/src/app/facility/requests/page.tsx
+@@ -37,7 +37,8 @@ type StatusFilter =
+   | "open"
+   | "matched"
+   | "completed"
+-  | "cancelled";
++  | "cancelled"
++  | "expired";
+ 
+ type SortOption =
+   | "date_asc"
+@@ -68,6 +69,7 @@ const STATUS_OPTIONS: {
+   { value: "matched", label: "マッチング済み" },
+   { value: "completed", label: "演奏完了" },
+   { value: "cancelled", label: "キャンセル" },
++  { value: "expired", label: "募集期限切れ" },
+ ];
+ 
+ const SORT_OPTIONS: {
+@@ -90,35 +92,52 @@ function getRequestTypeLabel(requestType: RequestType | null) {
+     : "演奏案件";
+ }
+ 
++function getJapanToday(): string {
++  const parts = new Intl.DateTimeFormat("en-CA", {
++    timeZone: "Asia/Tokyo",
++    year: "numeric",
++    month: "2-digit",
++    day: "2-digit",
++  }).formatToParts(new Date());
++
++  const year = parts.find((part) => part.type === "year")?.value;
++  const month = parts.find((part) => part.type === "month")?.value;
++  const day = parts.find((part) => part.type === "day")?.value;
++
++  return `${year}-${month}-${day}`;
++}
++
+ function getEffectiveStatus(
+   request: PerformanceRequest
+ ): StatusFilter | "other" {
+-  const values = [
+-    request.display_status,
+-    request.status,
+-    request.latest_performance_status,
+-    request.latest_match_status,
+-  ]
+-    .filter(Boolean)
+-    .map((value) => String(value).toLowerCase());
+-
+-  if (
+-    values.some(
+-      (value) => value === "cancelled" || value === "canceled"
+-    )
+-  ) {
++  // API側で全マッチングを集計した案件全体の状態を優先する。
++  // 個別の最新マッチングがキャンセル済みでも、他の有効な参加者が
++  // 残っている案件をキャンセル表示に上書きしない。
++  const value = String(
++    request.display_status || request.status || ""
++  ).toLowerCase();
++
++  if (value === "cancelled" || value === "canceled") {
+     return "cancelled";
+   }
+ 
+-  if (values.some((value) => value === "completed")) {
++  if (value === "completed") {
+     return "completed";
+   }
+ 
+-  if (values.some((value) => value === "matched")) {
++  if (value === "matched") {
+     return "matched";
+   }
+ 
+-  if (values.some((value) => value === "open")) {
++  if (value === "open") {
++    // 期限切れは表示・絞り込み上だけ区別し、DBのstatusは変更しない。
++    if (
++      request.application_deadline &&
++      request.application_deadline < getJapanToday()
++    ) {
++      return "expired";
++    }
++
+     return "open";
+   }
+ 
+@@ -130,6 +149,7 @@ function getStatusLabel(status: string) {
+   if (status === "matched") return "マッチング済み";
+   if (status === "completed") return "演奏完了";
+   if (status === "cancelled") return "キャンセル";
++  if (status === "expired") return "募集期限切れ";
+   return "終了";
+ }
+ 
+@@ -150,6 +170,10 @@ function getStatusClass(status: string) {
+     return "bg-red-50 text-red-600 border-red-100";
+   }
+ 
++  if (status === "expired") {
++    return "bg-amber-50 text-amber-700 border-amber-100";
++  }
++
+   return "bg-gray-100 text-gray-500 border-gray-200";
+ }
+ 
+@@ -371,7 +395,7 @@ export default function FacilityRequestsPage() {
+   async function handleDelete(request: PerformanceRequest) {
+     const status = getEffectiveStatus(request);
+ 
+-    if (status !== "open") {
++    if (status !== "open" && status !== "expired") {
+       setDeleteError("募集中の案件のみ削除できます。");
+       return;
+     }
+@@ -722,7 +746,8 @@ export default function FacilityRequestsPage() {
+             <div className="mt-3 space-y-3">
+               {visibleRequests.map((request) => {
+                 const status = getEffectiveStatus(request);
+-                const canDelete = status === "open";
++                // 期限切れでもDB上は募集中のままなので、従来どおり削除操作を維持する。
++                const canDelete = status === "open" || status === "expired";
+                 const isDeleting = deletingId === request.id;
+ 
+                 return (
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+index 0fa5207..6276c5d 100644
+--- a/src/app/page.tsx
++++ b/src/app/page.tsx
+@@ -67,7 +67,7 @@ export default function Home() {
+           );
+         }
+ 
+-        // 登録済みユーザーのアカウント状態を確認
++        // 登録済みの有効アカウントを確認
+         const response = await fetch("/api/users", {
+           method: "GET",
+           headers: {
+@@ -87,10 +87,6 @@ export default function Home() {
+             return;
+           }
+ 
+-          if (user.account_status !== "active") {
+-            throw new Error("アカウントが有効な状態ではありません。");
+-          }
+-
+           if (user.user_type === "performer") {
+             window.location.replace("/performer/home");
+             return;
+@@ -186,24 +182,18 @@ export default function Home() {
+       }
+ 
+       const registeredUser = data.user as RegisteredUser;
+-
+       if (registeredUser?.account_status === "pending_approval") {
+         window.location.replace("/lobby");
+         return;
+       }
+-
+-      if (registeredUser?.account_status === "active") {
+-        if (registeredUser.user_type === "performer") {
+-          window.location.replace("/performer/home");
+-          return;
+-        }
+-
+-        if (registeredUser.user_type === "facility") {
+-          window.location.replace("/facility/home");
+-          return;
+-        }
++      if (registeredUser?.user_type === "performer") {
++        window.location.replace("/performer/home");
++        return;
++      }
++      if (registeredUser?.user_type === "facility") {
++        window.location.replace("/facility/home");
++        return;
+       }
+-
+       alert("登録情報を確認できませんでした。");
+     } catch (err) {
+       console.error("ユーザー登録エラー:", err);
+diff --git a/src/app/performer/home/page.tsx b/src/app/performer/home/page.tsx
+index cd3098a..ea2ab27 100644
+--- a/src/app/performer/home/page.tsx
++++ b/src/app/performer/home/page.tsx
+@@ -232,10 +232,6 @@ export default function PerformerHomePage() {
+           return;
+         }
+ 
+-        if (profileData.user.account_status !== "active") {
+-          throw new Error("アカウントが有効な状態ではありません。");
+-        }
+-
+         if (profileData.user.user_type !== "performer") {
+           if (profileData.user.user_type === "facility") {
+             window.location.replace("/facility/home");
+@@ -244,6 +240,7 @@ export default function PerformerHomePage() {
+ 
+           throw new Error("アカウント種別を確認できません");
+         }
++
+         if (!cancelled) {
+           setProfile(profileData.user);
+         }
+diff --git a/src/app/performer/page.tsx b/src/app/performer/page.tsx
+index b2c8b43..9ba6be5 100644
+--- a/src/app/performer/page.tsx
++++ b/src/app/performer/page.tsx
+@@ -125,12 +125,10 @@ export default function PerformerPage() {
+           window.location.replace("/lobby");
+           return;
+         }
+-
+         if (accountData.user.user_type === "performer") {
+           window.location.replace("/performer/home");
+           return;
+         }
+-
+         if (accountData.user.user_type === "facility") {
+           window.location.replace("/facility/home");
+           return;
+diff --git a/src/lib/admin-auth.ts b/src/lib/admin-auth.ts
+index 999fcd6..afa26f0 100644
+--- a/src/lib/admin-auth.ts
++++ b/src/lib/admin-auth.ts
+@@ -1,8 +1,15 @@
+ import "server-only";
+ 
+ import { NextRequest, NextResponse } from "next/server";
++import { createClient } from "@supabase/supabase-js";
+ import { verifyLineIdToken } from "@/lib/line-auth";
+ 
++const supabase = createClient(
++  process.env.NEXT_PUBLIC_SUPABASE_URL!,
++  process.env.SUPABASE_SERVICE_ROLE_KEY!,
++  { auth: { autoRefreshToken: false, persistSession: false } }
++);
++
+ function privateError(message: string, status: number) {
+   return NextResponse.json(
+     { error: message },
+@@ -54,6 +61,30 @@ export async function requireAdmin(
+     };
+   }
+ 
++  // LINE IDの一致だけでなく、DB上の管理者アカウントが現在も
++  // activeであることを確認する。退会・停止後のトークン再利用を拒否。
++  const { data: adminUser, error: adminUserError } = await supabase
++    .from("users")
++    .select("id")
++    .eq("line_user_id", verified.userId)
++    .eq("account_status", "active")
++    .maybeSingle();
++
++  if (adminUserError) {
++    console.error("管理者アカウント状態確認エラー:", adminUserError);
++    return {
++      authorized: false,
++      response: privateError("管理者アカウントを確認できません", 500),
++    };
++  }
++
++  if (!adminUser) {
++    return {
++      authorized: false,
++      response: privateError("有効な管理者アカウントがありません", 403),
++    };
++  }
++
+   return {
+     authorized: true,
+     userId: verified.userId,
