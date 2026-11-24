@@ -27,6 +27,8 @@ const FIXED_RATE_FIELDS = [
 const PERCENT_RATE_FIELDS = [
   "completion_fee_percent",
   "paid_lesson_fee_percent",
+  "performance_reward_fee_percent",
+  "lesson_match_fee_percent",
 ] as const;
 
 const ALL_RATE_FIELDS = [
@@ -95,6 +97,8 @@ export async function GET(request: NextRequest) {
           "completion_fee_percent",
           "free_lesson_match_fee_coins",
           "paid_lesson_fee_percent",
+          "performance_reward_fee_percent",
+          "lesson_match_fee_percent",
           "coin_purchase_yen_per_coin",
           "updated_at",
           "updated_by_line_user_id",
@@ -210,6 +214,8 @@ export async function PUT(request: NextRequest) {
           "completion_fee_percent",
           "free_lesson_match_fee_coins",
           "paid_lesson_fee_percent",
+          "performance_reward_fee_percent",
+          "lesson_match_fee_percent",
           "coin_purchase_yen_per_coin",
           "updated_at",
           "updated_by_line_user_id",

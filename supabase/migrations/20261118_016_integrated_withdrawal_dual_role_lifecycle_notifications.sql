@@ -90,6 +90,7 @@ DECLARE
   v_refund_amount integer;
   v_cancelled_count integer := 0;
   v_withdrawn_band_ids uuid[] := ARRAY[]::uuid[];
+  v_handover_band_ids uuid[] := ARRAY[]::uuid[];
   v_is_performer boolean := false;
   v_is_facility boolean := false;
   v_invite record;
@@ -292,29 +293,31 @@ BEGIN
     FOR UPDATE OF m
   LOOP
     -- 既存のキャンセル・返金処理を再利用
-    v_cancel_result :=
-      public.cancel_match_with_direct_invite_refund(
-        v_match.match_id,
-        v_match.facility_id
-      );
-
-    IF COALESCE(
-      (v_cancel_result->>'success')::boolean,
-      false
-    ) IS NOT TRUE THEN
-      RAISE EXCEPTION
-        'マッチングのキャンセルに失敗しました: %',
-        COALESCE(
-          v_cancel_result->>'errorMessage',
-          v_match.match_id::text
+    IF v_match.is_facility_match THEN
+      v_cancel_result :=
+        public.cancel_match_with_direct_invite_refund(
+          v_match.match_id,
+          v_match.facility_id
         );
-    END IF;
 
-    v_refund_amount :=
-      COALESCE(
-        (v_cancel_result->>'refundAmount')::integer,
-        0
-      );
+      IF COALESCE(
+        (v_cancel_result->>'success')::boolean,
+        false
+      ) IS NOT TRUE THEN
+        RAISE EXCEPTION
+          'マッチングのキャンセルに失敗しました: %',
+          COALESCE(
+            v_cancel_result->>'errorMessage',
+            v_match.match_id::text
+          );
+      END IF;
+
+      v_refund_amount := COALESCE((v_cancel_result->>'refundAmount')::integer, 0);
+      v_cancelled_count := v_cancelled_count + 1;
+    ELSE
+      -- Performer withdrawal never auto-cancels an established engagement.
+      v_refund_amount := 0;
+    END IF;
 
     -- 施設退会：参加演奏者全員分の通知情報を作成
     IF v_match.is_facility_match THEN
@@ -378,7 +381,6 @@ BEGIN
     v_notifications :=
       v_notifications || v_match_notifications;
 
-    v_cancelled_count := v_cancelled_count + 1;
   END LOOP;
 
   -- 施設退会：施設が送信した未成立の直接依頼を実際の徴収額で返金し、演奏者へ通知する。
@@ -662,17 +664,59 @@ BEGIN
   -- 演奏者退会処理
   IF v_is_performer THEN
     -- Determine leader-owned bands before capturing/rejecting their pending applications.
-    SELECT COALESCE(
-      array_agg(DISTINCT bm.band_id),
-      ARRAY[]::uuid[]
-    )
+    -- Leader-owned bands with an eligible active successor are handed over.
+    SELECT COALESCE(array_agg(DISTINCT leader_membership.band_id), ARRAY[]::uuid[])
+    INTO v_handover_band_ids
+    FROM public.band_members leader_membership
+    JOIN public.bands b ON b.id = leader_membership.band_id AND b.status = 'active'
+    WHERE leader_membership.performer_id = v_performer_id
+      AND leader_membership.status = 'active'
+      AND leader_membership.role = 'leader'
+      AND EXISTS (
+        SELECT 1
+        FROM public.band_members successor
+        JOIN public.performers successor_performer ON successor_performer.id = successor.performer_id
+        JOIN public.users successor_user ON successor_user.id = successor_performer.user_id
+        WHERE successor.band_id = leader_membership.band_id
+          AND successor.status = 'active'
+          AND successor.performer_id <> v_performer_id
+          AND successor_user.account_status = 'active'
+      );
+
+    -- Disband only when no eligible active member can inherit leadership.
+    SELECT COALESCE(array_agg(DISTINCT leader_membership.band_id), ARRAY[]::uuid[])
     INTO v_withdrawn_band_ids
-    FROM public.band_members bm
-    JOIN public.bands b ON b.id = bm.band_id
-    WHERE bm.performer_id = v_performer_id
-      AND bm.status = 'active'
-      AND bm.role = 'leader'
-      AND b.status = 'active';
+    FROM public.band_members leader_membership
+    JOIN public.bands b ON b.id = leader_membership.band_id AND b.status = 'active'
+    WHERE leader_membership.performer_id = v_performer_id
+      AND leader_membership.status = 'active'
+      AND leader_membership.role = 'leader'
+      AND NOT (leader_membership.band_id = ANY(v_handover_band_ids));
+
+    -- Transfer each leadership role to the oldest active eligible member.
+    UPDATE public.band_members outgoing
+    SET role = 'member'
+    WHERE outgoing.band_id = ANY(v_handover_band_ids)
+      AND outgoing.performer_id = v_performer_id
+      AND outgoing.status = 'active'
+      AND outgoing.role = 'leader';
+
+    UPDATE public.band_members successor
+    SET role = 'leader'
+    FROM (
+      SELECT DISTINCT ON (bm.band_id) bm.band_id, bm.performer_id
+      FROM public.band_members bm
+      JOIN public.performers p ON p.id = bm.performer_id
+      JOIN public.users u ON u.id = p.user_id
+      WHERE bm.band_id = ANY(v_handover_band_ids)
+        AND bm.status = 'active'
+        AND bm.performer_id <> v_performer_id
+        AND u.account_status = 'active'
+      ORDER BY bm.band_id, bm.joined_at ASC NULLS LAST, bm.performer_id ASC
+    ) chosen
+    WHERE successor.band_id = chosen.band_id
+      AND successor.performer_id = chosen.performer_id
+      AND successor.status = 'active';
 
     -- Capture facilities affected by this performer's solo applications and by
     -- applications of leader-owned bands that will be disbanded.
@@ -710,7 +754,7 @@ BEGIN
         AND recipient.line_user_id NOT LIKE 'withdrawn:%'
         AND (
           (a.source = 'performer_apply' AND a.performer_id = v_performer_id)
-          OR (a.source = 'band_apply' AND a.band_id = ANY(v_withdrawn_band_ids))
+          OR (a.source = 'band_apply' AND a.band_id = ANY(v_withdrawn_band_ids || v_handover_band_ids))
         )
     ) q;
     v_pending_application_notifications := v_pending_application_notifications || v_application_notification_batch;
@@ -982,7 +1026,7 @@ BEGIN
     END IF;
     v_text := CASE WHEN v_user_type = 'facility'
       THEN '施設が退会したため、マッチングは中止されました。'
-      ELSE '演奏者が退会したため、マッチングは中止されました。'
+      ELSE '演奏者が退会しました。成立済み案件は自動キャンセルされていません。今後の対応をご確認ください。'
     END || ' 案件：' || COALESCE(v_item->>'requestTitle', '案件') ||
       E'\nLINEミニアプリから最新状況をご確認ください。';
     INSERT INTO public.line_notification_outbox(event_key, recipient_line_user_id, messages)

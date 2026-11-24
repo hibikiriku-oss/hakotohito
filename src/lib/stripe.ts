@@ -41,3 +41,20 @@ export function getAppBaseUrl(): string {
   if (!value) throw new Error("APP_BASE_URL または NEXT_PUBLIC_APP_URL が必要です。");
   return value.replace(/\/$/, "");
 }
+
+
+export async function stripeGet<T extends StripeObject>(path: string): Promise<T> {
+  const secret = process.env.STRIPE_SECRET_KEY;
+  if (!secret) throw new Error("STRIPE_SECRET_KEY が設定されていません。");
+
+  const response = await fetch(`https://api.stripe.com/v1/${path}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${secret}` },
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as T & { error?: { message?: string } };
+  if (!response.ok) {
+    throw new StripeRequestError(payload.error?.message || `Stripe API error (${response.status})`, response.status);
+  }
+  return payload;
+}

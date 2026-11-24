@@ -1,6 +1,66 @@
+# 公開チェックリスト（2026-11-24 V48最終修正パッケージ）
+
+> 本パッケージはソース・Supabase migrationを統合した反映候補。2026-11-24時点でSupabase本番（Mmatch-production-tokyo）のV48 migration 001〜006は適用済み・主要オブジェクト／権限のpostflight確認済み。GitHub Push／Vercel Deploy／LINE実機確認は別途未確認。実際の返金・退会・決済を用いた動作試験は未完了。
+
+## V48最終修正ゲート（2026-11-24）
+
+- [x] 最新アップロード済みProduction ZIP（commit `1258308fbb7aaaca8d140e061032c36fb139464d`）とV48 V12候補を統合元として使用
+- [x] 2026-11-23受領の本番RPC定義（個別キャンセル・全体キャンセル・退会・直接依頼返金）を反映元として使用
+- [x] `coin_transactions.source_transaction_id` と一意indexを追加するmigrationを作成
+- [x] 個別／全体キャンセルのV48イベント成立料・施設報酬手数料をsource-linked refund RPCへ接続
+- [x] 旧返金キーに一致する返金履歴は二重加算せずsource IDをリンクする処理を追加
+- [x] イベント・レンタルのV48成立時取引料が徴収済みの場合、旧完了時手数料を抑止
+- [x] レッスン成立手数料のsource-linked返金RPCと認証済みキャンセルAPIを追加
+- [x] 演奏者退会時は成立済み演奏案件を自動キャンセルせず、施設へ通知する候補へ修正
+- [x] バンドリーダー退会時は`joined_at`最古の有効メンバーへ引き継ぎ、後継者不在時のみ解散
+- [x] `PUBLIC_RELEASE_CHECKLIST.md` に今回の修正履歴を反映
+- [x] Supabase migration 001〜006を本番適用（2026-11-24、Mmatch-production-tokyo）
+- [x] Supabase postflightで006の主要RPC・列・一意index・実行権限を確認（2026-11-24）
+- [ ] 既存返金履歴・残高／ledgerの実データ照合（未実施）
+- [ ] 実データを用いたキャンセル・返金・退会の動作試験（未実施）
+- [ ] ソースをGitHubへPush（未実施）
+- [ ] Vercel本番Deploy（未実施）
+- [ ] LINE実機でキャンセル・返金・退会・バンド引継ぎを確認（未実施）
+- [ ] 法定表示の正式事業者情報・法的確認（未完了）
+- [ ] Stripeコイン購入の実決済・Webhook・残高反映テスト（未実施。購入機能は無効維持）
+
+## Supabase適用順・2026-11-24適用結果
+
+V48 migration 001〜006は `Mmatch-production-tokyo` へ適用済み。**再実行しないこと。**
+
+| 順序 | migration | 適用・確認 |
+|---:|---|---|
+| 1 | `20261122_001_application_participant_snapshot_and_trade_claims.sql` | [x] 適用・postflight確認 |
+| 2 | `20261122_002_band_profile_edit_rpc.sql` | [x] 適用・RPC存在／権限確認 |
+| 3 | `20261122_003_match_time_fee_rate_settings.sql` | [x] 適用・設定値確認 |
+| 4 | `20261122_004_performance_reward_fee_at_match.sql` | [x] 適用・snapshot／RPC／RLS／権限確認 |
+| 5 | `20261122_005_lesson_match_fee_snapshots_and_no_holds.sql` | [x] 適用・snapshot／RPC／RLS／権限確認 |
+| 6 | `20261124_001_v48_source_linked_refunds_and_fee_lifecycle.sql` | [x] 修正SQLを適用・postflight確認 |
+
+006 postflight結果：返金共通RPC、レッスン個別キャンセル返金RPC、直接依頼返金RPC、退会時直接依頼返金RPC、退会RPC、Outbox連携退会RPC、返金元一意index、`source_transaction_id`／`lesson_application_id`列、service_roleのEXECUTE権限がすべて存在・有効。`authenticated` の `refund_coin_transaction` EXECUTE権限は `false`（意図した拒否）。
+
+**確認範囲の注意：** 上記はmigration適用と主要DBオブジェクト／権限の存在確認。既存返金履歴・残高／ledgerの全件照合、実際のキャンセル返金・退会処理・LINE通知・決済のruntime試験は未完了。成功扱いに拡張しない。
+
+次の反映順は、同梱ソースの内容確認・GitHub Push・Vercel Deploy・LINE実機確認。Push／Deployは完了報告を受けるまで未実施として扱う。
+
+## 2026-11-24 V48 Supabase migration 001〜006適用完了・postflight記録
+
+- [x] 001 `20261122_001_application_participant_snapshot_and_trade_claims.sql`：適用済み。participant claim／band trade history／snapshot列／acceptance function／triggerを確認。既存matchが0件のためmatch snapshot backfillが0件であることも確認。
+- [x] 002 `20261122_002_band_profile_edit_rpc.sql`：`update_band_profile(uuid,uuid,text,text)`存在、service_role EXECUTE可、authenticated EXECUTE不可を確認。
+- [x] 003 `20261122_003_match_time_fee_rate_settings.sql`：適用済み。設定値 `performance_reward_fee_percent=10.00`、`lesson_match_fee_percent=10.00`、`coin_purchase_yen_per_coin=10` を確認。
+- [x] 004 `20261122_004_performance_reward_fee_at_match.sql`：snapshot table、reward/event fee関数、application／invitation wrapper、completion関数、RLS、service_role SELECT/INSERT可、authenticated SELECT不可を確認。
+- [x] 005 `20261122_005_lesson_match_fee_snapshots_and_no_holds.sql`：lesson fee snapshot table、apply/create/update RPC、RLS、service_role SELECT/INSERT可、authenticated SELECT不可を確認。
+- [x] 006 `20261124_001_v48_source_linked_refunds_and_fee_lifecycle.sql`：最終修正版を適用。postflightで6 RPC、source refund unique index、2列、service_role EXECUTE可、authenticated EXECUTE不可を確認。
+- [x] 006の最終postflight CSVは先頭10項目がすべて`true`、`authenticated_can_refund=false`。
+- [ ] source-linked返金履歴の実データ照合、payer／amount／business reference一致、残高・ledger全体のreconciliation。
+- [ ] 個別／全体キャンセル、レッスンキャンセル、直接依頼拒否、退会の実データruntime試験とLINE通知確認。
+- [ ] GitHub Push、Vercel Production Deploy、LINE実機テスト。
+
+**判定：Supabase migration 001〜006の適用および主要DBオブジェクト／権限のpostflightは完了。アプリ全体の本番公開完了を意味しない。** migration 001〜006は再実行不要。006の適用前に構文・PL/pgSQL変数宣言エラーが発生したため修正SQLで適用し、postflightで成功を確認した。ローカル build／lint／test／typecheck は実施していない。
+
 # 公開準備チェックリスト
 
-最終更新：2026-11-19（Phase 2 v45候補・登録承認制／レッスン仮押さえ撤廃）
+最終更新：2026-11-21（V47候補・再応募とマッチング試行履歴の整合）
 
 
 > **2026-11-19時点の重要状態**：レッスン機能は有効のまま維持。Stripeコイン購入は`coin_purchase_enabled=false`で停止（ユーザー適用報告）。V44候補のmigration適用状態は一括して未適用とは扱わず、`20261116_009`はユーザー適用報告あり、他migrationは個別確認が必要。`venue_address`、案件削除RPC、通知Flexリンク等の個別反映状況は別紙`docs/20261119_V45_CHANGE_AND_DATABASE_STATUS.md`に記録。V45の新規変更は未適用・未デプロイ。ローカルチェック／build／lint／test／typecheckは実施しない。
@@ -9,6 +69,12 @@
 
 > **2026-11-19 v45候補追記**：V44を基準に、レッスン募集の仮押さえ撤廃（登録・編集時は定員分残高確認のみ、`reserved_coins=0`、即時マッチング成立時に最新料金で原子徴収）、バンド送金からレッスン予約残高控除を除去、新規登録を`pending_approval`でロビー待機させる管理者承認フローを候補ソース／migrationへ追加。既存の演奏応募・直接依頼の成立時課金設計は維持。v45候補は未適用・未デプロイ。既存DBのmigration適用状態はユーザー報告・個別SQL結果・ライブ関数確認に分けて別紙台帳で管理する。ローカルチェック／build／lint／test／typecheckは実施しない。
 
+> **2026-11-20 先行反映候補 v46 作業記録**：V45.3を基準に、管理者共通認証でDB上の`active`状態を再確認するソース修正、およびレッスン応募時の自己マッチング・対象ランク・過去日付のDB拒否、成立後の募集編集禁止、募集作成／編集時の過去日付拒否を候補へ追加。これらは作業用候補ソースのみであり、DB適用・GitHub反映・Vercelデプロイ・実機検証は未実施。11/19共有の5関数定義とV45 migrationの事前照合MD5が一致しないため、migration適用は保留。現行DBの正確な関数hash・migration履歴・ACLを読み取り専用SQLで再照合してから反映する。今回もローカルチェック／build／lint／test／typecheckは実施しない。
+
+
+
+
+> **2026-11-21 V47候補追記（未適用）**：個別キャンセル後の再応募では同じ`applications`行を再利用する一方、`matches.application_id`に全体一意制約があるDBでは2回目の成立を妨げる。また完了RPCが応募行の現在状態`accepted`を要求するため、完了判定はマッチング単位の`application_attempts.match_id`と`status='matched'`を正とする必要がある。V47候補migrationで`matches.application_id`単独の全体一意制約／indexのみを除去し、部分一意indexは保持する。完了RPCをattempt基準へ変更し、activeかつ手数料対象のmatchに対応attemptがない場合はmigrationを停止する。適用前read-only preflight／適用後postflightを追加。現時点で本番Supabase適用・GitHub Push・Vercel deploy・実機検証は未実施。ローカルチェック／build／lint／test／typecheckは実施しない。
 
 ## 1. 基本前提・環境
 
@@ -1447,3 +1513,234 @@ Hakotohito独自のmigration history tableは存在しないため、Supabase SQ
 - [ ] LINE実機でロビー待機→管理者承認→利用開始、レッスン募集登録時残高不変、成立時徴収、残高不足時不成立を確認。
 
 **状態：** V45は未適用候補。Supabase/GitHub/Vercelへの変更、SQL実行、build/test/lint/typecheck/ローカルチェックは未実施。公開判定BLOCKED。詳細は`docs/20261119_V45_CHANGE_AND_DATABASE_STATUS.md`と`docs/20261119_PHASE2_V45_PACKAGE_MANIFEST.md`。
+
+
+> **2026-11-21 V47追加監査2（候補・未適用）**：再応募時に同じapplications行のmessageが更新されるため、施設側マッチング詳細APIがrequest_id＋performer_idでapplicationsを引く実装では過去matchに最新応募文が表示される可能性を確認。V47候補へapplication_attempts.message_snapshot／message_snapshot_available、INSERT時の共通スナップショットトリガー、match_id単位で取得する施設側API修正を追加。複数試行の過去メッセージは復元不能なため、最新文面で代用せず履歴なしとして返す。またmatches.application_id全体一意制約の解除後に、応募ごとにactive matchを1件に制限する部分一意indexと重複検知を追加。V47.001/.002とも未適用。本番DBの事前照合とmigration適用は未実施。
+
+## 2026-11-22 V48 統合候補 — Outbox・参加者スナップショット・バンド編集
+
+- [x] V47.1ソースをV47統合候補へ重ね、V48作業基準を作成。
+- [x] LINE通知Outboxを1回最大5件の複数バッチ方式に変更。Cronは1実行最大8バッチ・45秒で停止。
+- [x] Outbox Cronを毎分実行へ変更。
+- [x] 応募試行INSERT時に個人／直接依頼／バンドの提出時点参加者を保存するmigration候補を追加。
+- [x] 同一案件内の参加者claimと同一バンドの再取引履歴をDBで永続化するmigration候補を追加。
+- [x] 過去の個人応募のみ正確なperformer_idでclaimをbackfill。過去バンド応募は現メンバーから推測せず、スナップショット不明として隔離。
+- [x] 採用時に現在のband_membersを読み直さず、応募試行の参加者スナップショットをmatchesへ反映する候補を追加。
+- [x] バンドリーダーによるバンド名・紹介文編集UI/API/RPC候補を追加。
+- [ ] V48.001/002の本番DB preflightを実行し、migration適用可能性を確認。
+- [ ] 11/21確定のmatch fee支払者・施設謝礼10%・イベント/レンタルonce＋per-match課金を全RPCへ統一。
+- [ ] レッスン成立時10%の円／コイン換算スナップショットと募集時残高確認撤廃を反映。
+- [ ] 退会時の施設判断キャンセル、バンドリーダー引継ぎ、メンバー変更履歴・施設通知を反映。
+- [ ] Outboxの5件超過表示、withdrawal/lease排他、LINE ID再利用防止、dead-letter運用を反映。
+- [ ] 管理者RPCを含む全SECURITY DEFINERのactor/admin本人確認を新仕様へ統一。
+- [ ] 本番Supabase適用、Vercel反映、LINE実機検証は未実施。build／lint／test／typecheck／ローカルチェックも未実施。
+
+**V48状態：** 実装候補ZIP。今回の変更は未適用。上記未完了の課金・退会・通知・権限領域が残るため、本番公開判定はBLOCKED。詳細は `docs/20261122_V48_PACKAGE_MANIFEST.md`。
+
+## 2026-11-22 V48課金統合追記（未適用候補）
+
+- [x] 応募手数料は応募時保存額を成立時徴収する既存仕様を維持（初期値10コイン、管理者変更可能）。
+- [x] 演奏案件の成立時報酬手数料率10%を旧完了手数料1%と別設定として追加。
+- [x] レッスン成立時講師手数料率10%を旧レッスン料率1%と別設定として追加。
+- [x] 通常応募／バンド応募／直接依頼の成立時に施設負担の演奏報酬手数料を徴収し、換算レート等をスナップショット保存する候補を追加。
+- [x] イベント・レンタルの初回成立料金と成立取引ごとの通常料金を別冪等キーで管理する候補を追加。
+- [x] レッスン成立時10%徴収・円／コイン換算・専用スナップショットのmigration候補を追加（V48.005、未適用）。
+- [x] レッスン募集作成／編集時の定員分残高条件を撤廃するmigration候補を追加。既存reserved_coinsの一括クリアは行わない。
+- [ ] イベント・レンタル完了時の参加費／レンタル料課金仕様との整合未完了。
+- [ ] 本番DB preflight、SQL適用、Vercel反映、LINE実機確認は未実施。
+
+**監査履歴：** 2026-11-22、V48.003/004候補で課金設定と成立時徴収の一部を追加。応募手数料10コインは既存仕様維持。レッスン成立課金等が残るため公開判定BLOCKED。ビルド・ローカルチェック・本番DB変更・Push・Deployは未実施。
+
+
+## 2026-11-22 V48.005 追記
+- [x] レッスン成立時の講師手数料を独立設定 `lesson_match_fee_percent`（初期値10%）で円換算し、成立時スナップショットを保存するmigration候補を追加（未適用）。
+- [x] レッスン募集作成・編集時の定員分残高条件を撤廃するmigration候補を追加（未適用）。
+- [ ] 実DBの既存関数・権限・制約との照合、適用前レビュー。
+- [ ] 本番適用・実機確認。
+
+## 2026-11-22 V48 キャンセル・返金経路監査追記
+
+- [x] V48.001/004と既存の個別・全体キャンセルRPCを静的照合。
+- [x] イベント／レンタルの初回request feeと成立取引ごとのfeeが別キーであることを確認。
+- [ ] イベント／レンタルのper-match `match_fee` を個別・全体キャンセル時に元debit単位で返金する。
+- [ ] 演奏案件の成立時 `facility_reward_fee` をキャンセル時にsnapshot／元debitから返金するか、確定仕様を明文化して実装する。
+- [ ] request単位初回feeの支払元・元debit・初回matchを不変記録し、返金後も再成立時に再徴収しないことをDB制約で保証する。
+- [ ] イベント／レンタル完了時feeと成立時feeの役割・率・課金時点を統一し、二重課金を防止する。
+- [ ] 全返金RPCでsource transaction ID、payer、amount、type、request/application/attempt/matchを完全照合し、source debit単位の二重返金防止を追加する。
+- [ ] 個別キャンセル・全体キャンセル・退会キャンセル・満員取消・再成立のDBテストを追加する。
+
+**監査判定：BLOCKED。** 詳細は `docs/20261122_V48_CANCEL_REFUND_AUDIT.md`。今回の確認は静的ソースレビューのみ。SQL適用、DB変更、build/test/lint/typecheck/ローカルチェック、Push、Deployは未実施。
+
+### 2026-11-22 V48 キャンセル返金の追加ソース照合
+- [x] 個別キャンセルRPCでイベント／レンタルの新per-match `match_fee` が返金分岐から除外されることを特定。
+- [x] 全体キャンセルRPCに新per-match `event_match_transaction_fee:<match_id>` の返金処理がないことを特定。
+- [x] `facility_reward_fee` は成立時snapshot/debitを作るが、cancel RPCにsnapshot元取引からの返金処理がないことを特定。
+- [ ] イベント／レンタルper-match feeを個別・全体キャンセルで元debit照合して返金する。
+- [x] `facility_reward_fee` は演奏実施前キャンセル時に施設の元支払者へ全額返金、完了後は返金しない方針を確定（2026-11-24）。
+- [ ] `facility_reward_fee` の返金をsource transaction単位で個別・全体キャンセル・退会へ実装。
+- [ ] refund元debit IDの一意性とrefund側のpayer・amount・business reference一致をDB制約／RPCで保証。
+
+**監査追記:** 2026-11-22、`cancel_match_with_direct_invite_refund` と `cancel_event_request_with_refund_internal` の具体的な新課金との不整合を確認。SQL関数は変更せず、BLOCKEDを維持。詳細は `docs/20261122_V48_CANCEL_REFUND_AUDIT.md`。
+
+### V48 返金元取引の統一（2026-11-22 追加）
+- [ ] `coin_transactions.source_transaction_id` と返金元ごとの一意制約を導入し、既存返金行は完全一致で一意に元debitを特定できるものだけbackfill
+- [ ] `event_match_transaction_fee:<match_id>` を個別キャンセル／全体キャンセル／退会キャンセルから元取引ID指定で返金
+- [ ] `performance_reward_fee_match:<match_id>` と `match_fee_snapshots.coin_transaction_id` をキャンセル・紛争処理へ接続
+- [ ] `event_match_fee:<request_id>` の初回料金返金をrequest-wide completed判定から分離し、初回source debit単位で判定
+- [ ] `complete_match_with_fee` のイベント／レンタル旧完了手数料と成立時課金の重複を解消
+- [ ] 直接依頼旧方式・新方式、lesson feeを含む全返金writerを共通source refund RPCへ移行
+- [ ] 未返金候補・重複返金・payer/amount/reference不一致をread-only preflightで確認
+
+詳細：`docs/20261122_V48_REFUND_SOURCE_LEDGER_CONTRACT.md`、`docs/20261122_V48_REFUND_SOURCE_PREFLIGHT_READONLY.sql`。本項目が未完了のため公開判定BLOCKEDを維持。
+
+### V48 返金元取引監査フォローアップ（2026-11-22）
+- [x] 個別キャンセルRPCがイベント／レンタルper-match `match_fee` を返金分岐から明示的に除外していることを関数本文で確認。
+- [x] 個別／全体キャンセルRPCが `facility_reward_fee` と `match_fee_snapshots.coin_transaction_id` を参照していないことを確認。
+- [x] 全体キャンセルの初回料金返金が、元debit IDではなくrequest-wide completed match判定に依存することを確認。
+- [x] ledger schema・制約・index・trigger/RLS・関連RPC・V48課金キー・snapshot/debit整合を調べるread-only SQL V2を追加。
+- [ ] V2 preflightを対象DBで実行し、出力を取得してsource-link migrationの対象・停止条件を確定。
+- [ ] 実DB結果に基づき `source_transaction_id` とrefund unique制約を設計。既存refundは完全一致で一意に元debitを特定できるもののみbackfill。
+- [ ] 共通refund RPCを個別キャンセル／全体キャンセル／退会／拒否へ接続し、payer・amount・type・全business referenceを元debitから導出。
+
+**判定：BLOCKED継続。** 今回は静的ソース確認とread-only SQLの追加のみ。SQL実行・DB変更・build/test/lint/typecheck/ローカルチェック・Push・Deployは未実施。詳細は `docs/20261122_V48_REFUND_SOURCE_AUDIT_FOLLOWUP.md`。
+
+### V48 返金ライフサイクル横断照合（2026-11-22）
+- [x] 応募手数料・通常match fee・イベント／レンタル初回料金・成立ごとの料金・演奏報酬手数料・直接依頼料・レッスン料について、成立時課金キーとcancel/reject/withdrawal writerを横断照合。
+- [x] `application_match_fee:<attempt_id>` は成立時に保存済み応募額で徴収される一方、現行cancel RPC内に明示的な返金writerを確認できない点を記録。
+- [x] `event_match_fee:<request_id>`（初回）と `event_match_transaction_fee:<match_id>`（成立ごと）が別課金であること、後者が個別・全体キャンセルの返金対象外である点を記録。
+- [x] `facility_reward_fee` はsnapshotに元取引IDを保存するが、cancel RPCがsnapshotを参照しない点を記録。
+- [x] 直接依頼の拒否・退会返金writerは存在するが、source transaction IDを一意に固定していない点を記録。
+- [ ] 応募手数料・演奏報酬手数料・レッスン成立手数料のキャンセル／退会／紛争時の返金可否を業務仕様として確定。
+- [ ] イベント／レンタル成立ごとの固定料金と完了時の参加費／レンタル料手数料の役割・率・課金時点を確定。
+- [ ] 実DB V2 preflight結果を取得し、source-linked refund migrationの安全条件を確定。
+- [ ] 全refund writerを共通source transaction RPCへ移行し、元debit単位の二重返金防止をDB制約で保証。
+
+詳細：`docs/20261122_V48_REFUND_LIFECYCLE_MATRIX.md`。静的ソース監査のみ。SQL実行・DB変更・build/test/lint/typecheck/ローカルチェック・Push・Deploy未実施。公開判定BLOCKED。
+
+
+### V48 共通返金RPCの実装契約・切替順序（2026-11-22）
+- [x] `spend_coins`／`spend_coins_legacy` のソースを確認し、グローバル更新ロック→残高行ロック→残高更新→ledger INSERTの順序を確認。返金RPCでは `spend_coins` を呼ばず、元debitから導出した金額を加算する方針を明文化。
+- [x] 既存の個別キャンセル・直接依頼拒否・自動却下の返金writerが `admin_adjustment` と独自冪等キーを使い、元debit IDを保持していない点を整理。
+- [x] 共通返金RPCの候補契約、source ID unique/FK案、既存返金backfill停止条件、呼出元の段階的切替順序を文書化。
+- [ ] 実DB V2 preflightの結果を取得し、`coin_transactions` の正確な列型・制約・trigger/RLSと既存返金データを確定。
+- [x] `lesson_match_fee` はレッスン実施前キャンセル時に演奏者／講師の元支払者へ全額返金、完了後は返金しない方針を確定（2026-11-24）。
+- [x] イベント／レンタル初回料金はrequest単位once-onlyとし、返金後の再マッチでも再徴収しない方針を確定。成立ごとの料金は別sourceとする。
+- [x] 演奏者退会時は既成立案件を自動キャンセルせず、相手施設へ通知して判断を委ねる。バンドリーダー退会時は最古の有効メンバーへ引き継ぐ。
+- [ ] 上記確定仕様をsource-linked refund RPC・cancel/withdrawal migrationへ実装。応募手数料・完了後・紛争成立時の返金は未承認のため対象外。
+- [ ] 実DB結果と業務ルールに基づきsource-linked refund migration／共通RPCを実装し、既存writerを段階移行。
+
+詳細：`docs/20261122_V48_REFUND_COMMON_RPC_IMPLEMENTATION_PLAN.md`。今回は静的ソース確認と設計文書のみ。SQL・DB変更・build/test/lint/typecheck/ローカルチェック・Push・Deploy未実施。公開判定BLOCKED。
+
+## V48 返金writer全件インベントリ（2026-11-22）
+- [x] migrationソース内の正数残高加算＋`admin_adjustment` INSERTを横断検索し、直接依頼自動却下／辞退／退会、個別キャンセル、イベント・レンタル全体キャンセルの返金writerを一覧化
+- [x] V48.004の新しいイベント／レンタルper-match fee、facility reward fee、およびV48.005のlesson feeの課金元と、既存返金writerの未接続を確認
+- [x] 管理者コイン付与とStripe決済返金をコイン台帳のfee返金から除外する方針を明記
+- [ ] 実DBの現行関数定義・trigger/RLS・ledger制約をread-only preflightで照合
+- [ ] 共通返金RPCへのwriter切替（返金仕様確定済みの直接依頼系から段階実施）
+- [ ] 応募手数料／facility reward fee／lesson fee／イベント初回fee／completion feeの返金方針確定
+- [ ] source単位の重複返金・残高・参照整合postflight
+
+
+
+## 2026-11-22 V48 本番反映ゲート再整理
+
+- [x] ZIP内のREADME・runbook・migration実体を照合し、README.txtがV47.1のsrc-only／SQLなし説明のまま残っている不整合を確認・修正。
+- [x] V48 migration 001〜005の実ファイル一覧と候補適用順をrunbookへ反映。過去migrationの一括再実行を禁止。
+- [x] V48.004のイベント／レンタル成立ごとのmatch_fee、facility_reward_fee、およびV48.005 lesson_match_feeが既存cancel/withdrawal返金経路に完全接続されていない点を本番反映阻害要因として明示。
+- [x] README、package manifest参照、runbook、deployment gate、release checklistの状態表記を整合させる作業を実施。
+- [ ] 実DB V48 preflight／refund-source preflightの実行と出力確認。
+- [ ] 返金仕様が未確定のfee種別について業務ルール確定。
+- [ ] source transaction IDに基づく返金統合とイベント／レンタル完了時feeの二重課金解消。
+- [ ] 本番DB適用・Vercel反映・LINE実機データ収集テスト。
+
+**判定：BLOCKED継続。** 今回は候補ZIP内の文書整合性修正のみ。ソースコード・migration SQLのロジック変更、DB変更、Push、Deploy、build／lint／test／typecheck／ローカルチェックは未実施。次の作業は広範な監査の再開ではなく、上記の本番阻害要因を解消し、実DB preflightで適用差分を確定すること。詳細は `docs/20261122_V48_DEPLOYMENT_GATE.md`。
+
+
+### V48 返金元取引 preflight 実行手順（2026-11-22）
+- [x] V2 read-only SQLをSupabase SQL Editorで1 SELECTずつ実行し、結果を保存する手順・安全条件・全結果記録表を追加。
+- [ ] 本番SupabaseのProject Refを確認し、V2 preflightの全SELECT結果を取得。
+- [ ] 結果を照合し、既存返金のsource候補・重複・snapshot整合・残高差異を分類。曖昧な返金候補は自動backfillしない。
+- [ ] 実DB結果に基づきsource-linked refund migration/RPCの差分とrollback/postflightを確定。
+
+詳細：`docs/20261122_V48_REFUND_PREFLIGHT_EXECUTION_GUIDE.md`。今回は実行手順の文書化のみ。Supabase SQL実行・DB変更・ソース変更・Push・Deploy・build/test/lint/typecheck/ローカルチェックは未実施。V48公開判定BLOCKEDを維持。
+
+
+## 2026-11-22 本番Stage 0確認結果・V48停止条件
+
+- [x] 本番Stage 0で主要テーブル・列の存在確認結果を受領。
+- [ ] `application_attempts` の本番存在・V47前提migration履歴を確認（Stage 0では不存在）。
+- [ ] `match_fee_snapshots` / `lesson_fee_snapshots` の本番存在・適用履歴を確認（Stage 0では不存在）。
+- [x] `lesson_applications` の実列をV48.005と照合（`lesson_offer_id` / `applicant_performer_id` は一致。Stage 0の `offer_id` / `teacher_user_id` 不足表示は期待列定義の誤り）。
+- [ ] 実DBのmigration history table、lesson schema、関連RPC signature/security metadataをStage 1 read-onlyで確認。
+- [ ] 実DBに存在する列・テーブルに限定したStage 2課金・返金preflightを作成・実施。
+
+**停止条件：** 上記の差分確認が完了するまで、V48.001〜005の本番migration、V2 refund preflight、返金DDL/backfill/RPC変更を実行しない。
+
+
+## 2026-11-22 V48 致命的不整合修正
+
+- [x] V48.004/005が参照する `coin_rate_settings.coin_purchase_yen_per_coin` がV48.003で未作成だったため、V48.003に整数列（初期値10円/コイン）と1〜100,000のCHECK制約を追加。管理API・管理画面の入力範囲と一致させた。
+- [ ] 修正版migrationを本番Supabaseへ適用。
+- [ ] Vercel本番反映後、LINE実機で登録・応募・マッチング成立・手数料徴収・レッスン成立を優先確認。
+
+**方針：** 本番最速反映を優先し、致命的なエラーのみ修正。軽微な改善・網羅的監査・旧仕様のテストデータ収集はリリース前の必須条件にしない。今回の修正は候補ZIP内のみ。Supabase変更、Push、Deploy、ローカルチェックは未実施。
+
+
+## 2026-11-22 致命的不具合修正：管理者承認直後の演奏者プロフィール未登録遷移
+
+- [x] 管理者承認済みの演奏者アカウントを、ルート画面から演奏者ホームへ直接遷移させず、演奏者登録ページでプロフィール有無を判定するよう変更。
+- [x] 演奏者登録ページでプロフィール取得APIが404（未登録）の場合は登録フォームを表示し、プロフィールが存在する場合のみホームへ遷移するよう変更。
+- [x] 演奏者ホームへの直接アクセス時もプロフィール有無を確認し、未登録なら登録フォームへ戻すよう変更。
+- [ ] 本番反映後、管理者承認直後に登録者が再ログイン／再表示した場合、プロフィール登録画面が表示されることをLINE実機で確認。
+- [ ] プロフィール登録完了後、ホーム・プロフィール編集・退会導線・施設側検索への反映をLINE実機で確認。
+
+対象：`src/app/page.tsx`、`src/app/performer/page.tsx`、`src/app/performer/home/page.tsx`。
+
+
+
+## 2026-11-23 法的表示ページ・ホームリンク追加（ソース反映）
+
+- [x] `/terms` 利用規約ページを追加。サービス利用、利用者間取引、禁止事項、コイン購入・利用・返金、停止・退会等を記載。
+- [x] `/specified-commercial-transactions` 特定商取引法に基づく表記ページを追加。販売価格、支払方法・時期、提供時期、購入上限、返品・キャンセル等を記載。
+- [x] 共通 `LegalFooter` を作成し、トップ画面・演奏者ホーム・施設ホームの最下部に両ページへのリンクを設置。
+- [x] コイン購入画面の利用条件から両ページへ直接遷移できるよう変更。
+- [x] Stripe購入同意の規約バージョンを `coin-purchase-2026-11-23-v1` に更新。
+- [ ] 特商法表示の事業者名・責任者名・所在地・電話番号・メールアドレスを正式情報で確定。現在はプレースホルダーのため、このまま公開・実決済を開始しない。
+- [ ] コインの有効期限・利用範囲・退会時残高・払戻し等の条項を実運用仕様と照合し、必要に応じて修正。
+- [ ] 資金決済法上の前払式支払手段該当性、自家型／第三者型の区分、第三者サービス・バンド内移転の扱いを専門家または管轄財務局に確認し、必要な法定表示を追加。
+- [ ] 特定商取引法表示・利用規約の専門家レビュー。
+- [ ] build／lint／test／ローカルチェックは実施していない（既定の指示を維持）。
+- [ ] GitHub／Supabase／Vercelへの反映は未実施。Stripeコイン購入機能も無効のまま。
+
+
+## 2026-11-23 コイン購入再開準備パッチ（未適用）
+
+- [x] コイン購入APIのCheckout Session作成処理を候補ソースへ復元（DBフラグ・規約同意・金額上限・冪等性を実装）
+- [x] 管理画面APIをコイン購入フラグのみ更新する形へ修正
+- [x] バンド送金のUI・APIを停止する候補ソースを作成
+- [x] Stripe残高上限超過時の`paid_review`＋事故記録を復元する差分migrationを作成（global lock順序維持）
+- [x] `transfer_band_coins`の実行権限を剥奪する差分migrationを作成
+- [ ] 実DBのmigration適用状態・関数定義・ACLを照合
+- [ ] Supabaseへ差分migrationを適用（明示承認後）
+- [ ] Stripeテストモードで購入・冪等性・Webhook・事故処理を検証
+- [ ] 法的確認・特商法／利用規約の最終確認
+- [ ] 本番設定を有効化（明示承認後）
+
+※ソース／SQL候補の作成のみ。ビルド・Lint・テスト・ローカルチェック・DB適用・Push・Deployは未実施。
+
+
+## 2026-11-24 V48統合候補・本番DB結果反映
+
+- [x] V48 V12候補とorigin/main `1258308fbb7aaaca8d140e061032c36fb139464d` を共通基準で3-way照合。ユーザー提供の10ファイルのローカル差分が候補に含まれることを確認。
+- [x] 演奏者ホームのプロフィール実在確認ガードを保持し、マージ競合マーカーが残らない形で統合候補を作成。
+- [x] 本番DBの`application_attempts`存在を確認。
+- [x] 本番DBの`application_band_trade_history`、`application_participant_claims`、`match_fee_snapshots`、`lesson_fee_snapshots`がpublicに存在しないことを確認。
+- [x] `coin_transactions.idempotency_key`のUNIQUE indexと、source transaction ID列／indexが提示一覧にないことを確認。
+- [x] 対象RPCのsignature・SECURITY DEFINER・owner・ACLを受領。完全な関数定義本文とアプリmigration適用履歴は未取得。
+- [ ] source transaction IDに基づく共通返金RPCを実装し、`facility_reward_fee`／`lesson_match_fee`の個別キャンセル・全体キャンセル・退会返金を原子的に統合。
+- [ ] イベント／レンタルの初回once-only fee、成立ごとのfee、旧完了時feeの二重徴収を解消。
+- [ ] 退会時の既成立案件保護と、バンドリーダーの最古有効メンバーへの引継ぎを現行SQLに反映。
+- [ ] `docs/20261124_PRODUCTION_RPC_AND_MIGRATION_LEDGER_PREFLIGHT.sql` をread-only実行し、現行本番関数定義・アプリmigration適用履歴・制約／trigger／RLSを確認。差分migrationとrollback/postflightを確定。
+- [ ] Supabase本番適用、対応ソースdeploy、LINE実機テスト。
+
+**判定：BLOCKED。** 返金・課金ライフサイクルと退会／バンド引継ぎの実装が未完了のため、そのまま本番反映してはならない。承認済みの業務仕様は上記のとおり固定済み。証跡：`docs/20261124_PRODUCTION_DB_EVIDENCE_AND_PACKAGE_STATUS.md`。build／lint／test／typecheck／ローカルチェック、DB変更、Push、Deployは未実施。Stripeコイン購入機能は無効のまま維持する。

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 import AnnouncementTicker from "@/components/AnnouncementTicker";
+import LegalFooter from "@/components/LegalFooter";
 
 type MenuKey = "home" | "offers" | "matches" | "lesson" | "bands" | "other";
 
@@ -104,7 +105,7 @@ const menuConfig: Record<
       {
         icon: "👥",
         title: "自分のバンドを管理する",
-        description: "バンド作成・メンバー招待・チャット・コイン送金",
+        description: "バンド作成・メンバー招待・チャット",
         path: "/performer/bands",
       },
     ],
@@ -241,11 +242,28 @@ export default function PerformerHomePage() {
           throw new Error("アカウント種別を確認できません");
         }
 
+        // アカウントがactiveでもプロフィール未登録のケースを許可しない。
+        // 直接ホームURLを開いた場合も登録フォームへ戻す。
+        const performerResponse = await fetch("/api/performers/profile", {
+          headers,
+          cache: "no-store",
+        });
+        if (performerResponse.status === 404) {
+          window.location.replace("/performer");
+          return;
+        }
+        if (!performerResponse.ok) {
+          const performerData = await performerResponse.json().catch(() => ({}));
+          throw new Error(
+            performerData.error || "演奏者プロフィールを確認できません"
+          );
+        }
+
         if (!cancelled) {
           setProfile(profileData.user);
         }
 
-        // 有効な演奏者アカウントを確認した後に残高を取得
+        // 有効な演奏者アカウントとプロフィールを確認した後に残高を取得
         const coinResponse = await fetch("/api/coins/balance", {
           headers,
           cache: "no-store",
@@ -554,9 +572,10 @@ export default function PerformerHomePage() {
           </section>
         )}
 
-        <p className="mt-10 pb-4 text-center text-xs text-gray-400">
+        <p className="mt-10 text-center text-xs text-gray-400">
           あなたの演奏を、必要としている場所へ。
         </p>
+        <LegalFooter />
       </div>
     </main>
   );

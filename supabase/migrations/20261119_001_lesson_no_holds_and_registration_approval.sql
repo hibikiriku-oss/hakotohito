@@ -93,11 +93,17 @@ DECLARE
   v_charge integer;
   v_teacher_status text;
   v_applicant_status text;
+  v_applicant_user_id uuid;
+  v_applicant_level text;
+  v_target_levels text[];
+  v_lesson_date date;
 BEGIN
   PERFORM pg_advisory_xact_lock(2147483000, 20261116);
 
-  SELECT lo.performer_id, p.user_id, lo.lesson_fee, lo.capacity, lo.status
-  INTO v_teacher_performer_id, v_teacher_user_id, v_lesson_fee, v_capacity, v_offer_status
+  SELECT lo.performer_id, p.user_id, lo.lesson_fee, lo.capacity, lo.status,
+         lo.target_levels, lo.lesson_date
+  INTO v_teacher_performer_id, v_teacher_user_id, v_lesson_fee, v_capacity,
+       v_offer_status, v_target_levels, v_lesson_date
   FROM public.lesson_offers lo
   JOIN public.performers p ON p.id = lo.performer_id
   WHERE lo.id = p_lesson_offer_id
@@ -109,13 +115,63 @@ BEGIN
   IF v_offer_status <> 'open' THEN
     RETURN jsonb_build_object('success', false, 'error', 'このレッスンは募集を終了しています');
   END IF;
-  IF p_applicant_performer_id IS NULL OR NOT EXISTS (
-    SELECT 1 FROM public.performers WHERE id = p_applicant_performer_id
-  ) THEN
+  IF v_lesson_date IS NOT NULL
+     AND v_lesson_date < (now() AT TIME ZONE 'Asia/Tokyo')::date THEN
+    RETURN jsonb_build_object('success', false, 'error', '開催日を過ぎたレッスンには応募できません');
+  END IF;
+  IF p_applicant_performer_id IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', '応募する演奏者が見つかりません');
   END IF;
-  IF p_applicant_performer_id = v_teacher_performer_id THEN
+  SELECT p.user_id, p.status_level, u.account_status
+  INTO v_applicant_user_id, v_applicant_level, v_applicant_status
+  FROM public.performers p
+  JOIN public.users u ON u.id = p.user_id
+  WHERE p.id = p_applicant_performer_id;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', '応募する演奏者が見つかりません');
+  END IF;
+  IF p_applicant_performer_id = v_teacher_performer_id
+     OR v_applicant_user_id = v_teacher_user_id THEN
     RETURN jsonb_build_object('success', false, 'error', '自分自身のレッスンには応募できません');
+  END IF;
+  IF v_applicant_status IS DISTINCT FROM 'active' THEN
+    RETURN jsonb_build_object('success', false, 'error', '有効なアカウントが必要です');
+  END IF;
+  IF COALESCE(cardinality(v_target_levels), 0) > 0 AND (
+    v_applicant_level IS NULL OR NOT EXISTS (
+      SELECT 1
+      FROM unnest(v_target_levels) AS target(level)
+      WHERE
+        CASE lower(btrim(target.level))
+          WHEN 'beginner' THEN 'beginner'
+          WHEN '初心者' THEN 'beginner'
+          WHEN '初級' THEN 'beginner'
+          WHEN '初級者' THEN 'beginner'
+          WHEN 'amateur' THEN 'amateur'
+          WHEN 'アマ' THEN 'amateur'
+          WHEN 'アマチュア' THEN 'amateur'
+          WHEN 'pro' THEN 'pro'
+          WHEN 'プロ' THEN 'pro'
+          WHEN 'プロフェッショナル' THEN 'pro'
+          ELSE lower(btrim(target.level))
+        END
+        =
+        CASE lower(btrim(v_applicant_level))
+          WHEN 'beginner' THEN 'beginner'
+          WHEN '初心者' THEN 'beginner'
+          WHEN '初級' THEN 'beginner'
+          WHEN '初級者' THEN 'beginner'
+          WHEN 'amateur' THEN 'amateur'
+          WHEN 'アマ' THEN 'amateur'
+          WHEN 'アマチュア' THEN 'amateur'
+          WHEN 'pro' THEN 'pro'
+          WHEN 'プロ' THEN 'pro'
+          WHEN 'プロフェッショナル' THEN 'pro'
+          ELSE lower(btrim(v_applicant_level))
+        END
+    )
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', '登録プロフィールの演奏者レベルが募集対象外のため応募できません');
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.lesson_applications
@@ -147,13 +203,6 @@ BEGIN
 
   IF NOT FOUND OR v_balance IS NULL OR v_teacher_status IS DISTINCT FROM 'active' THEN
     RETURN jsonb_build_object('success', false, 'error', '講師アカウントを確認できません');
-  END IF;
-
-  SELECT u.account_status INTO v_applicant_status
-  FROM public.performers p JOIN public.users u ON u.id = p.user_id
-  WHERE p.id = p_applicant_performer_id;
-  IF NOT FOUND OR v_applicant_status IS DISTINCT FROM 'active' THEN
-    RETURN jsonb_build_object('success', false, 'error', '有効なアカウントが必要です');
   END IF;
 
   IF v_balance < 0 OR v_balance < v_charge THEN
@@ -213,6 +262,10 @@ BEGIN
   IF NOT (p_lesson_date IS NULL AND p_start_time IS NULL AND p_end_time IS NULL)
      AND (p_lesson_date IS NULL OR p_start_time IS NULL OR p_end_time IS NULL OR p_end_time <= p_start_time) THEN
     RETURN jsonb_build_object('success', false, 'error', '日時を設定する場合は日付・開始時間・終了時間が必要です');
+  END IF;
+  IF p_lesson_date IS NOT NULL
+     AND p_lesson_date < (now() AT TIME ZONE 'Asia/Tokyo')::date THEN
+    RETURN jsonb_build_object('success', false, 'error', '過去の日付ではレッスン募集を登録できません');
   END IF;
 
   SELECT p.user_id INTO v_user_id FROM public.performers p WHERE p.id = p_performer_id;
@@ -290,6 +343,10 @@ BEGIN
      AND (p_lesson_date IS NULL OR p_start_time IS NULL OR p_end_time IS NULL OR p_end_time <= p_start_time) THEN
     RETURN jsonb_build_object('success', false, 'error', '日時を設定する場合は日付・開始時間・終了時間が必要です');
   END IF;
+  IF p_lesson_date IS NOT NULL
+     AND p_lesson_date < (now() AT TIME ZONE 'Asia/Tokyo')::date THEN
+    RETURN jsonb_build_object('success', false, 'error', '過去の日付ではレッスン募集を設定できません');
+  END IF;
 
   SELECT p.user_id, lo.status INTO v_user_id, v_status
   FROM public.lesson_offers lo JOIN public.performers p ON p.id = lo.performer_id
@@ -310,6 +367,9 @@ BEGIN
 
   SELECT COUNT(*)::integer INTO v_matched_count
   FROM public.lesson_applications WHERE lesson_offer_id = p_offer_id AND status = 'matched';
+  IF v_matched_count > 0 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'マッチング成立後は募集条件を編集できません');
+  END IF;
   IF p_capacity < v_matched_count THEN
     RETURN jsonb_build_object('success', false, 'error', format('定員は成立済み人数（%s人）以上にしてください', v_matched_count));
   END IF;

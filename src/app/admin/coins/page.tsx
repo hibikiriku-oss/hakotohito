@@ -937,6 +937,8 @@ type CoinRateDraft = {
   completion_fee_percent: string;
   free_lesson_match_fee_coins: string;
   paid_lesson_fee_percent: string;
+  performance_reward_fee_percent: string;
+  lesson_match_fee_percent: string;
   coin_purchase_yen_per_coin: string;
 };
 
@@ -1015,6 +1017,26 @@ const COIN_RATE_FIELDS: CoinRateField[] = [
     integer: false,
   },
   {
+    key: "performance_reward_fee_percent",
+    label: "演奏案件の成立時報酬手数料",
+    description: "案件全体の謝礼総額に対する割合。マッチング成立時に施設から徴収し、成立時点の料率を保存",
+    unit: "%",
+    min: 0,
+    max: 100,
+    step: 0.01,
+    integer: false,
+  },
+  {
+    key: "lesson_match_fee_percent",
+    label: "レッスン成立時の講師手数料",
+    description: "レッスン料金に対する割合。成立時に講師から徴収し、成立時点の料率を保存",
+    unit: "%",
+    min: 0,
+    max: 100,
+    step: 0.01,
+    integer: false,
+  },
+  {
     key: "coin_purchase_yen_per_coin",
     label: "コイン購入レート",
     description: "Stripeで購入する際の1コインあたりの価格。変更後の購入にのみ適用",
@@ -1033,6 +1055,8 @@ const DEFAULT_COIN_RATE_DRAFT: CoinRateDraft = {
   completion_fee_percent: "1",
   free_lesson_match_fee_coins: "5",
   paid_lesson_fee_percent: "1",
+  performance_reward_fee_percent: "10",
+  lesson_match_fee_percent: "10",
   coin_purchase_yen_per_coin: "10",
 };
 
@@ -1090,6 +1114,8 @@ function CoinRateSettingsPanel({ token }: { token: string }) {
           saved.free_lesson_match_fee_coins
         ),
         paid_lesson_fee_percent: String(saved.paid_lesson_fee_percent),
+        performance_reward_fee_percent: String(saved.performance_reward_fee_percent ?? 10),
+        lesson_match_fee_percent: String(saved.lesson_match_fee_percent ?? 10),
         coin_purchase_yen_per_coin: String(saved.coin_purchase_yen_per_coin ?? 10),
       });
 
@@ -1204,6 +1230,8 @@ function CoinRateSettingsPanel({ token }: { token: string }) {
           saved.free_lesson_match_fee_coins
         ),
         paid_lesson_fee_percent: String(saved.paid_lesson_fee_percent),
+        performance_reward_fee_percent: String(saved.performance_reward_fee_percent ?? 10),
+        lesson_match_fee_percent: String(saved.lesson_match_fee_percent ?? 10),
         coin_purchase_yen_per_coin: String(saved.coin_purchase_yen_per_coin ?? 10),
       });
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import liff from "@line/liff";
 import AnnouncementTicker from "@/components/AnnouncementTicker";
+import LegalFooter from "@/components/LegalFooter";
 
 type UserProfile = {
   display_name: string | null;
@@ -458,11 +459,10 @@ export default function FacilityHomePage() {
         </section>
 
         {/* フッター */}
-        <footer className="text-center pt-10 pb-4">
-          <p className="text-xs text-gray-400">
-            演奏者と施設をつなぐ、演奏マッチング
-          </p>
-        </footer>
+        <p className="pt-10 text-center text-xs text-gray-400">
+          演奏者と施設をつなぐ、演奏マッチング
+        </p>
+        <LegalFooter />
       </div>
     </main>
   );

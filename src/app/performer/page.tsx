@@ -126,8 +126,21 @@ export default function PerformerPage() {
           return;
         }
         if (accountData.user.user_type === "performer") {
-          window.location.replace("/performer/home");
-          return;
+          // 管理者承認とプロフィール登録は別工程。
+          // 承認直後にプロフィール未登録のままホームへ進まないよう確認する。
+          const performerResponse = await fetch("/api/performers/profile", {
+            headers: { Authorization: `Bearer ${idToken}` },
+            cache: "no-store",
+          });
+          if (performerResponse.ok) {
+            window.location.replace("/performer/home");
+            return;
+          }
+          if (performerResponse.status !== 404) {
+            const performerData = await performerResponse.json().catch(() => ({}));
+            throw new Error(performerData.error || "演奏者プロフィールを確認できません。");
+          }
+          // 404はプロフィール未登録。登録フォームを表示する。
         }
         if (accountData.user.user_type === "facility") {
           window.location.replace("/facility/home");

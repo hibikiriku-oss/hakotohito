@@ -5,7 +5,13 @@
 
 BEGIN;
 
+-- Match the shared mutation-gate lock order used by migration 006.
+SELECT pg_advisory_xact_lock(2147483000, 20261116);
+
 DO $preflight$
+DECLARE
+  v_status_check_count integer;
+  v_status_check_definition text;
 BEGIN
   IF to_regclass('public.stripe_webhook_events') IS NULL THEN
     RAISE EXCEPTION 'stripe_webhook_events is missing; this is a differential migration and requires the existing Stripe foundation.';
@@ -45,16 +51,33 @@ BEGIN
     RAISE EXCEPTION 'stripe_webhook_events does not match the expected event-id/status contract.';
   END IF;
 
-  -- Fail closed: never drop an existing CHECK merely because its text mentions
-  -- processing_status. Its definition may contain unrelated business rules.
-  IF EXISTS (
-    SELECT 1
+  -- Replace only the exact legacy status CHECK confirmed in production.
+  -- Refuse to touch any differently named or semantically different CHECK.
+  SELECT count(*)
+  INTO v_status_check_count
+  FROM pg_constraint c
+  WHERE c.conrelid = 'public.stripe_webhook_events'::regclass
+    AND c.contype = 'c'
+    AND pg_get_constraintdef(c.oid) ILIKE '%processing_status%';
+
+  IF v_status_check_count > 0 THEN
+    SELECT lower(regexp_replace(pg_get_constraintdef(c.oid), '\s+', '', 'g'))
+    INTO v_status_check_definition
     FROM pg_constraint c
     WHERE c.conrelid = 'public.stripe_webhook_events'::regclass
       AND c.contype = 'c'
-      AND pg_get_constraintdef(c.oid) ILIKE '%processing_status%'
-  ) THEN
-    RAISE EXCEPTION 'An existing CHECK references processing_status. Review its full definition and prepare an explicit, lossless replacement before applying this migration.';
+      AND c.conname = 'stripe_webhook_events_processing_status_check';
+
+    v_status_check_definition := replace(v_status_check_definition, '::text', '');
+
+    IF v_status_check_count <> 1
+       OR v_status_check_definition IS DISTINCT FROM
+         'CHECK((processing_status=any(array[''received'',''processed'',''ignored'',''failed''])))' THEN
+      RAISE EXCEPTION 'Unexpected processing_status CHECK definition(s); refusing to replace them automatically.';
+    END IF;
+
+    ALTER TABLE public.stripe_webhook_events
+      DROP CONSTRAINT stripe_webhook_events_processing_status_check;
   END IF;
 
   IF EXISTS (
@@ -74,9 +97,8 @@ ALTER TABLE public.stripe_webhook_events
   ADD COLUMN attempt_count integer NOT NULL DEFAULT 0
     CHECK (attempt_count >= 0);
 
--- Existing CHECK constraints are never auto-dropped. Preflight above blocks
--- when one references processing_status; only a separately reviewed migration
--- may replace such a constraint without losing unrelated predicates.
+-- The exact legacy status CHECK, if present, was verified and replaced
+-- losslessly in the preflight block above. All other CHECK constraints remain.
 
 ALTER TABLE public.stripe_webhook_events
   ADD CONSTRAINT stripe_webhook_events_processing_status_check
@@ -152,6 +174,8 @@ BEGIN
   RETURN jsonb_build_object('claimed', true, 'processingToken', v_token);
 END;
 $function$;
+
+ALTER FUNCTION public.claim_stripe_webhook_event(text,text) OWNER TO postgres;
 
 REVOKE ALL ON FUNCTION public.claim_stripe_webhook_event(text,text)
   FROM PUBLIC, anon, authenticated;

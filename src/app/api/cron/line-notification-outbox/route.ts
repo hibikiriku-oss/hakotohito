@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const result = await drainLineNotificationOutbox(supabase, 5);
+  const result = await drainLineNotificationOutbox(supabase, 5, {
+    batchLimit: 5,
+    maxBatches: 8,
+    maxDurationMs: 45_000,
+  });
   const success = !result.claimError && result.failedToRecord === 0;
   return NextResponse.json(
     { success, ...result },

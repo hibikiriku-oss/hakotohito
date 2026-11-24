@@ -33,6 +33,10 @@ export default function BandDetailPage() {
   const [error, setError] = useState("");
   const [disbanding, setDisbanding] = useState(false);
   const [actionError, setActionError] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
   const loadBand = useCallback(async () => {
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
@@ -74,8 +78,33 @@ export default function BandDetailPage() {
     }
 
     setBand(data.band);
+    setEditName(data.band.name ?? "");
+    setEditDescription(data.band.description ?? "");
     setMembers(Array.isArray(data.members) ? data.members : []);
   }, [bandId]);
+
+  async function handleSaveBand() {
+    if (!band || savingEdit) return;
+    try {
+      setSavingEdit(true);
+      setActionError("");
+      const token = liff.getIDToken();
+      if (!token) throw new Error("LINEの認証情報を取得できません。LINEアプリから開き直してください");
+      const response = await fetch(`/api/bands/${bandId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName, description: editDescription }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "バンド情報を更新できませんでした");
+      setBand((current) => current ? { ...current, name: data.band.name, description: data.band.description } : current);
+      setEditing(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "バンド情報を更新できませんでした");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function handleDisband() {
     if (!band || disbanding) return;
@@ -283,6 +312,30 @@ export default function BandDetailPage() {
           </div>
         </header>
 
+        {isLeader && (
+          <section className="mt-5 rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
+            {!editing ? (
+              <button type="button" onClick={() => { setEditName(band.name); setEditDescription(band.description ?? ""); setEditing(true); }} className="w-full rounded-xl border border-amber-200 bg-amber-50 py-3 font-bold text-amber-900">
+                バンド名・紹介文を編集
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <label className="block text-sm font-bold text-gray-700">バンド名
+                  <input value={editName} onChange={(event) => setEditName(event.target.value)} maxLength={100} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-3 font-normal" />
+                </label>
+                <label className="block text-sm font-bold text-gray-700">紹介文
+                  <textarea value={editDescription} onChange={(event) => setEditDescription(event.target.value)} maxLength={1000} rows={4} className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-3 font-normal" />
+                </label>
+                <p className="text-right text-xs text-gray-400">紹介文 {editDescription.length}/1000文字</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { setEditing(false); setEditName(band.name); setEditDescription(band.description ?? ""); }} disabled={savingEdit} className="flex-1 rounded-xl border border-gray-200 py-3 font-bold text-gray-600 disabled:opacity-50">キャンセル</button>
+                  <button type="button" onClick={handleSaveBand} disabled={savingEdit || !editName.trim() || editName.trim().length > 100 || editDescription.length > 1000} className="flex-1 rounded-xl bg-amber-600 py-3 font-bold text-white disabled:opacity-50">{savingEdit ? "保存中..." : "変更を保存"}</button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* バンドで利用する機能 */}
         <section className="mt-6">
           <h2 className="mb-3 text-lg font-bold text-gray-900">
@@ -315,30 +368,9 @@ export default function BandDetailPage() {
               </div>
             </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                router.push(`/performer/bands/${band.id}/transfers`)
-              }
-              className="w-full rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left shadow-sm active:bg-amber-100"
-            >
-              <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-2xl">
-                  🪙
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="block font-bold text-gray-900">
-                    コインを送金
-                  </span>
-                  <span className="mt-1 block text-sm text-gray-600">
-                    同じバンドのメンバーへ送金する
-                  </span>
-                </span>
-
-                <span className="text-xl text-gray-400">→</span>
-              </div>
-            </button>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+              バンドメンバー間のコイン送金機能は現在停止しています。
+            </div>
 
             <button
               type="button"

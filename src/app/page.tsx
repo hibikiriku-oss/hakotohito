@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import liff from "@line/liff";
+import LegalFooter from "@/components/LegalFooter";
 
 type LineProfile = {
   userId: string;
@@ -88,7 +89,9 @@ export default function Home() {
           }
 
           if (user.user_type === "performer") {
-            window.location.replace("/performer/home");
+            // アカウント承認済みでもプロフィール登録前の場合があるため、
+            // 演奏者登録ページ側でプロフィールの有無を確認して遷移する。
+            window.location.replace("/performer");
             return;
           }
 
@@ -285,6 +288,7 @@ export default function Home() {
             登録しています…
           </p>
         )}
+        <LegalFooter />
       </div>
     </main>
   );
