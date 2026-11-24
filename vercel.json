@@ -1,3 +1,4 @@
+
 {
   "crons": [
     {
@@ -10,7 +11,7 @@
     },
     {
       "path": "/api/cron/line-notification-outbox",
-      "schedule": "* * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
