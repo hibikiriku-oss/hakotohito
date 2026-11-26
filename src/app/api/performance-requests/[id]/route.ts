@@ -628,6 +628,18 @@ export async function DELETE(
       if (errorCode === "has_application_attempts") {
         return NextResponse.json({ error: "応募試行履歴がある案件は削除できません。" }, { status: 409 });
       }
+      if (errorCode === "has_band_trade_history") {
+        return NextResponse.json({ error: "バンド応募・取引履歴がある案件は削除できません。" }, { status: 409 });
+      }
+      if (errorCode === "has_participant_claims") {
+        return NextResponse.json({ error: "参加者確定履歴がある案件は削除できません。" }, { status: 409 });
+      }
+      if (errorCode === "has_coin_transactions") {
+        return NextResponse.json({ error: "コイン取引履歴がある案件は削除できません。" }, { status: 409 });
+      }
+      if (errorCode === "has_fee_snapshots") {
+        return NextResponse.json({ error: "手数料の記録がある案件は削除できません。" }, { status: 409 });
+      }
       if (errorCode === "unreviewed_dependency") {
         console.error("案件削除RPC: 未監査の依存関係またはDELETE triggerを検出しました");
         return NextResponse.json({ error: "案件の関連データ構造が未確認のため、安全のため削除を中止しました" }, { status: 409 });

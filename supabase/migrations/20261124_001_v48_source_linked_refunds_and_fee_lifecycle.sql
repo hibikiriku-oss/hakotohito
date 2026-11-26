@@ -70,6 +70,9 @@ DECLARE
   v_refund_key text;
   v_legacy_key text;
   v_legacy_count integer;
+  v_existing_count integer;
+  v_attempt_refund_count integer;
+  v_attempt_refund_key text;
   v_lesson_application_id uuid;
 BEGIN
   IF p_source_transaction_id IS NULL OR NULLIF(btrim(p_reason), '') IS NULL THEN
@@ -117,25 +120,109 @@ BEGIN
   v_refund_key := 'refund_source:' || v_source.id::text;
   PERFORM pg_advisory_xact_lock(hashtextextended(v_refund_key, 0));
 
-  SELECT * INTO v_existing
+  SELECT count(*)::integer INTO v_existing_count
   FROM public.coin_transactions
   WHERE source_transaction_id = v_source.id
-     OR idempotency_key = v_refund_key
-  FOR UPDATE;
-  IF FOUND THEN
-    IF v_existing.source_transaction_id IS DISTINCT FROM v_source.id
+     OR idempotency_key = v_refund_key;
+  IF v_existing_count > 1 THEN
+    RAISE EXCEPTION '元取引に対する新形式返金履歴が複数あります: %', v_source.id;
+  ELSIF v_existing_count = 1 THEN
+    SELECT * INTO v_existing
+    FROM public.coin_transactions
+    WHERE source_transaction_id = v_source.id
+       OR idempotency_key = v_refund_key
+    FOR UPDATE;
+    IF (v_existing.source_transaction_id IS NOT NULL
+           AND v_existing.source_transaction_id IS DISTINCT FROM v_source.id)
        OR v_existing.user_id IS DISTINCT FROM v_source.user_id
        OR v_existing.amount IS DISTINCT FROM -v_source.amount
        OR v_existing.transaction_type IS DISTINCT FROM 'admin_adjustment'
        OR v_existing.request_id IS DISTINCT FROM v_source.request_id
        OR v_existing.application_id IS DISTINCT FROM v_source.application_id
-       OR v_existing.match_id IS DISTINCT FROM v_source.match_id
+       OR (v_existing.match_id IS DISTINCT FROM v_source.match_id
+           AND NOT (v_source.transaction_type = 'direct_invite_fee'
+             AND v_source.match_id IS NULL
+             AND EXISTS (
+               SELECT 1 FROM public.application_attempts aa
+               WHERE aa.application_id = v_source.application_id
+                 AND aa.match_id = v_existing.match_id
+                 AND aa.source = 'facility_invite'
+                 AND aa.fee_type = 'direct_invite_fee'
+                 AND (
+                   'direct_invite_refund_attempt:' || aa.id::text = v_existing.idempotency_key
+                   OR v_existing.idempotency_key = 'direct_invite_refund:' || v_source.application_id::text
+                 )
+             )))
        OR v_existing.band_id IS DISTINCT FROM v_source.band_id
        OR v_existing.lesson_application_id IS DISTINCT FROM v_lesson_application_id THEN
       RAISE EXCEPTION '既存の返金履歴が元取引と一致しません';
     END IF;
+    UPDATE public.coin_transactions
+    SET source_transaction_id = v_source.id
+    WHERE id = v_existing.id AND source_transaction_id IS NULL;
     RETURN jsonb_build_object('success',true,'alreadyRefunded',true,
       'refundAmount',-v_source.amount,'refundTransactionId',v_existing.id);
+  END IF;
+
+  -- Reconcile attempt-scoped direct-invite refunds written by the cancellation RPCs.
+  -- A source debit may have a NULL match_id even though the refund was recorded
+  -- against the match created by that application attempt.
+  IF v_source.transaction_type = 'direct_invite_fee' THEN
+    SELECT count(*)::integer
+    INTO v_attempt_refund_count
+    FROM public.application_attempts aa
+    JOIN public.coin_transactions ct
+      ON ct.idempotency_key = 'direct_invite_refund_attempt:' || aa.id::text
+    WHERE aa.application_id = v_source.application_id
+      AND aa.source = 'facility_invite'
+      AND aa.fee_type = 'direct_invite_fee'
+      AND (v_source.match_id IS NULL OR aa.match_id = v_source.match_id);
+
+    IF v_attempt_refund_count > 1 THEN
+      RAISE EXCEPTION '直接依頼のattempt返金履歴が複数あるため自動照合できません: %', v_source.id;
+    ELSIF v_attempt_refund_count = 1 THEN
+      SELECT ct.idempotency_key
+      INTO v_attempt_refund_key
+      FROM public.application_attempts aa
+      JOIN public.coin_transactions ct
+        ON ct.idempotency_key = 'direct_invite_refund_attempt:' || aa.id::text
+      WHERE aa.application_id = v_source.application_id
+        AND aa.source = 'facility_invite'
+        AND aa.fee_type = 'direct_invite_fee'
+        AND (v_source.match_id IS NULL OR aa.match_id = v_source.match_id)
+      LIMIT 1;
+
+      SELECT ct.*
+      INTO v_existing
+      FROM public.coin_transactions ct
+      WHERE ct.idempotency_key = v_attempt_refund_key
+      FOR UPDATE;
+
+      IF (v_existing.source_transaction_id IS NOT NULL
+             AND v_existing.source_transaction_id IS DISTINCT FROM v_source.id)
+         OR v_existing.user_id IS DISTINCT FROM v_source.user_id
+         OR v_existing.amount IS DISTINCT FROM -v_source.amount
+         OR v_existing.transaction_type IS DISTINCT FROM 'admin_adjustment'
+         OR v_existing.request_id IS DISTINCT FROM v_source.request_id
+         OR v_existing.application_id IS DISTINCT FROM v_source.application_id
+         OR (v_existing.match_id IS DISTINCT FROM v_source.match_id
+             AND NOT (v_source.match_id IS NULL AND EXISTS (
+               SELECT 1 FROM public.application_attempts aa
+               WHERE aa.application_id = v_source.application_id
+                 AND aa.match_id = v_existing.match_id
+                 AND 'direct_invite_refund_attempt:' || aa.id::text = v_attempt_refund_key
+             )))
+         OR v_existing.band_id IS DISTINCT FROM v_source.band_id
+         OR v_existing.lesson_application_id IS NOT NULL THEN
+        RAISE EXCEPTION 'attempt返金履歴が元の直接依頼取引と一致しません: %', v_source.id;
+      END IF;
+
+      UPDATE public.coin_transactions
+      SET source_transaction_id = v_source.id
+      WHERE id = v_existing.id;
+      RETURN jsonb_build_object('success',true,'alreadyRefunded',true,
+        'refundAmount',-v_source.amount,'refundTransactionId',v_existing.id,'linkedAttemptRefund',true);
+    END IF;
   END IF;
 
   -- Map historical refund keys so old refunds are linked rather than paid twice.
@@ -174,12 +261,23 @@ BEGIN
       FROM public.coin_transactions
       WHERE idempotency_key = v_legacy_key
       FOR UPDATE;
-      IF v_existing.user_id IS DISTINCT FROM v_source.user_id
+      IF (v_existing.source_transaction_id IS NOT NULL
+             AND v_existing.source_transaction_id IS DISTINCT FROM v_source.id)
+         OR v_existing.user_id IS DISTINCT FROM v_source.user_id
          OR v_existing.amount IS DISTINCT FROM -v_source.amount
          OR v_existing.transaction_type IS DISTINCT FROM 'admin_adjustment'
          OR v_existing.request_id IS DISTINCT FROM v_source.request_id
          OR v_existing.application_id IS DISTINCT FROM v_source.application_id
-         OR v_existing.match_id IS DISTINCT FROM v_source.match_id
+         OR (v_existing.match_id IS DISTINCT FROM v_source.match_id
+             AND NOT (v_source.transaction_type = 'direct_invite_fee'
+               AND v_source.match_id IS NULL
+               AND EXISTS (
+                 SELECT 1 FROM public.application_attempts aa
+                 WHERE aa.application_id = v_source.application_id
+                   AND aa.match_id = v_existing.match_id
+                   AND aa.source = 'facility_invite'
+                   AND aa.fee_type = 'direct_invite_fee'
+               )))
          OR v_existing.band_id IS DISTINCT FROM v_source.band_id
          OR v_existing.lesson_application_id IS DISTINCT FROM v_lesson_application_id THEN
         RAISE EXCEPTION '旧返金履歴が元取引と一致しません: %', v_legacy_key;
@@ -258,6 +356,8 @@ DECLARE
   v_event_fee_description text;
   v_event boolean;
   v_attempt_id uuid;
+  v_source record;
+  v_source_refund jsonb;
 BEGIN
   PERFORM pg_advisory_xact_lock(2147483000, 20261116);
 
@@ -519,8 +619,45 @@ BEGIN
 
     IF NOT EXISTS (
       SELECT 1
-      FROM public.coin_transactions ct
-      WHERE ct.idempotency_key = v_direct_refund_key
+      FROM public.coin_transactions refund
+      WHERE refund.idempotency_key IN (
+          v_direct_refund_key,
+          'direct_invite_refund:' || v_application.id::text
+        )
+        OR refund.idempotency_key IN (
+          SELECT 'direct_invite_refund_attempt:' || aa.id::text
+          FROM public.application_attempts aa
+          WHERE aa.application_id = v_application.id
+            AND aa.source = 'facility_invite'
+            AND aa.fee_type = 'direct_invite_fee'
+        )
+        OR refund.idempotency_key IN (
+          SELECT 'refund_source:' || source.id::text
+          FROM public.coin_transactions source
+          WHERE source.user_id = v_facility_user_id
+            AND source.request_id = v_request_id
+            AND source.application_id = v_application.id
+            AND source.transaction_type = 'direct_invite_fee'
+            AND source.amount < 0
+        )
+        OR refund.idempotency_key IN (
+          SELECT 'refund_source:' || source.id::text
+          FROM public.coin_transactions source
+          WHERE source.user_id = v_facility_user_id
+            AND source.request_id = p_request_id
+            AND source.application_id = v_application.id
+            AND source.transaction_type = 'direct_invite_fee'
+            AND source.amount < 0
+        )
+        OR refund.source_transaction_id IN (
+          SELECT source.id
+          FROM public.coin_transactions source
+          WHERE source.user_id = v_facility_user_id
+            AND source.request_id = v_request_id
+            AND source.application_id = v_application.id
+            AND source.transaction_type = 'direct_invite_fee'
+            AND source.amount < 0
+        )
     ) THEN
       UPDATE public.users
       SET coin_balance =
@@ -558,8 +695,22 @@ BEGIN
 
     IF NOT EXISTS (
       SELECT 1
-      FROM public.coin_transactions ct
-      WHERE ct.idempotency_key = v_match_refund_key
+      FROM public.coin_transactions refund
+      WHERE refund.idempotency_key = v_match_refund_key
+         OR refund.source_transaction_id IN (
+           SELECT source.id FROM public.coin_transactions source
+           WHERE source.match_id = v_match.id
+             AND source.user_id = v_facility_user_id
+             AND source.transaction_type = 'match_fee'
+             AND source.amount < 0
+         )
+         OR refund.idempotency_key IN (
+           SELECT 'refund_source:' || source.id::text FROM public.coin_transactions source
+           WHERE source.match_id = v_match.id
+             AND source.user_id = v_facility_user_id
+             AND source.transaction_type = 'match_fee'
+             AND source.amount < 0
+         )
     )
     AND NOT EXISTS (
       SELECT 1
@@ -608,8 +759,24 @@ BEGIN
 
     IF NOT EXISTS (
       SELECT 1
-      FROM public.coin_transactions ct
-      WHERE ct.idempotency_key = v_fee_refund_key
+      FROM public.coin_transactions refund
+      WHERE refund.idempotency_key = v_fee_refund_key
+         OR refund.source_transaction_id IN (
+           SELECT source.id FROM public.coin_transactions source
+           WHERE source.match_id = v_match.id
+             AND source.request_id = v_request_id
+             AND source.user_id = v_facility_user_id
+             AND source.transaction_type = v_event_fee_type
+             AND source.amount < 0
+         )
+         OR refund.idempotency_key IN (
+           SELECT 'refund_source:' || source.id::text FROM public.coin_transactions source
+           WHERE source.match_id = v_match.id
+             AND source.request_id = v_request_id
+             AND source.user_id = v_facility_user_id
+             AND source.transaction_type = v_event_fee_type
+             AND source.amount < 0
+         )
     ) THEN
       SELECT -ct.amount
       INTO v_fee_refund_amount
@@ -741,7 +908,7 @@ BEGIN
     'errorMessage', NULL
   );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.cancel_event_request_with_refund_internal(p_request_id uuid, p_facility_id uuid, p_allow_closed boolean DEFAULT false)
@@ -775,6 +942,8 @@ DECLARE
   v_cancelled_match_ids uuid[] := ARRAY[]::uuid[];
   v_has_initial_fee boolean := false;
   v_has_completed_match boolean := false;
+  v_source record;
+  v_source_refund jsonb;
 
   -- 未承認の直接依頼の通知情報
   v_pending_direct_notifications jsonb := '[]'::jsonb;
@@ -924,8 +1093,24 @@ BEGIN
 
     IF NOT EXISTS (
       SELECT 1
-      FROM public.coin_transactions ct
-      WHERE ct.idempotency_key = v_fee_refund_key
+      FROM public.coin_transactions refund
+      WHERE refund.idempotency_key = v_fee_refund_key
+         OR refund.source_transaction_id IN (
+           SELECT source.id FROM public.coin_transactions source
+           WHERE source.match_id = v_match.id
+             AND source.request_id = p_request_id
+             AND source.user_id = v_facility_user_id
+             AND source.transaction_type = v_fee_type
+             AND source.amount < 0
+         )
+         OR refund.idempotency_key IN (
+           SELECT 'refund_source:' || source.id::text FROM public.coin_transactions source
+           WHERE source.match_id = v_match.id
+             AND source.request_id = p_request_id
+             AND source.user_id = v_facility_user_id
+             AND source.transaction_type = v_fee_type
+             AND source.amount < 0
+         )
     ) THEN
       SELECT -ct.amount
       INTO v_fee_refund_amount
@@ -1012,8 +1197,36 @@ BEGIN
 
         IF NOT EXISTS (
           SELECT 1
-          FROM public.coin_transactions ct
-          WHERE ct.idempotency_key = v_direct_refund_key
+          FROM public.coin_transactions refund
+          WHERE refund.idempotency_key IN (
+              v_direct_refund_key,
+              'direct_invite_refund:' || v_application.id::text
+            )
+            OR refund.idempotency_key IN (
+              SELECT 'direct_invite_refund_attempt:' || aa.id::text
+              FROM public.application_attempts aa
+              WHERE aa.application_id = v_application.id
+                AND aa.source = 'facility_invite'
+                AND aa.fee_type = 'direct_invite_fee'
+            )
+            OR refund.idempotency_key IN (
+              SELECT 'refund_source:' || source.id::text
+              FROM public.coin_transactions source
+              WHERE source.user_id = v_facility_user_id
+                AND source.request_id = p_request_id
+                AND source.application_id = v_application.id
+                AND source.transaction_type = 'direct_invite_fee'
+                AND source.amount < 0
+            )
+            OR refund.source_transaction_id IN (
+              SELECT source.id
+              FROM public.coin_transactions source
+              WHERE source.user_id = v_facility_user_id
+                AND source.request_id = p_request_id
+                AND source.application_id = v_application.id
+                AND source.transaction_type = 'direct_invite_fee'
+                AND source.amount < 0
+            )
         ) THEN
           IF v_attempt_id IS NOT NULL THEN
             SELECT -ct.amount
@@ -1121,7 +1334,9 @@ BEGIN
       SELECT ct.id
       FROM public.coin_transactions ct
       WHERE ct.request_id = p_request_id
-        AND ct.match_id = v_match.id
+        AND (ct.match_id = v_match.id
+          OR (ct.transaction_type = 'direct_invite_fee'
+            AND ct.application_id = v_match.application_id))
         AND ct.amount < 0
         AND ct.transaction_type IN (
           'match_fee', 'facility_reward_fee', 'direct_invite_fee',
@@ -1138,8 +1353,10 @@ BEGIN
       v_source_refund := public.refund_coin_transaction(
         v_source.id, '案件全体キャンセル'
       );
-      v_refund_amount := v_refund_amount +
-        COALESCE((v_source_refund->>'refundAmount')::integer, 0);
+      IF COALESCE((v_source_refund->>'alreadyRefunded')::boolean, false) IS NOT TRUE THEN
+        v_refund_amount := v_refund_amount +
+          COALESCE((v_source_refund->>'refundAmount')::integer, 0);
+      END IF;
     END LOOP;
 
     v_cancelled_count := v_cancelled_count + 1;
@@ -1183,8 +1400,27 @@ BEGIN
 
     IF NOT EXISTS (
       SELECT 1
-      FROM public.coin_transactions ct
-      WHERE ct.idempotency_key = v_direct_refund_key
+      FROM public.coin_transactions refund
+      WHERE refund.idempotency_key IN (
+          v_direct_refund_key,
+          'direct_invite_refund:' || v_application.id::text
+        )
+        OR refund.idempotency_key IN (
+          SELECT 'direct_invite_refund_attempt:' || aa.id::text
+          FROM public.application_attempts aa
+          WHERE aa.application_id = v_application.id
+            AND aa.source = 'facility_invite'
+            AND aa.fee_type = 'direct_invite_fee'
+        )
+        OR refund.source_transaction_id IN (
+          SELECT source.id
+          FROM public.coin_transactions source
+          WHERE source.user_id = v_facility_user_id
+            AND source.request_id = p_request_id
+            AND source.application_id = v_application.id
+            AND source.transaction_type = 'direct_invite_fee'
+            AND source.amount < 0
+        )
     ) THEN
       SELECT -ct.amount
       INTO v_direct_fee_amount
@@ -1289,8 +1525,24 @@ BEGIN
     IF v_has_initial_fee
        AND NOT EXISTS (
          SELECT 1
-         FROM public.coin_transactions ct
-         WHERE ct.idempotency_key = v_initial_refund_key
+         FROM public.coin_transactions refund
+         WHERE refund.idempotency_key = v_initial_refund_key
+            OR refund.source_transaction_id IN (
+              SELECT source.id FROM public.coin_transactions source
+              WHERE source.user_id = v_facility_user_id
+                AND source.request_id = p_request_id
+                AND source.transaction_type = 'match_fee'
+                AND source.amount < 0
+                AND source.idempotency_key = 'event_match_fee:' || p_request_id::text
+            )
+            OR refund.idempotency_key IN (
+              SELECT 'refund_source:' || source.id::text FROM public.coin_transactions source
+              WHERE source.user_id = v_facility_user_id
+                AND source.request_id = p_request_id
+                AND source.transaction_type = 'match_fee'
+                AND source.amount < 0
+                AND source.idempotency_key = 'event_match_fee:' || p_request_id::text
+            )
        )
     THEN
       UPDATE public.users
@@ -1346,7 +1598,7 @@ BEGIN
   END LOOP;
 
   -- Link the once-only request fee to its source debit only when the existing policy refunded it.
-  IF v_initial_refund_amount > 0 THEN
+  IF NOT v_has_completed_match AND v_has_initial_fee THEN
     SELECT ct.id INTO v_source
     FROM public.coin_transactions ct
     WHERE ct.idempotency_key = 'event_match_fee:' || p_request_id::text
@@ -1394,7 +1646,7 @@ BEGIN
     'errorMessage', NULL
   );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.cancel_lesson_application_with_refund(
@@ -1590,6 +1842,7 @@ DECLARE
   v_invite record;
   v_refund_result record;
   v_actual_fee integer;
+  v_fee_source_id uuid;
   v_refund_key text;
   v_refund_exists boolean;
   v_processed_application_ids uuid[] := ARRAY[]::uuid[];
@@ -1903,20 +2156,33 @@ BEGIN
       END IF;
 
       v_refund_key := 'direct_invite_refund:' || v_invite.application_id::text;
-      SELECT EXISTS (
-        SELECT 1 FROM public.coin_transactions ct
-        WHERE ct.idempotency_key = v_refund_key
-      ) INTO v_refund_exists;
-
-      SELECT -ct.amount
-      INTO v_actual_fee
+      v_fee_source_id := NULL;
+      v_actual_fee := NULL;
+      SELECT ct.id, -ct.amount
+      INTO v_fee_source_id, v_actual_fee
       FROM public.coin_transactions ct
       WHERE ct.idempotency_key =
           'direct_invite_fee:' || v_invite.request_id::text || ':' || v_invite.performer_id::text
         AND ct.transaction_type = 'direct_invite_fee'
         AND ct.amount < 0
         AND ct.request_id = v_invite.request_id
-        AND ct.application_id = v_invite.application_id;
+        AND ct.application_id = v_invite.application_id
+      ORDER BY ct.created_at, ct.id
+      LIMIT 1;
+
+      SELECT EXISTS (
+        SELECT 1 FROM public.coin_transactions refund
+        WHERE refund.idempotency_key = v_refund_key
+           OR (v_fee_source_id IS NOT NULL AND refund.source_transaction_id = v_fee_source_id)
+           OR (v_fee_source_id IS NOT NULL AND refund.idempotency_key = 'refund_source:' || v_fee_source_id::text)
+           OR refund.idempotency_key IN (
+             SELECT 'direct_invite_refund_attempt:' || aa.id::text
+             FROM public.application_attempts aa
+             WHERE aa.application_id = v_invite.application_id
+               AND aa.source = 'facility_invite'
+               AND aa.fee_type = 'direct_invite_fee'
+           )
+      ) INTO v_refund_exists;
 
       IF v_actual_fee IS NULL THEN
         -- No debit exists: cancel the pending invite without inventing a refund.
@@ -1999,20 +2265,33 @@ BEGIN
       END IF;
 
       v_refund_key := 'direct_invite_refund:' || v_invite.application_id::text;
-      SELECT EXISTS (
-        SELECT 1 FROM public.coin_transactions ct
-        WHERE ct.idempotency_key = v_refund_key
-      ) INTO v_refund_exists;
-
-      SELECT -ct.amount
-      INTO v_actual_fee
+      v_fee_source_id := NULL;
+      v_actual_fee := NULL;
+      SELECT ct.id, -ct.amount
+      INTO v_fee_source_id, v_actual_fee
       FROM public.coin_transactions ct
       WHERE ct.idempotency_key =
           'direct_invite_fee:' || v_invite.request_id::text || ':' || v_invite.performer_id::text
         AND ct.transaction_type = 'direct_invite_fee'
         AND ct.amount < 0
         AND ct.request_id = v_invite.request_id
-        AND ct.application_id = v_invite.application_id;
+        AND ct.application_id = v_invite.application_id
+      ORDER BY ct.created_at, ct.id
+      LIMIT 1;
+
+      SELECT EXISTS (
+        SELECT 1 FROM public.coin_transactions refund
+        WHERE refund.idempotency_key = v_refund_key
+           OR (v_fee_source_id IS NOT NULL AND refund.source_transaction_id = v_fee_source_id)
+           OR (v_fee_source_id IS NOT NULL AND refund.idempotency_key = 'refund_source:' || v_fee_source_id::text)
+           OR refund.idempotency_key IN (
+             SELECT 'direct_invite_refund_attempt:' || aa.id::text
+             FROM public.application_attempts aa
+             WHERE aa.application_id = v_invite.application_id
+               AND aa.source = 'facility_invite'
+               AND aa.fee_type = 'direct_invite_fee'
+           )
+      ) INTO v_refund_exists;
 
       IF v_actual_fee IS NULL THEN
         -- No debit exists: cancel the pending invite without inventing a refund.
@@ -2248,7 +2527,7 @@ BEGIN
         AND recipient.line_user_id NOT LIKE 'withdrawn:%'
         AND (
           (a.source = 'performer_apply' AND a.performer_id = v_performer_id)
-          OR (a.source = 'band_apply' AND a.band_id = ANY(v_withdrawn_band_ids || v_handover_band_ids))
+          OR (a.source = 'band_apply' AND a.band_id = ANY(v_withdrawn_band_ids))
         )
     ) q;
     v_pending_application_notifications := v_pending_application_notifications || v_application_notification_batch;

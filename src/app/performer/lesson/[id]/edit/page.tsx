@@ -20,16 +20,15 @@ const prefectures = [
 ];
 
 const instrumentOptions = [
-  "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ", "チェロ",
-  "コントラバス", "フルート", "クラリネット", "サックス",
-  "トランペット", "トロンボーン", "リコーダー", "ハーモニカ",
-  "オカリナ", "箏", "尺八", "和太鼓", "打楽器", "声楽・歌",
+  "ピアノ", "ギター", "ベース", "ドラム",
+  "ヴォーカル", "サックス", "トランペット", "パーカッション",
+  "DJ", "和楽器",
 ];
 
 const genreOptions = [
-  "クラシック", "ポップス", "ジャズ", "演歌・歌謡曲", "童謡・唱歌",
-  "アニメ・ゲーム音楽", "映画音楽", "民謡", "邦楽", "ロック",
-  "フォーク", "ゴスペル",
+  "クラシック", "ロック・ポップス", "ジャズ・フュージョン", "ラテン・ボサノバ",
+  "ヒップホップ・ラップ", "R&B", "アカペラ", "DJ・エレクトロ",
+  "ワールドミュージック", "演歌・歌謡曲",
 ];
 
 const targetLevelOptions = ["初心者", "アマ", "プロ"];
@@ -210,8 +209,17 @@ const loadOffer = useCallback(
       setPrefecture(areaParts.prefecture);
       setMunicipality(areaParts.municipality);
 
-      setInstruments(offer.instruments || []);
-      setGenres(offer.genres || []);
+      const savedInstruments = offer.instruments || [];
+      setInstruments(savedInstruments.filter((item) => instrumentOptions.includes(item)));
+      setCustomInstruments(
+        savedInstruments.filter((item) => !instrumentOptions.includes(item)).join(", ")
+      );
+
+      const savedGenres = offer.genres || [];
+      setGenres(savedGenres.filter((item) => genreOptions.includes(item)));
+      setCustomGenres(
+        savedGenres.filter((item) => !genreOptions.includes(item)).join(", ")
+      );
       setTargetLevels(
         (offer.target_levels || []).filter((level) =>
           targetLevelOptions.includes(level)

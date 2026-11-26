@@ -401,7 +401,7 @@ export default function FacilityRequestsPage() {
     }
 
     const confirmed = window.confirm(
-      `「${request.title}」を削除しますか？\n\n応募履歴またはマッチング履歴がある案件は削除できません。この操作は取り消せません。`
+      `「${request.title}」を削除しますか？\n\n応募・マッチング・応募試行・コイン取引・バンド取引・参加者確定・手数料の履歴がある案件は削除できません。この操作は取り消せません。`
     );
 
     if (!confirmed) return;

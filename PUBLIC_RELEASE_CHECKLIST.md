@@ -1744,3 +1744,30 @@ Hakotohito独自のmigration history tableは存在しないため、Supabase SQ
 - [ ] Supabase本番適用、対応ソースdeploy、LINE実機テスト。
 
 **判定：BLOCKED。** 返金・課金ライフサイクルと退会／バンド引継ぎの実装が未完了のため、そのまま本番反映してはならない。承認済みの業務仕様は上記のとおり固定済み。証跡：`docs/20261124_PRODUCTION_DB_EVIDENCE_AND_PACKAGE_STATUS.md`。build／lint／test／typecheck／ローカルチェック、DB変更、Push、Deployは未実施。Stripeコイン購入機能は無効のまま維持する。
+
+
+## 2026-11-27 本番不具合監査・修正候補（music-matching.zip）
+
+- [x] ユーザー提供の現行 `music-matching.zip` を確認。ZIP内Git HEADは `main / 4da7f84`。ZIP内に既存未コミット変更24ファイルを確認し、今回の候補パッケージでも保持。
+- [x] イベント全体キャンセルAPIが呼ぶ `cancel_event_request_with_notification_outbox(uuid,uuid,uuid)` が本番DBに存在せず、内部 `cancel_event_request_with_refund_internal(uuid,uuid,boolean)` のみ存在することをユーザー提供DB結果で確認。
+- [x] 対象festival案件は `status='open'`。申込期限切れ自体は内部RPCの `status='closed'` 拒否条件ではないことを確認。
+- [x] `20261127_001_restore_event_cancellation_notification_outbox_rpc.sql` を候補追加。内部キャンセル・返金とOutbox通知登録を同一transactionで実施し、施設所有者・active account・global gate・service_role ACLを検証する。
+- [x] 施設案件削除APIがLINE ID token検証後に施設ユーザーとしてのみ実行されることを確認。演奏者に施設案件削除権限を付与する経路は追加しない。
+- [x] 旧削除RPCのFK allowlistが3テーブルのみで、後続migrationで追加された4テーブル（`application_band_trade_history`、`application_participant_claims`、`coin_transactions`、`match_fee_snapshots`）を未監査扱いしていたことを確認。
+- [x] `20261127_002_fix_performance_request_delete_dependencies.sql` を候補追加。7件の既知FKを厳密に照合し、応募・マッチング・応募試行・バンド取引・参加者確定・コイン取引・手数料snapshotのいずれかに対象案件の行があれば物理削除を拒否する。FKのON DELETE動作は変更しない。
+- [x] `match_fee_snapshots` は後続作成テーブルでglobal mutation gate triggerが元migrationにないため、同じglobal gate triggerを補完する候補を追加。
+- [x] 演奏案件削除も施設の共通案件削除API/RPCを通ることを確認。優先度2の修正で共通経路を修正。
+- [x] レッスン募集登録の楽器・ジャンル選択肢を演奏者プロフィール新規登録と統一。編集画面も同じ選択肢に合わせ、既存の選択肢外データは「その他」欄に保持。
+- [x] 施設演奏案件オファー編集画面の「希望する演奏」「募集対象ランク」を新規登録と同じカード型・説明付き表示に統一。既存のカスタム楽器・ジャンルは保持。
+- [x] APIの案件削除エラー表示と一覧の確認文を、全7種類の関連履歴を保護する内容に更新。
+- [ ] Supabase read-only preflightで内部RPC・Outbox列・global gate・7件のFK定義／validated状態を再確認。
+- [ ] `20261127_001` / `20261127_002` を本番Supabaseへ適用（明示承認とpreflight確認後）。
+- [ ] RPC signature・ACL・trigger・Outbox schemaのpostflight確認。
+- [ ] Vercelへソース反映後、期限切れopen festivalの全体キャンセル、履歴なしopen案件の削除、履歴あり案件の削除拒否、演奏者からの削除拒否をLINE実機で確認。
+- [ ] 登録・編集画面の選択肢、既存値復元、保存後の再表示を実機確認。
+
+詳細：`docs/20261127_PRODUCTION_DEFECT_AUDIT_AND_REMEDIATION.md`。
+
+**判定：修正候補をソース／SQLパッケージへ織り込み中。** Supabase SQL実行・DB変更・GitHub Push・Vercel Deploy・build／lint／test／typecheck／ローカルチェックは未実施。Vercel本番の実デプロイcommitも未照合。read-only preflight完了前に本番SQLを適用しない。
+
+- [x] 本番read-only確認用SQL `docs/20261127_PRODUCTION_DEFECT_PREFLIGHT_READONLY.sql` と適用後確認用SQL `docs/20261127_PRODUCTION_DEFECT_POSTFLIGHT_READONLY.sql` を追加。

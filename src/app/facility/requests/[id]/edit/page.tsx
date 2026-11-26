@@ -47,6 +47,48 @@ function formatDate(date: string): string {
 
 const PARTICIPATION_TYPES = ["live", "festival", "session"];
 
+const instrumentOptions = [
+  "ピアノ", "ギター", "ウクレレ", "バイオリン", "ビオラ",
+  "チェロ", "コントラバス", "フルート", "クラリネット",
+  "サックス", "トランペット", "トロンボーン", "リコーダー",
+  "ハーモニカ", "オカリナ", "箏", "尺八", "和太鼓",
+  "打楽器", "声楽・歌",
+];
+
+const genreOptions = [
+  "クラシック", "ポップス", "ジャズ", "演歌・歌謡曲",
+  "童謡・唱歌", "アニメ・ゲーム音楽", "映画音楽",
+  "民謡", "邦楽", "ロック", "フォーク", "ゴスペル",
+];
+
+const statusLevelOptions = [
+  { value: "beginner", label: "初心者", description: "演奏を始めたばかりの方" },
+  { value: "amateur", label: "アマチュア", description: "趣味や経験を活かして演奏する方" },
+  { value: "pro", label: "プロ", description: "演奏を仕事として活動している方" },
+];
+
+const checkboxClass =
+  "flex items-center gap-2 rounded-xl border p-3 text-sm cursor-pointer";
+
+function parseCustomValues(value: string): string[] {
+  return value
+    .split(/[,、]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function toggleChoice(
+  value: string,
+  current: string[],
+  setCurrent: (next: string[]) => void
+) {
+  setCurrent(
+    current.includes(value)
+      ? current.filter((item) => item !== value)
+      : [...current, value]
+  );
+}
+
 export default function FacilityRequestEditPage() {
   const params = useParams();
   const router = useRouter();
@@ -65,8 +107,10 @@ export default function FacilityRequestEditPage() {
   const [area, setArea] = useState("");
   const [venueAddress, setVenueAddress] = useState("");
   const [registeredFacilityAddress, setRegisteredFacilityAddress] = useState("");
-  const [instruments, setInstruments] = useState("");
-  const [genres, setGenres] = useState("");
+  const [instruments, setInstruments] = useState<string[]>([]);
+  const [otherInstrument, setOtherInstrument] = useState("");
+  const [genres, setGenres] = useState<string[]>([]);
+  const [otherGenre, setOtherGenre] = useState("");
   const [reward, setReward] = useState("");
   const [participationFee, setParticipationFee] = useState("");
   const [rentalFee, setRentalFee] = useState("");
@@ -178,8 +222,21 @@ export default function FacilityRequestEditPage() {
       );
       setArea(loadedRequest.area || "");
       setVenueAddress(loadedRequest.venue_address || "");
-      setInstruments(loadedRequest.instruments?.join(", ") || "");
-      setGenres(loadedRequest.genres?.join(", ") || "");
+      const savedInstruments = Array.isArray(loadedRequest.instruments)
+        ? loadedRequest.instruments
+        : [];
+      setInstruments(savedInstruments.filter((item) => instrumentOptions.includes(item)));
+      setOtherInstrument(
+        savedInstruments.filter((item) => !instrumentOptions.includes(item)).join(", ")
+      );
+
+      const savedGenres = Array.isArray(loadedRequest.genres)
+        ? loadedRequest.genres
+        : [];
+      setGenres(savedGenres.filter((item) => genreOptions.includes(item)));
+      setOtherGenre(
+        savedGenres.filter((item) => !genreOptions.includes(item)).join(", ")
+      );
       setReward(
         loadedRequest.reward !== null &&
           loadedRequest.reward !== undefined
@@ -222,13 +279,6 @@ export default function FacilityRequestEditPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function convertToArray(value: string): string[] {
-    return value
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
   }
 
   function validateOptionalFee(
@@ -322,6 +372,13 @@ export default function FacilityRequestEditPage() {
       return;
     }
 
+    const finalInstruments = Array.from(
+      new Set([...instruments, ...parseCustomValues(otherInstrument)])
+    );
+    const finalGenres = Array.from(
+      new Set([...genres, ...parseCustomValues(otherGenre)])
+    );
+
     try {
       setSaving(true);
 
@@ -359,8 +416,8 @@ export default function FacilityRequestEditPage() {
             end_time: endTime,
             area: area.trim(),
             venue_address: venueAddress.trim() || null,
-            instruments: convertToArray(instruments),
-            genres: convertToArray(genres),
+            instruments: finalInstruments,
+            genres: finalGenres,
             reward:
               reward.trim() === "" ? null : Number(reward),
             participation_fee: participationFeeNumber,
@@ -604,81 +661,137 @@ export default function FacilityRequestEditPage() {
           </section>
 
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
-            <h2 className="font-bold text-gray-900">
-              希望する演奏
-            </h2>
-            <p className="text-xs text-gray-400 mt-1 mb-5">
-              希望する楽器や音楽ジャンルを設定してください。
-            </p>
-
-            <div>
-              <label className="font-bold text-sm text-gray-800 mb-2 block">
-                希望する楽器
-              </label>
-              <input
-                type="text"
-                value={instruments}
-                onChange={(e) => setInstruments(e.target.value)}
-                placeholder="例：ピアノ, ギター, バイオリン"
-                className={inputClass}
-              />
-              <p className="text-xs text-gray-400 mt-2">
-                複数ある場合は「,」で区切ってください。
+            <div className="mb-5">
+              <h2 className="font-bold text-gray-900">希望する演奏</h2>
+              <p className="text-xs text-gray-400 mt-1">
+                希望する楽器や音楽ジャンルを選択してください。複数選べます。
               </p>
             </div>
 
-            <div className="mt-5">
-              <label className="font-bold text-sm text-gray-800 mb-2 block">
-                希望するジャンル
+            <div>
+              <h3 className="font-bold text-sm text-gray-800 mb-3">
+                希望する楽器
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                {instrumentOptions.map((item) => (
+                  <label
+                    key={item}
+                    className={`${checkboxClass} ${
+                      instruments.includes(item)
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={instruments.includes(item)}
+                      onChange={() => toggleChoice(item, instruments, setInstruments)}
+                    />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
+
+              <label className="block text-sm font-bold text-gray-800 mt-4 mb-2">
+                その他の楽器（任意）
               </label>
               <input
                 type="text"
-                value={genres}
-                onChange={(e) => setGenres(e.target.value)}
-                placeholder="例：クラシック, ジャズ"
+                value={otherInstrument}
+                onChange={(e) => setOtherInstrument(e.target.value)}
+                placeholder="例：二胡、バンドネオン"
                 className={inputClass}
               />
               <p className="text-xs text-gray-400 mt-2">
-                複数ある場合は「,」で区切ってください。
+                複数ある場合は「,」または「、」で区切れます。
+              </p>
+            </div>
+
+            <div className="mt-6 border-t border-gray-100 pt-5">
+              <h3 className="font-bold text-sm text-gray-800 mb-3">
+                希望する音楽ジャンル
+              </h3>
+              <div className="grid grid-cols-2 gap-2">
+                {genreOptions.map((item) => (
+                  <label
+                    key={item}
+                    className={`${checkboxClass} ${
+                      genres.includes(item)
+                        ? "border-black bg-gray-100"
+                        : "border-gray-200"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={genres.includes(item)}
+                      onChange={() => toggleChoice(item, genres, setGenres)}
+                    />
+                    <span>{item}</span>
+                  </label>
+                ))}
+              </div>
+
+              <label className="block text-sm font-bold text-gray-800 mt-4 mb-2">
+                その他のジャンル（任意）
+              </label>
+              <input
+                type="text"
+                value={otherGenre}
+                onChange={(e) => setOtherGenre(e.target.value)}
+                placeholder="例：ボサノバ、タンゴ"
+                className={inputClass}
+              />
+              <p className="text-xs text-gray-400 mt-2">
+                複数ある場合は「,」または「、」で区切れます。
               </p>
             </div>
           </section>
 
           <section className="bg-white border border-gray-200 rounded-2xl p-5">
-            <h2 className="font-bold text-gray-900">
-              募集対象ランク
-            </h2>
-            <p className="text-xs text-gray-500 mt-1 mb-4">
-              応募できる演奏者のランクを選択してください。複数選択できます。
-            </p>
-            <div className="space-y-3">
-              {[
-                { value: "beginner", label: "初心者" },
-                { value: "amateur", label: "アマチュア" },
-                { value: "pro", label: "プロ" },
-              ].map((level) => (
+            <div className="mb-5">
+              <h2 className="font-bold text-gray-900">募集対象ランク</h2>
+              <p className="text-xs text-gray-400 mt-1">
+                応募できる演奏者のランクを選択してください。複数選べます。
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {statusLevelOptions.map((item) => (
                 <label
-                  key={level.value}
-                  className="flex items-center gap-3 rounded-xl border border-gray-200 p-3"
+                  key={item.value}
+                  className={`flex items-start gap-3 rounded-xl border p-4 cursor-pointer transition ${
+                    targetLevels.includes(item.value)
+                      ? "border-black bg-gray-100"
+                      : "border-gray-200 bg-white"
+                  }`}
                 >
                   <input
                     type="checkbox"
-                    checked={targetLevels.includes(level.value)}
-                    onChange={(event) => {
-                      setTargetLevels((current) =>
-                        event.target.checked
-                          ? [...current, level.value]
-                          : current.filter((item) => item !== level.value)
-                      );
-                    }}
-                    className="h-4 w-4 accent-black"
+                    className="mt-1"
+                    checked={targetLevels.includes(item.value)}
+                    onChange={() =>
+                      toggleChoice(item.value, targetLevels, setTargetLevels)
+                    }
                   />
-                  <span className="text-sm font-medium text-gray-800">
-                    {level.label}
+                  <span>
+                    <span className="block text-sm font-bold text-gray-900">
+                      {item.label}
+                    </span>
+                    <span className="block text-xs text-gray-500 mt-1">
+                      {item.description}
+                    </span>
                   </span>
                 </label>
               ))}
             </div>
+
+            <p className="text-xs text-gray-500 mt-3">
+              選択中：
+              {statusLevelOptions
+                .filter((item) => targetLevels.includes(item.value))
+                .map((item) => item.label)
+                .join("・") || "未選択"}
+            </p>
           </section>
 
           {request.request_type !== "rental" && (
